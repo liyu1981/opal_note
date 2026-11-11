@@ -1,0 +1,120 @@
+# AGENTS.md
+
+Guidance for coding agents working in this repository.
+
+## Commit policy (mandatory)
+
+- **Never commit on your own initiative.** Only create a commit when the user
+  explicitly asks you to commit.
+- When asked, use a concise subject line and put the details in the body.
+- After committing, return to the "waiting for the next instruction" state —
+  do not continue making commits, tags, or pushes unless asked again.
+- Never amend, rebase, force-push, or rewrite history unless the user asks for
+  that specific operation.
+
+## What this project is
+
+Opal Note is a **server-first** note app. Unlike Obsidian, the browser holds no
+notebook state: a Rust server owns storage, indexing (MnesticDB/Datalog), tags,
+wikilinks, backlinks and full-text search. The React client is a query UI.
+
+Production is a **single binary** with the built web client embedded via
+`rust-embed`.
+
+## Stack
+
+- Server: Rust 2021, Axum 0.8, Tokio
+- Database: `mnestic` crate (MnesticDB, a maintained CozoDB fork); the library
+  target is still imported as `cozo`. RocksDB backend.
+- Client: React 19, TypeScript 7 (`tsc` native), Vite 8, Tailwind CSS 4, Jotai 3
+- Package manager: pnpm
+
+## Commands
+
+```bash
+pnpm dev               # build web → sync assets → build server → run 0.0.0.0:7827
+pnpm build             # web build → asset sync → release binary (embedded assets)
+pnpm start             # run target/release/opalnote
+pnpm test              # cargo test + web typecheck
+pnpm check             # cargo check + web typecheck
+pnpm --dir web build   # web assets only
+cargo test             # Rust unit tests (Datalog store + markdown parsing)
+```
+
+The root `package.json` is the only task runner. Do not add a Makefile,
+justfile, or shell-script entry points — add a script there and, if
+orchestration is needed, a Node entry under `scripts/`.
+
+`pnpm dev` is a **single process**: it builds the client, syncs the bundle into
+the server, rebuilds the server, then runs it (bound to `0.0.0.0:7827`). There
+is no separate Vite dev server or HMR.
+
+`build.rs` builds `web/dist` on demand if it is missing/stale, so a plain
+`cargo build` also works. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile Rust
+without Node (a placeholder page is embedded if no bundle exists).
+
+## Layout
+
+```
+package.json       dev / build / start / test scripts (the only task runner)
+scripts/           dev orchestration, asset sync, release launcher
+src/
+  main.rs          startup, logging, graceful shutdown
+  config.rs        clap/env configuration
+  state.rs         AppState (Store + auth token)
+  auth.rs          optional bearer-token middleware
+  assets.rs        rust-embed static/SPA handler
+  routes/          HTTP API; all handlers run DB work via spawn_blocking
+  store/
+    mod.rs         Store: notebooks, notes, tags, links, search
+    queries.rs     CozoScript statements (single source of truth)
+    markdown.rs    wikilink/tag/summary derivation + unit tests
+    model.rs       API-facing serde models
+web/
+  package.json     build + typecheck only (no dev server)
+  src/api/         typed fetch client + shared types
+  src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
+  src/components/  rail, notes list, editor, inspector, settings
+  src/lib/         markdown wikilink rewriting, formatting helpers
+```
+
+## Conventions
+
+### Server
+
+- Keep **all** CozoScript in `src/store/queries.rs`. Bind user data as
+  parameters (`$name`), never interpolate strings into scripts.
+- Store methods are synchronous and must only be called inside
+  `routes::db_call` (`tokio::task::spawn_blocking`).
+- A MnesticDB `run_script` accepts **one Datalog query per payload**. Group
+  related writes (note + tags + links) with `Store::run_atomic`, which uses
+  `multi_transaction`; do not concatenate `?[...]` queries.
+- Every note write must keep the derived index consistent: `summary`, `tag`,
+  `link`, and the `note:fts` index (maintained automatically by the engine).
+- Validate input in `routes/mod.rs` helpers before hitting the store.
+- Generic `/api/query` is read-only: reject `::` and pass
+  `ScriptMutability::Immutable` with a timeout and memory limit.
+
+### Client
+
+- Server state is the source of truth. Read atoms live in `src/state/atoms.ts`
+  and are invalidated by bumping `revisionAtom` via `refreshAtom`.
+- Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
+- The server embeds `web/dist` via `rust-embed`; `scripts/lib.mjs` owns the
+  build/sync step. Any new asset location must be wired through both.
+- Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
+  in `src/index.css`; do not hard-code new hex colors.
+- New user-visible strings should be plain English; keep the UI quiet and
+  keyboard-friendly (⌘K search, ⌘S save).
+
+### Tests
+
+- Pure derivation logic → unit tests in `src/store/markdown.rs`.
+- Store behavior → tests in `src/store/mod.rs` using `tempfile`.
+- Run `pnpm test` before handing work back.
+
+## API contract
+
+Base path `/api`. All routes except `/health` and `/meta` require the bearer
+token when `OPALNOTE_TOKEN` is set. Errors are
+`{"error":{"code":"...","message":"..."}}`.

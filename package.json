@@ -1,0 +1,23 @@
+{
+  "name": "opal-note",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Server-first, self-hosted notes indexed by MnesticDB (Datalog)",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "build:web": "pnpm --dir web build",
+    "build:server": "cargo build --release --locked",
+    "start": "node scripts/start.mjs",
+    "typecheck": "pnpm --dir web typecheck",
+    "test": "cargo test && pnpm --dir web typecheck",
+    "check": "cargo check && pnpm --dir web typecheck",
+    "fmt": "cargo fmt",
+    "clean": "cargo clean && node -e \"require('node:fs').rmSync('web/dist',{recursive:true,force:true})\"",
+    "docker": "docker build -t opal-note ."
+  }
+}

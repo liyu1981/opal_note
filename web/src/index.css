@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f8f6f1;
+  --color-panel: #f1ede5;
+  --color-panel-strong: #e9e3d8;
+  --color-line: #e0d9cc;
+  --color-line-strong: #cfc6b6;
+  --color-ink: #241f1b;
+  --color-ink-soft: #4a423a;
+  --color-muted: #7d7367;
+  --color-faint: #a79c8e;
+  --color-accent: #6656d9;
+  --color-accent-strong: #5142c4;
+  --color-accent-soft: #ece9ff;
+  --color-mint: #2f9c86;
+  --color-danger: #b4453c;
+
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --font-serif:
+    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman",
+    serif;
+  --font-mono:
+    "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --shadow-panel: 0 1px 0 rgb(36 31 27 / 0.04), 0 8px 24px -18px rgb(36 31 27 / 0.3);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 180ms ease-out both;
+}
+
+/* Rendered markdown */
+.note-preview {
+  color: var(--color-ink-soft);
+  font-size: 0.975rem;
+  line-height: 1.75;
+}
+
+.note-preview > * + * {
+  margin-top: 0.85em;
+}
+
+.note-preview h1,
+.note-preview h2,
+.note-preview h3,
+.note-preview h4 {
+  color: var(--color-ink);
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 1.5em;
+}
+
+.note-preview h1 {
+  font-size: 1.6rem;
+}
+.note-preview h2 {
+  font-size: 1.3rem;
+}
+.note-preview h3 {
+  font-size: 1.12rem;
+}
+
+.note-preview p {
+  margin: 0;
+}
+
+.note-preview a {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  text-underline-offset: 3px;
+}
+
+.note-preview ul,
+.note-preview ol {
+  padding-left: 1.35rem;
+}
+
+.note-preview ul {
+  list-style: disc;
+}
+.note-preview ol {
+  list-style: decimal;
+}
+
+.note-preview li + li {
+  margin-top: 0.25em;
+}
+
+.note-preview blockquote {
+  border-left: 2px solid var(--color-line-strong);
+  color: var(--color-muted);
+  padding-left: 0.9rem;
+}
+
+.note-preview code {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.83em;
+  padding: 0.08em 0.35em;
+}
+
+.note-preview pre {
+  background: #1f1b24;
+  border-radius: 10px;
+  color: #e9e4f5;
+  overflow-x: auto;
+  padding: 1rem 1.1rem;
+}
+
+.note-preview pre code {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 0.82rem;
+  padding: 0;
+}
+
+.note-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+.note-preview th,
+.note-preview td {
+  border: 1px solid var(--color-line);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.note-preview hr {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 1.5em 0;
+}
+
+.note-preview img {
+  border-radius: 8px;
+  max-width: 100%;
+}
+
+.wikilink {
+  color: var(--color-accent-strong);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+
+.wikilink:hover {
+  background: var(--color-accent-soft);
+  border-radius: 4px;
+}
+
+.editor-textarea {
+  field-sizing: content;
+  min-height: 100%;
+}

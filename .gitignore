@@ -1,0 +1,24 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node
+/node_modules/
+
+# Web
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.tsbuildinfo
+
+# Runtime data
+/data/
+*.db
+*.db-*
+
+# Env / editor
+.env
+.env.local
+.DS_Store
+.idea/
+.vscode/
