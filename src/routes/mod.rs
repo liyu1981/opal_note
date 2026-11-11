@@ -30,6 +30,7 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
 
     let protected = Router::new()
         .route("/stats", get(health::stats))
+        .route("/reindex", post(health::reindex))
         .route("/query", post(query::run))
         .route("/notebooks", get(notebooks::list).post(notebooks::create))
         .route(
@@ -45,7 +46,7 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/notebooks/{id}/search", get(notes::search))
         .route("/notebooks/{id}/tags", get(notebooks::tags))
         .route(
-            "/notes/{id}",
+            "/notebooks/{id}/notes/{*path}",
             get(notes::get).patch(notes::update).delete(notes::delete),
         )
         .route_layer(middleware::from_fn_with_state(

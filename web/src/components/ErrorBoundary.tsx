@@ -107,7 +107,7 @@ function ConnectionForm() {
         <code className="rounded bg-panel px-1 py-0.5 font-mono text-[10px]">
           OPALNOTE_TOKEN
         </code>
-        .
+        {"."}
       </p>
       <button
         type="submit"

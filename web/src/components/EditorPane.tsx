@@ -62,7 +62,7 @@ function ActiveNote() {
       />
     );
   }
-  return <NoteEditor key={note.id} note={note} />;
+  return <NoteEditor key={`${note.notebook_id}/${note.id}`} note={note} />;
 }
 
 function NoteEditor({ note }: { note: Note }) {
@@ -71,7 +71,7 @@ function NoteEditor({ note }: { note: Note }) {
 
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
-  const [tagsInput, setTagsInput] = useState(tagList(note.tags));
+  const [tagsInput, setTagsInput] = useState(tagList(note.explicit_tags));
   const [mode, setMode] = useState<EditorMode>("split");
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [dirty, setDirty] = useState(false);
@@ -100,11 +100,14 @@ function NoteEditor({ note }: { note: Note }) {
     setMessage(null);
 
     try {
-      await api.updateNote(note.id, {
+      const updated = await api.updateNote(note.notebook_id, note.id, {
         title: draft.title,
         content: draft.content,
         tags: parseTags(draft.tagsInput),
       });
+      if (updated.id !== note.id) {
+        setActiveNote(updated.id);
+      }
       refresh();
       if (changeVersion.current === version) {
         setDirty(false);
@@ -119,7 +122,7 @@ function NoteEditor({ note }: { note: Note }) {
     } finally {
       savingRef.current = false;
     }
-  }, [note.id, refresh]);
+  }, [note.id, note.notebook_id, refresh, setActiveNote]);
 
   // Debounced autosave. The tick dependency restarts the timer on every
   // keystroke and after a save that raced with further edits.
@@ -129,12 +132,14 @@ function NoteEditor({ note }: { note: Note }) {
     return () => window.clearTimeout(timer);
   }, [dirty, editTick, save]);
 
-  // Pick up tags derived on the server (inline #tags) after a clean save.
+  // After a clean save, adopt the server's canonical title (renames may
+  // sanitize a character) and frontmatter tags (inline #tags stay derived).
   useEffect(() => {
     if (!dirty && status === "saved") {
-      setTagsInput(tagList(note.tags));
+      setTitle(note.title);
+      setTagsInput(tagList(note.explicit_tags));
     }
-  }, [note.tags, dirty, status]);
+  }, [note.title, note.explicit_tags, dirty, status]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -181,14 +186,14 @@ function NoteEditor({ note }: { note: Note }) {
     if (deleting) return;
     if (
       !window.confirm(
-        `Delete “${draftRef.current.title || "Untitled"}”? This cannot be undone.`,
+        `Delete “${draftRef.current.title || "Untitled"}”? The file moves to the server trash.`,
       )
     ) {
       return;
     }
     setDeleting(true);
     try {
-      await api.deleteNote(note.id);
+      await api.deleteNote(note.notebook_id, note.id);
       setActiveNote(null);
       refresh();
     } catch (cause) {

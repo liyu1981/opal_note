@@ -14,6 +14,7 @@ pub struct Notebook {
 /// Compact note representation used by lists and search results.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NoteSummary {
+    /// Path relative to the notebook root, e.g. `pages/hello.md`.
     pub id: String,
     pub notebook_id: String,
     pub title: String,
@@ -48,12 +49,17 @@ pub struct BacklinkRef {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Note {
+    /// Path relative to the notebook root, e.g. `pages/hello.md`.
     pub id: String,
     pub notebook_id: String,
     pub title: String,
+    /// Markdown body with frontmatter removed.
     pub content: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Explicit frontmatter tags only (what the tag editor edits).
+    pub explicit_tags: Vec<String>,
+    /// Frontmatter tags plus inline `#tags`.
     pub tags: Vec<String>,
     pub links: Vec<LinkRef>,
     pub backlinks: Vec<BacklinkRef>,

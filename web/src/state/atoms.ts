@@ -67,10 +67,11 @@ export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
 
 export const activeNoteAtom = atom(async (get): Promise<Note | null> => {
   get(revisionAtom);
+  const notebookId = get(activeNotebookIdAtom);
   const id = get(activeNoteIdAtom);
-  if (!id) return null;
+  if (!notebookId || !id) return null;
   try {
-    return await api.getNote(id);
+    return await api.getNote(notebookId, id);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;

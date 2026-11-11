@@ -13,6 +13,9 @@ pub enum AppError {
     #[error("{0}")]
     NotFound(String),
 
+    #[error("{0}")]
+    Conflict(String),
+
     #[error("unauthorized")]
     Unauthorized,
 
@@ -36,6 +39,7 @@ impl AppError {
         match self {
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
+            Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::Query(_) => (StatusCode::BAD_REQUEST, "query_error"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),

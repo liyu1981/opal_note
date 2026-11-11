@@ -1,21 +1,62 @@
 # Opal Note
 
-A server-first, self-hosted notebook. The browser is a **query UI**; the Rust
-server owns the data, the index, and the query language.
+A server-first, self-hosted notebook with **markdown files as the source of
+truth** and a disposable Datalog index that stays in sync.
 
-Opal Note looks like a local markdown vault, but behaves like a small database
-product:
+Open a notebook folder in your editor, drop a page in with `mkdir`, edit files
+while the server is running, or import a Logseq graph — the Rust server
+reconciles everything into [MnesticDB](https://www.mnesticdb.com/), a CozoDB
+fork. The browser is a query UI; it never owns the notes.
 
-- notebooks (vaults / spaces), notes, tags and `[[wikilinks]]` live in
-  **MnesticDB** — an embedded Datalog engine (a maintained CozoDB fork) backed
-  by RocksDB;
-- full-text search is a native BM25 index maintained transactionally with each
-  write;
-- backlinks are derived from a `link` relation and resolved against current
-  titles, so notes can be linked before they exist;
-- the React client holds no note data: every view is an API query, and every
-  edit is a server mutation;
-- production is **one binary** with the built client embedded.
+## What is canonical
+
+- **Notebooks are folders** under `data/notebooks/<notebook name>/`.
+- **Pages are markdown files** under `pages/` and `journals/`.
+- **The index is disposable** under `data/index/` and can be deleted at any
+  time; it is rebuilt from files.
+- **Tags are file data**: explicit tags live in YAML frontmatter, inline
+  `#tags` live in the body.
+- **Links are file data**: `[[wikilinks]]` resolve against note titles or paths
+  (`[[Journal/2023-03-29]]` works for imported graphs).
+- Deletes move files to `data/.trash/` rather than unlinking them.
+
+```
+data/
+  notebooks/
+    My Notes/
+      .opalnote.json          # optional description
+      pages/
+        hello.md
+      journals/
+        2026-11-12.md
+      assets/
+  index/
+    db/                       # MnesticDB / RocksDB (rebuildable)
+  .trash/
+    notes/…
+    notebooks/…
+```
+
+### Synchronization
+
+The index follows the filesystem:
+
+- every notebook folder is scanned at startup;
+- every read reconciles the index with the filesystem, so external edits appear
+  on the very next request;
+- each write is applied to the markdown file atomically, then the affected
+  notebook is re-indexed;
+- an external file added, edited, renamed or deleted is picked up on the next
+  scan;
+- `POST /api/reindex` (or the **Rebuild index** button in connection settings)
+  forces a full re-read.
+
+Deleting `data/index/` is always safe — the next start rebuilds it.
+
+> Upgrading from the earlier index-only scaffold? Notes lived in `data/db`
+> with UUID ids; this file-first layout does not migrate them. Export or copy
+> what you need into `data/notebooks/<name>/pages/` and remove the old
+> `data/db`.
 
 ## Stack
 
@@ -62,24 +103,38 @@ pnpm start
 
 `pnpm build` runs the same web build + asset sync, then
 `cargo build --release --locked`. `build.rs` also builds `web/dist` on demand
-for a plain `cargo build`. `cargo build --release` with a prebuilt `web/dist`
-is all the Docker image does.
+for a plain `cargo build`.
+
+### Importing a Logseq graph
+
+Copy the graph into a notebook folder and start (or reindex):
+
+```bash
+mkdir -p data/notebooks
+cp -a ~/sb-import data/notebooks/sb-import
+pnpm dev
+```
+
+`Pages/` and `Journal/` are migrated to lowercase `pages/` and `journals/`
+during the first scan; `assets/` and `draws/` are left untouched. Note titles
+come from filenames, and the sample graph's
+`[[Journal/2023-03-29]]` links resolve through journal paths.
 
 ### Scripts
 
-| Command            | What it does                                                     |
-| ------------------ | ---------------------------------------------------------------- |
-| `pnpm dev`         | build web → sync assets → build server → run on `0.0.0.0:7827`    |
-| `pnpm build`       | build web → sync assets → release binary                          |
-| `pnpm start`       | run `target/release/opalnote` (pass server args after `--`)       |
-| `pnpm build:web`   | client bundle only                                               |
-| `pnpm build:server`| release binary only (expects a current `web/dist`)                |
-| `pnpm typecheck`   | TypeScript check                                                 |
-| `pnpm test`        | Rust tests + TypeScript check                                    |
-| `pnpm check`       | `cargo check` + TypeScript check                                 |
-| `pnpm fmt`         | `cargo fmt`                                                      |
-| `pnpm clean`       | remove `target/` and `web/dist/`                                  |
-| `pnpm docker`      | build the container image                                        |
+| Command             | What it does                                                     |
+| ------------------- | ---------------------------------------------------------------- |
+| `pnpm dev`          | build web → sync assets → build server → run on `0.0.0.0:7827`    |
+| `pnpm build`        | build web → sync assets → release binary                          |
+| `pnpm start`        | run `target/release/opalnote` (pass server args after `--`)       |
+| `pnpm build:web`    | client bundle only                                               |
+| `pnpm build:server` | release binary only (expects a current `web/dist`)                |
+| `pnpm typecheck`    | TypeScript check                                                 |
+| `pnpm test`         | Rust tests + TypeScript check                                    |
+| `pnpm check`        | `cargo check` + TypeScript check                                 |
+| `pnpm fmt`          | `cargo fmt`                                                      |
+| `pnpm clean`        | remove `target/` and `web/dist/`                                  |
+| `pnpm docker`       | build the container image                                        |
 
 The root `package.json` is the only task runner by design; there is no
 Makefile.
@@ -95,14 +150,14 @@ docker run --rm -p 7827:7827 -v opal-data:/data opal-note
 
 All flags have environment-variable equivalents.
 
-| Flag                      | Env                          | Default           | Meaning                                             |
-| ------------------------- | ---------------------------- | ----------------- | --------------------------------------------------- |
-| `--bind`                  | `OPALNOTE_BIND`              | `127.0.0.1:7827`  | Listen address (`pnpm dev` forces `0.0.0.0:7827`)   |
-| `--data-dir`              | `OPALNOTE_DATA_DIR`          | `./data`          | RocksDB store location                              |
-| `--token`                 | `OPALNOTE_TOKEN`             | _(unset)_         | Bearer token for `/api`; unset means open access    |
-| `--db-memory-mb`          | `OPALNOTE_DB_MEMORY_MB`      | `256`             | Shared RocksDB block-cache/write-buffer envelope    |
-| `--query-timeout-secs`    | `OPALNOTE_QUERY_TIMEOUT_SECS`| `5`               | Default budget for ad-hoc `/api/query`              |
-| `--dev-cors`              | `OPALNOTE_DEV_CORS`          | `false`           | Permissive CORS for API calls from another origin    |
+| Flag                       | Env                           | Default           | Meaning                                                  |
+| -------------------------- | ----------------------------- | ----------------- | -------------------------------------------------------- |
+| `--bind`                   | `OPALNOTE_BIND`               | `127.0.0.1:7827`  | Listen address (`pnpm dev` forces `0.0.0.0:7827`)        |
+| `--data-dir`               | `OPALNOTE_DATA_DIR`           | `./data`          | Root holding `notebooks/`, `index/` and `.trash/`        |
+| `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
+| `--db-memory-mb`           | `OPALNOTE_DB_MEMORY_MB`       | `256`             | Shared RocksDB block-cache/write-buffer envelope         |
+| `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
+| `--dev-cors`               | `OPALNOTE_DEV_CORS`           | `false`           | Permissive CORS for API calls from another origin        |
 
 Logging uses `tracing`: `RUST_LOG=opalnote=debug,tower_http=info`.
 
@@ -118,44 +173,56 @@ development.
 │  • read atoms per view       │ ─────► │  routes ──► spawn_blocking         │
 │  • revision bump to refresh  │        │              │                     │
 │  • no notebook state         │        │              ▼                     │
-└──────────────────────────────┘        │        Store (Datalog)            │
-                                        │              │                     │
-        embedded web/dist               │              ▼                     │
-        via rust-embed          ◄────── │        MnesticDB / RocksDB         │
-                                        │   note · note_tag · link · FTS     │
+└──────────────────────────────┘        │        Store (files + Datalog)     │
+                                        │         │            │             │
+        embedded web/dist               │         ▼            ▼             │
+        via rust-embed          ◄────── │   notebooks/*.md   index/db         │
+                                        │   (canonical)      (derived)        │
                                         └────────────────────────────────────┘
 ```
 
-### Data model
+### Files and frontmatter
 
-A single MnesticDB instance holds all notebooks; notes are partitioned by
-`notebook_id` and served through a secondary index.
+A page is an ordinary markdown file. Its title is the filename stem:
+
+```
+pages/hello.md          → title "hello"
+journals/2026-11-12.md  → title "2026-11-12"
+```
+
+Explicit tags are read from and written to YAML frontmatter:
+
+```markdown
+---
+tags:
+- journal
+- planning
+date: "2026-11-12"
+---
+- body #inline-tag
+```
+
+The tag field edits the explicit list; inline `#tags` remain part of the body
+and are indexed too. Other frontmatter keys are preserved when saving. The
+editor shows the body without frontmatter.
+
+### Index relations
 
 ```
 notebook { id => name, description, created_at, updated_at }
-note     { id => notebook_id, title, content, summary, created_at, updated_at }
-note_tag { note_id, tag }
-link     { from_note, target => label }      # target is a normalized title
+note     { notebook_id, path => title, content, summary,
+                             mtime_ns, size, created_at, updated_at }
+note_tag { notebook_id, note_path, tag }
+link     { notebook_id, from_note, target => label }
 ```
 
-Derived on every write, in the same transaction as the note row:
+The index is keyed by relative path, so two notebooks may both contain
+`pages/index.md`. A secondary `note:by_notebook` index and a BM25 full-text
+index (`note:fts`) keep list and search queries fast.
 
-- `summary` — plain-text excerpt for lists and search results;
-- `note_tag` — explicit tags plus `#inline-tags` found outside code fences;
-- `link` — `[[wikilinks]]`, normalized (lowercase, whitespace-collapsed) so
-  backlinks survive capitalization differences;
-- `note:fts` — BM25 index over `title ++ content`, tokenized with `Simple`,
-  `Lowercase` and an English stemmer (no stop-word list, so searching “world”
-  works).
-
-Deleting a note or notebook cascades through tags and links. Writes that touch
-multiple relations use MnesticDB's `multi_transaction`, so a failure leaves no
-half-indexed note.
-
-### Timestamps
-
-The database stores seconds since the Unix epoch as floats; the API exposes
-RFC 3339 strings (`2026-11-12T00:36:24Z`).
+Writes touching a note plus its tags/links use MnesticDB's `multi_transaction`,
+and every filesystem mutation holds a store-wide lock so scans and sends do not
+interleave.
 
 ## HTTP API
 
@@ -164,33 +231,43 @@ Base path `/api`. Errors use
 
 Public (no token): `GET /health`, `GET /meta`.
 
-| Method | Path                              | Purpose                                   |
-| ------ | --------------------------------- | ----------------------------------------- |
-| GET    | `/notebooks`                      | List notebooks with note counts           |
-| POST   | `/notebooks`                      | `{name, description?}`                    |
-| GET    | `/notebooks/{id}`                 | Notebook metadata                         |
-| PATCH  | `/notebooks/{id}`                 | `{name?, description?}`                   |
-| DELETE | `/notebooks/{id}`                 | Cascade-delete notebook                   |
-| GET    | `/notebooks/{id}/notes`           | `?limit=&offset=` newest first            |
-| POST   | `/notebooks/{id}/notes`           | `{title?, content?, tags?}`               |
-| GET    | `/notebooks/{id}/search`          | `?q=&limit=` BM25 search                  |
-| GET    | `/notebooks/{id}/tags`            | Tag counts                                |
-| GET    | `/notes/{id}`                     | Note + tags + resolved links + backlinks  |
-| PATCH  | `/notes/{id}`                     | `{title?, content?, tags?}`               |
-| DELETE | `/notes/{id}`                     | Cascade-delete note                       |
-| GET    | `/stats`                          | Global counts                             |
-| POST   | `/query`                          | Ad-hoc read-only Datalog                  |
+| Method | Path                                         | Purpose                                        |
+| ------ | -------------------------------------------- | ---------------------------------------------- |
+| GET    | `/notebooks`                                 | List folders with note counts                  |
+| POST   | `/notebooks`                                 | `{name, description?}` — creates the folder    |
+| GET    | `/notebooks/{id}`                            | Notebook metadata                              |
+| PATCH  | `/notebooks/{id}`                            | `{name?, description?}` — may rename the folder|
+| DELETE | `/notebooks/{id}`                            | Move notebook folder to `.trash/`              |
+| GET    | `/notebooks/{id}/notes`                      | `?limit=&offset=` newest first                 |
+| POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?}` — creates `/pages` |
+| GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |
+| GET    | `/notebooks/{id}/tags`                       | Tag counts                                     |
+| GET    | `/notebooks/{id}/notes/{*path}`              | Note + tags + links + backlinks                |
+| PATCH  | `/notebooks/{id}/notes/{*path}`              | `{title?, content?, tags?}` — may rename file  |
+| DELETE | `/notebooks/{id}/notes/{*path}`              | Move the file to `.trash/`                     |
+| GET    | `/stats`                                     | Global counts                                  |
+| POST   | `/reindex`                                   | Force a full filesystem → index rebuild        |
+| POST   | `/query`                                     | Ad-hoc read-only Datalog                       |
 
-### Querying the notebook directly
+`id` in note payloads is the relative path (`pages/hello.md`). Paths are
+URL-encoded per segment by the client, so spaces and unicode work:
 
-The UI's data is available to scripts and agents as Datalog:
+```bash
+curl -s 'localhost:7827/api/notebooks/My%20Notes/notes/pages/hello.md'
+```
+
+New pages are created in the notebook's existing `pages/` (or `Pages/`, which
+is migrated to `pages/`). Duplicate titles get a numeric suffix (`hello 2.md`).
+Renaming a page moves its file.
+
+### Querying the index directly
 
 ```bash
 curl -s localhost:7827/api/query \
   -H 'content-type: application/json' \
   -d '{
-    "script": "?[id, title, n] := *note{id, title, notebook_id}, notebook_id = $nb, n = 1",
-    "params": { "nb": "field-notes-167572" }
+    "script": "?[path, title] := *note{notebook_id, path, title}, notebook_id = $nb",
+    "params": { "nb": "sb-import" }
   }'
 ```
 
@@ -198,8 +275,8 @@ Response:
 
 ```json
 {
-  "headers": ["id", "title", "n"],
-  "rows": [["…", "Welcome to Opal Note", 1]],
+  "headers": ["path", "title"],
+  "rows": [["pages/Project ideas.md", "Project ideas"]],
   "next": null,
   "took_ms": 2
 }
@@ -207,7 +284,7 @@ Response:
 
 `/query` is strictly read-only: system commands (`::`) are rejected, scripts
 run with `ScriptMutability::Immutable`, and each call gets a wall-clock and
-memory budget. For anything that mutates, use the REST routes.
+memory budget. It triggers a sync first, so it reads the current files.
 
 ## Project layout
 
@@ -222,12 +299,12 @@ src/
   assets.rs          rust-embed asset + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
   store/
-    mod.rs           Datalog store, transactions, cascade deletes
+    mod.rs           sync engine, file-first CRUD, Datalog queries
+    files.rs         folder layout, atomic writes, scanning, trash
+    markdown.rs      wikilinks, tags, frontmatter, summaries
     queries.rs       every CozoScript statement
-    markdown.rs      wikilink/tag/summary derivation
     model.rs         API models
 web/
-  package.json       client package (build + typecheck only)
   src/api/           typed client + types
   src/state/         Jotai atoms
   src/components/    rail, notes, editor, inspector, settings
@@ -236,31 +313,29 @@ web/
 
 ## Security notes
 
-- Without `OPALNOTE_TOKEN`, anyone who can reach the port can read and write.
-  This is intended for loopback use; set a token before exposing the server.
-  There is no per-notebook access control yet — the token is a single-user gate.
+- Without `OPALNOTE_TOKEN`, anyone who can reach the port can read and write
+  files under `data/notebooks`. Set a token before exposing the server.
+- There is no per-notebook access control — the token is a single-user gate.
 - The token is compared in constant time and returned as `WWW-Authenticate:
   Bearer` on 401. The client stores it in `localStorage`.
 - `/api/query` cannot write and cannot run `::` system operations, but it can
   read every notebook. Treat the token as full access.
+- Path traversal is rejected: note paths must stay inside
+  `pages/`/`journals/` under the canonicalized notebook folder.
 - Static assets are served without auth so the SPA can load and prompt for a
   token.
 
 ## Roadmap / non-goals
 
-Intentionally not implemented yet:
-
-- real-time collaboration and sync protocol (the server is the authority, but
-  there is no websocket fan-out);
-- a Vite dev server with HMR — `pnpm dev` is a single production-like process;
-- file import/export (markdown folder import);
+- serving notebook `assets/` through the API (images in imported notes are not
+  rewritten yet);
+- pagination for notebooks with more than a few hundred pages;
+- real-time collaboration and a sync protocol;
 - per-notebook permissions and multi-user accounts;
 - block-level editing/CRDT;
-- wikilink autocomplete and graph view in the UI;
-- vector/semantic search — MnesticDB supports HNSW, but no embedder is wired in.
-
-The schema and query layer are the extension points: add a relation in
-`src/store/queries.rs`, index it, expose a route, and add a typed atom.
+- wikilink autocomplete and graph view;
+- vector/semantic search — MnesticDB supports HNSW, but no embedder is wired in;
+- auto-updating `[[links]]` when a page is renamed.
 
 ## License
 

@@ -7,6 +7,7 @@ use crate::error::{ApiResult, AppError};
 use crate::routes::{clean_text, db_call, MAX_DESCRIPTION_CHARS, MAX_NAME_CHARS};
 use crate::state::AppState;
 use crate::store::model::{Notebook, TagCount};
+use crate::store::NotebookUpdate;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateNotebookRequest {
@@ -39,7 +40,10 @@ pub async fn create(
         move || store.create_notebook(&name, &description),
         AppError::Internal,
     )
-    .await?;
+    .await?
+    .ok_or_else(|| {
+        AppError::Conflict("a notebook folder with that name already exists".to_string())
+    })?;
     Ok((StatusCode::CREATED, Json(notebook)))
 }
 
@@ -79,14 +83,19 @@ pub async fn update(
     };
 
     let store = state.store.clone();
-    let updated = db_call(
+    let outcome = db_call(
         move || store.update_notebook(&id, &name, &description),
         AppError::Internal,
     )
     .await?;
-    updated
-        .map(Json)
-        .ok_or_else(|| AppError::not_found("notebook not found"))
+
+    match outcome {
+        NotebookUpdate::Updated(notebook) => Ok(Json(notebook)),
+        NotebookUpdate::NotFound => Err(AppError::not_found("notebook not found")),
+        NotebookUpdate::Conflict => Err(AppError::Conflict(
+            "a notebook folder with that name already exists".to_string(),
+        )),
+    }
 }
 
 pub async fn delete(

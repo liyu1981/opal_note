@@ -1,8 +1,8 @@
 //! CozoScript (Datalog) statements used by the store.
 //!
-//! Relations live in a single MnesticDB instance. Notes are partitioned by
-//! `notebook_id`; the `note:by_notebook` secondary index and the `note:fts`
-//! full-text index keep reads fast without a second datastore.
+//! The index is disposable: notebooks and pages live on disk, and these
+//! relations are rebuilt from the filesystem. Notes are keyed by
+//! `(notebook_id, path)` so the same relative path can exist in two notebooks.
 
 pub const RELATIONS: &[(&str, &str)] = &[
     (
@@ -19,12 +19,14 @@ pub const RELATIONS: &[(&str, &str)] = &[
     (
         "note",
         r#":create note {
-            id: String
-            =>
             notebook_id: String,
+            path: String
+            =>
             title: String,
             content: String,
             summary: String,
+            mtime_ns: Int,
+            size: Int,
             created_at: Float,
             updated_at: Float
         }"#,
@@ -32,13 +34,15 @@ pub const RELATIONS: &[(&str, &str)] = &[
     (
         "note_tag",
         r#":create note_tag {
-            note_id: String,
+            notebook_id: String,
+            note_path: String,
             tag: String
         }"#,
     ),
     (
         "link",
         r#":create link {
+            notebook_id: String,
             from_note: String,
             target: String
             =>
@@ -67,7 +71,7 @@ pub const LIST_NOTEBOOKS: &str = r#"
 "#;
 
 pub const NOTEBOOK_COUNTS: &str = r#"
-?[notebook_id, count(id)] := *note{notebook_id, id}
+?[notebook_id, count(path)] := *note{notebook_id, path}
 "#;
 
 pub const GET_NOTEBOOK: &str = r#"
@@ -77,42 +81,36 @@ pub const GET_NOTEBOOK: &str = r#"
 "#;
 
 pub const NOTEBOOK_NOTE_COUNT: &str = r#"
-?[count(id)] := *note{notebook_id, id}, notebook_id = $id
+?[count(path)] := *note{notebook_id, path}, notebook_id = $id
 "#;
 
-pub const NOTEBOOK_EXISTS: &str = r#"
-?[id] := *notebook{id}, id = $id
+pub const NOTEBOOKS_INDEXED: &str = r#"
+?[id] := *notebook{id}
 "#;
 
-pub const CREATE_NOTEBOOK: &str = r#"
-?[id, name, description, created_at, updated_at] <- [[$id, $name, $description, $now, $now]]
+pub const PUT_NOTEBOOK: &str = r#"
+?[id, name, description, created_at, updated_at] <-
+    [[$id, $name, $description, $created_at, $updated_at]]
 :put notebook {id => name, description, created_at, updated_at}
 "#;
 
-pub const UPDATE_NOTEBOOK: &str = r#"
-?[id, name, description, updated_at] <- [[$id, $name, $description, $now]]
-:update notebook {id => name, description, updated_at}
-"#;
-
 pub const DELETE_NOTEBOOK_TAGS: &str = r#"
-?[note_id, tag] :=
-    *note_tag{note_id, tag},
-    *note{id: note_id, notebook_id},
+?[notebook_id, note_path, tag] :=
+    *note_tag{notebook_id, note_path, tag},
     notebook_id = $id
-:rm note_tag {note_id, tag}
+:rm note_tag {notebook_id, note_path, tag}
 "#;
 
 pub const DELETE_NOTEBOOK_LINKS: &str = r#"
-?[from_note, target] :=
-    *link{from_note, target},
-    *note{id: from_note, notebook_id},
+?[notebook_id, from_note, target] :=
+    *link{notebook_id, from_note, target},
     notebook_id = $id
-:rm link {from_note, target}
+:rm link {notebook_id, from_note, target}
 "#;
 
 pub const DELETE_NOTEBOOK_NOTES: &str = r#"
-?[id] := *note{id, notebook_id}, notebook_id = $id
-:rm note {id}
+?[notebook_id, path] := *note{notebook_id, path}, notebook_id = $id
+:rm note {notebook_id, path}
 "#;
 
 pub const DELETE_NOTEBOOK: &str = r#"
@@ -121,85 +119,99 @@ pub const DELETE_NOTEBOOK: &str = r#"
 "#;
 
 // ---------------------------------------------------------------------------
-// Notes
+// Notes / index sync
 // ---------------------------------------------------------------------------
 
 pub const LIST_NOTES: &str = r#"
-?[id, title, summary, created_at, updated_at] :=
-    *note{id, notebook_id, title, summary, created_at, updated_at},
+?[path, title, summary, created_at, updated_at] :=
+    *note{notebook_id, path, title, summary, created_at, updated_at},
     notebook_id = $notebook_id
 :order -updated_at
 :limit $limit
 :offset $offset
 "#;
 
-pub const NOTE_TAGS_BY_IDS: &str = r#"
-?[note_id, tag] := *note_tag{note_id, tag}, note_id in $ids
+pub const NOTE_INDEX_ROWS: &str = r#"
+?[path, mtime_ns, size, created_at] :=
+    *note{notebook_id, path, mtime_ns, size, created_at},
+    notebook_id = $notebook_id
 "#;
 
-pub const GET_NOTE: &str = r#"
-?[id, notebook_id, title, content, created_at, updated_at] :=
-    *note{id, notebook_id, title, content, created_at, updated_at},
-    id = $id
+pub const NOTE_CREATED: &str = r#"
+?[created_at] :=
+    *note{notebook_id, path, created_at},
+    notebook_id = $notebook_id,
+    path = $path
 "#;
 
-pub const NOTE_TAGS: &str = r#"
-?[tag] := *note_tag{note_id, tag}, note_id = $id
-:order tag
+pub const NOTE_TAGS_BY_PATHS: &str = r#"
+?[note_path, tag] :=
+    *note_tag{notebook_id, note_path, tag},
+    notebook_id = $notebook_id,
+    note_path in $paths
 "#;
 
 pub const NOTE_LINKS: &str = r#"
-?[target, label] := *link{from_note, target, label}, from_note = $id
+?[target, label] :=
+    *link{notebook_id, from_note, target, label},
+    notebook_id = $notebook_id,
+    from_note = $path
 :order target
 "#;
 
 pub const NOTE_BACKLINKS: &str = r#"
 ?[from_note, from_title, updated_at] :=
-    *link{from_note, target},
-    *note{id: from_note, title: from_title, updated_at},
-    target = $target
+    *link{notebook_id, from_note, target},
+    *note{notebook_id, path: from_note, title: from_title, updated_at},
+    notebook_id = $notebook_id,
+    target in $targets
 :order -updated_at
 "#;
 
 pub const NOTEBOOK_TITLES: &str = r#"
-?[id, title] := *note{id, notebook_id, title}, notebook_id = $notebook_id
+?[path, title, updated_at] :=
+    *note{notebook_id, path, title, updated_at},
+    notebook_id = $notebook_id
+:order -updated_at
 "#;
 
-pub const CREATE_NOTE: &str = r#"
-?[id, notebook_id, title, content, summary, created_at, updated_at] <-
-    [[$id, $notebook_id, $title, $content, $summary, $now, $now]]
-:put note {id => notebook_id, title, content, summary, created_at, updated_at}
+pub const PUT_NOTE_ROWS: &str = r#"
+?[notebook_id, path, title, content, summary, mtime_ns, size, created_at, updated_at] <- $rows
+:put note {notebook_id, path => title, content, summary, mtime_ns, size, created_at, updated_at}
 "#;
 
-pub const UPDATE_NOTE: &str = r#"
-?[id, title, content, summary, updated_at] <-
-    [[$id, $title, $content, $summary, $now]]
-:update note {id => title, content, summary, updated_at}
+pub const DELETE_NOTE_ROWS: &str = r#"
+?[notebook_id, path] :=
+    *note{notebook_id, path},
+    notebook_id = $notebook_id,
+    path in $paths
+:rm note {notebook_id, path}
 "#;
 
-pub const DELETE_NOTE: &str = r#"
-?[id] <- [[$id]]
-:rm note {id}
+pub const DELETE_TAG_ROWS: &str = r#"
+?[notebook_id, note_path, tag] :=
+    *note_tag{notebook_id, note_path, tag},
+    notebook_id = $notebook_id,
+    note_path in $paths
+:rm note_tag {notebook_id, note_path, tag}
 "#;
 
-pub const DELETE_NOTE_TAGS: &str = r#"
-?[note_id, tag] := *note_tag{note_id, tag}, note_id = $id
-:rm note_tag {note_id, tag}
+pub const DELETE_LINK_ROWS: &str = r#"
+?[notebook_id, from_note, target] :=
+    *link{notebook_id, from_note, target},
+    notebook_id = $notebook_id,
+    from_note in $paths
+:rm link {notebook_id, from_note, target}
 "#;
 
-pub const DELETE_NOTE_LINKS: &str = r#"
-?[from_note, target] := *link{from_note, target}, from_note = $id
-:rm link {from_note, target}
+pub const PUT_TAG_ROWS: &str = r#"
+?[notebook_id, note_path, tag] <- $rows
+:put note_tag {notebook_id, note_path, tag}
 "#;
 
-pub const PUT_TAGS: &str = r#"
-?[note_id, tag] <- $tag_rows
-:put note_tag {note_id, tag}
-"#;
-
-pub const PUT_LINKS: &str = r#"
-?[from_note, target, label] <- $link_rows
-:put link {from_note, target => label}
+pub const PUT_LINK_ROWS: &str = r#"
+?[notebook_id, from_note, target, label] <- $rows
+:put link {notebook_id, from_note, target => label}
 "#;
 
 // ---------------------------------------------------------------------------
@@ -207,23 +219,22 @@ pub const PUT_LINKS: &str = r#"
 // ---------------------------------------------------------------------------
 
 pub const SEARCH_NOTES: &str = r#"
-?[id, notebook_id, title, summary, created_at, updated_at, score] :=
-    ~note:fts{id | query: $query, k: $k, bind_score: score},
-    *note{id, notebook_id, title, summary, created_at, updated_at},
+?[path, title, summary, created_at, updated_at, score] :=
+    ~note:fts{notebook_id, path | query: $query, k: $k, bind_score: score},
+    *note{notebook_id, path, title, summary, created_at, updated_at},
     notebook_id = $notebook_id
 :order -score
 :limit $limit
 "#;
 
 pub const LIST_TAGS: &str = r#"
-?[tag, count(note_id)] :=
-    *note_tag{note_id, tag},
-    *note{id: note_id, notebook_id},
+?[tag, count(note_path)] :=
+    *note_tag{notebook_id, note_path, tag},
     notebook_id = $notebook_id
 "#;
 
 pub const COUNT_NOTEBOOKS: &str = "?[count(id)] := *notebook{id}";
-pub const COUNT_NOTES: &str = "?[count(id)] := *note{id}";
+pub const COUNT_NOTES: &str = "?[count(path)] := *note{path}";
 pub const COUNT_TAGS: &str = "?[count(tag)] := *note_tag{tag}";
 pub const COUNT_LINKS: &str = "?[count(from_note)] := *link{from_note}";
 

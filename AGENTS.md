@@ -14,9 +14,13 @@ Guidance for coding agents working in this repository.
 
 ## What this project is
 
-Opal Note is a **server-first** note app. Unlike Obsidian, the browser holds no
-notebook state: a Rust server owns storage, indexing (MnesticDB/Datalog), tags,
-wikilinks, backlinks and full-text search. The React client is a query UI.
+Opal Note is a **server-first, file-first** note app.
+
+- Markdown files under `data/notebooks/<notebook>/pages|journals/` are
+  canonical.
+- MnesticDB (Datalog) is a **disposable index** under `data/index/`, rebuilt
+  from files and reconciled before reads.
+- The browser holds no notebook state; it queries the server.
 
 Production is a **single binary** with the built web client embedded via
 `rust-embed`.
@@ -66,9 +70,10 @@ src/
   assets.rs        rust-embed static/SPA handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
   store/
-    mod.rs         Store: notebooks, notes, tags, links, search
+    mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
+    files.rs       folder layout, atomic writes, scanning, path safety, trash
     queries.rs     CozoScript statements (single source of truth)
-    markdown.rs    wikilink/tag/summary derivation + unit tests
+    markdown.rs    wikilinks, tags, frontmatter, summaries + unit tests
     model.rs       API-facing serde models
 web/
   package.json     build + typecheck only (no dev server)
@@ -89,6 +94,21 @@ web/
 - A MnesticDB `run_script` accepts **one Datalog query per payload**. Group
   related writes (note + tags + links) with `Store::run_atomic`, which uses
   `multi_transaction`; do not concatenate `?[...]` queries.
+- **Files are the source of truth.** Never write note content only to the
+  index. All mutations write the markdown file atomically, then re-index the
+  affected notebook.
+- The index is disposable and keyed by `(notebook_id, path)`. Deleting
+  `data/index/` must always be safe.
+- Reads call `Store::ensure_synced`; writes hold `fs_lock` for the whole
+  read-modify-write. Do not call public store methods while holding the lock —
+  use the `*_locked` internals.
+- Note paths must resolve inside `pages/`/`journals/` via
+  `files::resolve_note_path`; reject traversal and escapes.
+- Notes are titled by filename stem. Renames move files. Deletes go to
+  `data/.trash/`.
+- Explicit tags live in YAML frontmatter (`tags:`), inline `#tags` are derived
+  from the body. Preserve other frontmatter keys when rewriting.
+- Legacy `Pages/` and `Journal/` folders are migrated to lowercase during sync.
 - Every note write must keep the derived index consistent: `summary`, `tag`,
   `link`, and the `note:fts` index (maintained automatically by the engine).
 - Validate input in `routes/mod.rs` helpers before hitting the store.
@@ -109,8 +129,11 @@ web/
 
 ### Tests
 
-- Pure derivation logic → unit tests in `src/store/markdown.rs`.
-- Store behavior → tests in `src/store/mod.rs` using `tempfile`.
+- Pure derivation logic → unit tests in `src/store/markdown.rs`
+  (including frontmatter round-trips and malformed wikilinks).
+- Store behavior → tests in `src/store/mod.rs` using `tempfile`: folder/file
+  layout, external file create/edit/delete, legacy folder migration, cross-
+  notebook path collisions, trash behavior.
 - Run `pnpm test` before handing work back.
 
 ## API contract
@@ -118,3 +141,12 @@ web/
 Base path `/api`. All routes except `/health` and `/meta` require the bearer
 token when `OPALNOTE_TOKEN` is set. Errors are
 `{"error":{"code":"...","message":"..."}}`.
+
+Notes are scoped to a notebook and identified by their relative path:
+
+```
+GET|PATCH|DELETE /api/notebooks/{notebook}/notes/{*path}
+```
+
+`POST /api/reindex` forces a full filesystem read. The ad-hoc `/api/query`
+endpoint is read-only and must keep rejecting `::` system commands.

@@ -86,9 +86,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const encode = encodeURIComponent;
 
+function notePath(notebookId: string, path: string): string {
+  const encodedPath = path.split("/").map(encode).join("/");
+  return `/notebooks/${encode(notebookId)}/notes/${encodedPath}`;
+}
+
 export const api = {
   health: () => request<Health>("/health"),
   stats: () => request<Stats>("/stats"),
+
+  reindex: () => request<Stats>("/reindex", { method: "POST" }),
 
   listNotebooks: () => request<Notebook[]>("/notebooks"),
 
@@ -132,19 +139,21 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  getNote: (id: string) => request<Note>(`/notes/${encode(id)}`),
+  getNote: (notebookId: string, path: string) =>
+    request<Note>(notePath(notebookId, path)),
 
   updateNote: (
-    id: string,
+    notebookId: string,
+    path: string,
     body: { title?: string; content?: string; tags?: string[] },
   ) =>
-    request<Note>(`/notes/${encode(id)}`, {
+    request<Note>(notePath(notebookId, path), {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
 
-  deleteNote: (id: string) =>
-    request<void>(`/notes/${encode(id)}`, { method: "DELETE" }),
+  deleteNote: (notebookId: string, path: string) =>
+    request<void>(notePath(notebookId, path), { method: "DELETE" }),
 
   query: (script: string, params: Record<string, unknown> = {}) =>
     request<QueryResult>("/query", {

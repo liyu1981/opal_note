@@ -51,6 +51,16 @@ pub async fn meta(State(state): State<AppState>) -> Json<MetaResponse> {
     })
 }
 
+pub async fn reindex(State(state): State<AppState>) -> ApiResult<Json<Stats>> {
+    let store = state.store.clone();
+    let stats = db_call(
+        move || store.reindex().context("rebuilding the index"),
+        AppError::Internal,
+    )
+    .await?;
+    Ok(Json(stats))
+}
+
 pub async fn stats(State(state): State<AppState>) -> ApiResult<Json<Stats>> {
     let store = state.store.clone();
     let stats = db_call(

@@ -8,6 +8,7 @@ export interface Notebook {
 }
 
 export interface NoteSummary {
+  /** Relative file path inside the notebook, e.g. `pages/hello.md`. */
   id: string;
   notebook_id: string;
   title: string;
@@ -32,12 +33,17 @@ export interface BacklinkRef {
 }
 
 export interface Note {
+  /** Relative file path inside the notebook, e.g. `pages/hello.md`. */
   id: string;
   notebook_id: string;
   title: string;
+  /** Markdown body with frontmatter removed. */
   content: string;
   created_at: string;
   updated_at: string;
+  /** Tags declared in YAML frontmatter (the ones the tag field edits). */
+  explicit_tags: string[];
+  /** Frontmatter tags plus inline `#tags`. */
   tags: string[];
   links: LinkRef[];
   backlinks: BacklinkRef[];

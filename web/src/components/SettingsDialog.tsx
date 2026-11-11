@@ -22,6 +22,7 @@ export function SettingsDialog() {
   const [draft, setDraft] = useState(token);
   const [status, setStatus] = useState<TestStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +41,28 @@ export function SettingsDialog() {
   }, [open, setOpen]);
 
   if (!open) return null;
+
+  async function rebuildIndex() {
+    if (rebuilding) return;
+    setRebuilding(true);
+    setStatus("testing");
+    setMessage(null);
+    try {
+      const stats = await api.reindex();
+      setStatus("ok");
+      setMessage(
+        `Index rebuilt from files: ${stats.notes} notes, ${stats.tags} tags, ${stats.links} links.`,
+      );
+      refresh();
+    } catch (cause) {
+      setStatus("error");
+      setMessage(
+        cause instanceof Error ? cause.message : "Could not rebuild the index",
+      );
+    } finally {
+      setRebuilding(false);
+    }
+  }
 
   async function connect(event: FormEvent) {
     event.preventDefault();
@@ -120,11 +143,11 @@ export function SettingsDialog() {
             <code className="rounded bg-panel px-1 py-0.5 font-mono text-[10px]">
               Authorization: Bearer …
             </code>
-            . The server reads it from{" "}
+            {"."} The server reads it from{" "}
             <code className="rounded bg-panel px-1 py-0.5 font-mono text-[10px]">
               OPALNOTE_TOKEN
             </code>
-            .
+            {"."}
           </p>
 
           <div className="mt-4 flex items-center gap-2">
@@ -149,6 +172,15 @@ export function SettingsDialog() {
                 Clear token
               </button>
             )}
+            <button
+              type="button"
+              onClick={rebuildIndex}
+              disabled={rebuilding}
+              className="rounded-lg border border-line px-3 py-2 text-xs text-muted transition hover:bg-panel disabled:opacity-50"
+              title="Re-read every markdown file into the index"
+            >
+              {rebuilding ? "Reindexing…" : "Rebuild index"}
+            </button>
             <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
               mnesticdb · rocksdb
             </span>
