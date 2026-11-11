@@ -64,7 +64,7 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 | -------- | ------------------------------------------------------------- |
 | Server   | Rust 2021, Axum 0.8, Tokio                                     |
 | Database | [`mnestic`](https://www.mnesticdb.com/) 0.19 (Datalog, RocksDB) |
-| Client   | React 19, TypeScript 7, Jotai 3                                |
+| Client   | React 19, CodeMirror 6, TypeScript 7, Jotai 3                 |
 | Styling  | Tailwind CSS 4                                                 |
 | Build    | Vite 8, pnpm, root `package.json` scripts                      |
 
@@ -87,11 +87,20 @@ pnpm dev
 2. builds the client bundle;
 3. syncs the bundle into the location the server embeds;
 4. rebuilds the Rust server;
-5. starts it on **`0.0.0.0:7827`**.
+5. starts it on **`0.0.0.0:7827`**;
+6. watches client and server sources.
 
-Open http://localhost:7827. There is no HMR: rerun `pnpm dev` after changing
-client or server code. Override the listen address with `OPALNOTE_BIND`, or the
-data directory with `OPALNOTE_DATA_DIR`.
+Changes are debounced for 220 ms, then coalesced:
+
+- a change under `web/src`, `web/public`, or a web config file rebuilds the
+  client and restarts the server;
+- a change under `src`, `Cargo.toml`, `Cargo.lock`, or `build.rs` rebuilds the
+  binary and restarts the server;
+- a failed build leaves the current server running and waits for the next edit.
+
+There is no Vite HMR; reload the browser tab after a client rebuild to load the
+new bundle. Override the listen address with `OPALNOTE_BIND`, or the data
+directory with `OPALNOTE_DATA_DIR`.
 
 ```bash
 # production: one binary, assets embedded
@@ -124,7 +133,7 @@ come from filenames, and the sample graph's
 
 | Command             | What it does                                                     |
 | ------------------- | ---------------------------------------------------------------- |
-| `pnpm dev`          | build web → sync assets → build server → run on `0.0.0.0:7827`    |
+| `pnpm dev`          | build, then watch + rebuild + restart on `0.0.0.0:7827`           |
 | `pnpm build`        | build web → sync assets → release binary                          |
 | `pnpm start`        | run `target/release/opalnote` (pass server args after `--`)       |
 | `pnpm build:web`    | client bundle only                                               |
@@ -205,6 +214,26 @@ date: "2026-11-12"
 The tag field edits the explicit list; inline `#tags` remain part of the body
 and are indexed too. Other frontmatter keys are preserved when saving. The
 editor shows the body without frontmatter.
+
+### Editor
+
+The note surface is a block-oriented live preview built on CodeMirror 6:
+
+- **Live** renders headings, emphasis, links, tags, lists, tasks, quotes and
+  code in place. The block under the cursor reveals its markdown source, the
+  way Obsidian live preview does.
+- **Source** shows the raw markdown with syntax highlighting.
+- Note text, titles and lists use a fixed-width face for easier scanning.
+- `[[` opens title/path completion for the current notebook; `[[Beta]]` and
+  `[[journals/2026-11-12]]` both resolve.
+- Rendered wikilinks are clickable. Clicking a missing page offers to create
+  it, which then shows up in the target's backlinks.
+- Task checkboxes toggle `[ ]` / `[x]` in the file and autosave.
+- The backlinks panel is fed by the server's `link` relation, so bidi linking
+  stays accurate after external edits.
+
+Embedding (images/objects) and executable blocks are deliberately out of scope
+for this pass.
 
 ### Index relations
 
@@ -307,8 +336,9 @@ src/
 web/
   src/api/           typed client + types
   src/state/         Jotai atoms
-  src/components/    rail, notes, editor, inspector, settings
-  src/lib/           markdown helpers, formatting
+  src/components/    rail, notes, inspector, settings
+  src/components/editor/  live CodeMirror editor surface
+  src/lib/           live preview, completion, editor theme, markdown helpers
 ```
 
 ## Security notes
@@ -332,8 +362,11 @@ web/
 - pagination for notebooks with more than a few hundred pages;
 - real-time collaboration and a sync protocol;
 - per-notebook permissions and multi-user accounts;
-- block-level editing/CRDT;
-- wikilink autocomplete and graph view;
+- CRDT-based collaborative editing;
+- graph view;
+- true block references and transclusion (the live editor is block-oriented,
+  but pages remain plain markdown files);
+- embedded images/objects and executable code blocks;
 - vector/semantic search — MnesticDB supports HNSW, but no embedder is wired in;
 - auto-updating `[[links]]` when a page is renamed.
 

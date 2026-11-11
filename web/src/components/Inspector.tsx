@@ -59,14 +59,14 @@ export function Inspector() {
                         <button
                           type="button"
                           onClick={() => setActiveNote(link.note_id ?? null)}
-                          className="w-full truncate rounded px-1.5 py-1 text-left text-[11.5px] text-ink-soft transition hover:bg-white/70"
+                          className="w-full truncate rounded px-1.5 py-1 text-left font-mono text-[11px] text-ink-soft transition hover:bg-white/70"
                           title={`Open ${link.title ?? link.label}`}
                         >
                           {link.label}
                         </button>
                       ) : (
                         <span
-                          className="flex items-center gap-1 px-1.5 py-1 text-[11.5px] text-faint"
+                          className="flex items-center gap-1 px-1.5 py-1 font-mono text-[11px] text-faint"
                           title="No note with this title in the notebook"
                         >
                           <span className="truncate">{link.label}</span>
@@ -97,7 +97,7 @@ export function Inspector() {
                       <button
                         type="button"
                         onClick={() => setActiveNote(backlink.id)}
-                        className="w-full truncate rounded px-1.5 py-1 text-left text-[11.5px] text-ink-soft transition hover:bg-white/70"
+                        className="w-full truncate rounded px-1.5 py-1 text-left font-mono text-[11px] text-ink-soft transition hover:bg-white/70"
                       >
                         {backlink.title}
                       </button>
@@ -158,7 +158,7 @@ export function Inspector() {
               <SectionLabel icon={<IconFile className="h-3 w-3" />}>
                 Notebook
               </SectionLabel>
-              <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+              <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted">
                 {notebook?.description || "No description."}
               </p>
               <p className="mt-2 break-all font-mono text-[9.5px] text-faint">
@@ -195,6 +195,6 @@ function SectionLabel({
 
 function Hint({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{children}</p>
+    <p className="mt-1.5 font-mono text-[10.5px] leading-relaxed text-faint">{children}</p>
   );
 }

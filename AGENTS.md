@@ -30,13 +30,14 @@ Production is a **single binary** with the built web client embedded via
 - Server: Rust 2021, Axum 0.8, Tokio
 - Database: `mnestic` crate (MnesticDB, a maintained CozoDB fork); the library
   target is still imported as `cozo`. RocksDB backend.
-- Client: React 19, TypeScript 7 (`tsc` native), Vite 8, Tailwind CSS 4, Jotai 3
+- Client: React 19, CodeMirror 6, TypeScript 7 (`tsc` native), Vite 8,
+  Tailwind CSS 4, Jotai 3
 - Package manager: pnpm
 
 ## Commands
 
 ```bash
-pnpm dev               # build web → sync assets → build server → run 0.0.0.0:7827
+pnpm dev               # build, then watch web/src + src and rebuild/restart
 pnpm build             # web build → asset sync → release binary (embedded assets)
 pnpm start             # run target/release/opalnote
 pnpm test              # cargo test + web typecheck
@@ -49,9 +50,12 @@ The root `package.json` is the only task runner. Do not add a Makefile,
 justfile, or shell-script entry points — add a script there and, if
 orchestration is needed, a Node entry under `scripts/`.
 
-`pnpm dev` is a **single process**: it builds the client, syncs the bundle into
-the server, rebuilds the server, then runs it (bound to `0.0.0.0:7827`). There
-is no separate Vite dev server or HMR.
+`pnpm dev` is a **single command**: it builds the client, syncs the bundle into
+the server, rebuilds and runs the server (bound to `0.0.0.0:7827`), then watches
+`web/src`/`web/public`/web config files and `src`/`Cargo.toml`/`Cargo.lock`/
+`build.rs`. Changes are debounced (220 ms), rebuilt, and the server is
+restarted. A failed build keeps the previous server alive. There is no separate
+Vite dev server or HMR — reload the browser tab for a new client bundle.
 
 `build.rs` builds `web/dist` on demand if it is missing/stale, so a plain
 `cargo build` also works. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile Rust
@@ -79,8 +83,9 @@ web/
   package.json     build + typecheck only (no dev server)
   src/api/         typed fetch client + shared types
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
-  src/components/  rail, notes list, editor, inspector, settings
-  src/lib/         markdown wikilink rewriting, formatting helpers
+  src/components/  rail, notes list, inspector, settings
+  src/components/editor/  CodeMirror live editor + link completion
+  src/lib/         live preview decorations, editor theme, markdown helpers
 ```
 
 ## Conventions
@@ -124,6 +129,16 @@ web/
   build/sync step. Any new asset location must be wired through both.
 - Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
   in `src/index.css`; do not hard-code new hex colors.
+- The note body is a **live block editor**, not a split preview. Keep source
+  marks visible while the cursor is on a block and render them elsewhere.
+  Editor internals live in `src/lib/livePreview.ts`,
+  `src/lib/wikiCompletion.ts` and `src/components/editor/`.
+- Note text, titles and note lists use the fixed-width `--font-mono` stack;
+  chrome labels may stay proportional. Keep the `.cm-live-*` styles in
+  `src/index.css` as the single source of editor styling.
+- `[[` completion resolves titles and paths from the current notebook. Keep
+  clickable wikilinks, missing-page creation and the backlinks panel working
+  together; bidi linking is a core feature, not a plugin.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (⌘K search, ⌘S save).
 

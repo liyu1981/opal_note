@@ -23,7 +23,8 @@
     "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman",
     serif;
   --font-mono:
-    "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    "JetBrains Mono", "IBM Plex Mono", "Cascadia Code", "SFMono-Regular",
+    "Roboto Mono", Menlo, Consolas, monospace;
 
   --shadow-panel: 0 1px 0 rgb(36 31 27 / 0.04), 0 8px 24px -18px rgb(36 31 27 / 0.3);
 }
@@ -76,134 +77,281 @@ body {
   animation: fade-up 180ms ease-out both;
 }
 
-/* Rendered markdown */
-.note-preview {
-  color: var(--color-ink-soft);
-  font-size: 0.975rem;
-  line-height: 1.75;
+/* -------------------------------------------------------------------------
+   Live block editor
+   ------------------------------------------------------------------------- */
+
+.cm-editor {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
 }
 
-.note-preview > * + * {
-  margin-top: 0.85em;
+.cm-line.cm-live-active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-accent) 8%, transparent),
+    transparent 58%
+  );
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
 
-.note-preview h1,
-.note-preview h2,
-.note-preview h3,
-.note-preview h4 {
+.cm-line.cm-live-h1,
+.cm-line.cm-live-h2,
+.cm-line.cm-live-h3,
+.cm-line.cm-live-h4,
+.cm-line.cm-live-h5,
+.cm-line.cm-live-h6 {
   color: var(--color-ink);
-  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.cm-line.cm-live-h1 {
+  font-size: 1.55em;
+  letter-spacing: -0.015em;
+  padding-top: 0.55em;
+  padding-bottom: 0.28em;
+}
+
+.cm-line.cm-live-h2 {
+  font-size: 1.3em;
+  padding-top: 0.5em;
+}
+
+.cm-line.cm-live-h3 {
+  font-size: 1.12em;
+  padding-top: 0.4em;
+}
+
+.cm-line.cm-live-h4,
+.cm-line.cm-live-h5,
+.cm-line.cm-live-h6 {
+  font-size: 1em;
+  padding-top: 0.3em;
+}
+
+.cm-line.cm-live-h1:not(.cm-live-active) {
+  background:
+    linear-gradient(90deg, var(--color-accent), var(--color-mint)) bottom left /
+      100% 2px no-repeat;
+}
+
+.cm-line.cm-live-quote {
+  border-left: 3px solid;
+  border-image: linear-gradient(180deg, var(--color-accent), var(--color-mint)) 1;
+  background: color-mix(in srgb, var(--color-panel) 62%, transparent);
+  color: var(--color-muted);
+  padding-left: 0.9rem;
+}
+
+.cm-line.cm-live-list {
+  padding-left: 0;
+}
+
+.cm-live-list-marker {
+  color: var(--color-accent);
   font-weight: 600;
-  line-height: 1.25;
-  margin-top: 1.5em;
 }
 
-.note-preview h1 {
-  font-size: 1.6rem;
-}
-.note-preview h2 {
-  font-size: 1.3rem;
-}
-.note-preview h3 {
-  font-size: 1.12rem;
+.cm-live-bullet {
+  color: var(--color-accent);
+  display: inline-block;
+  font-size: 1.05em;
+  margin-right: 0.45ch;
+  user-select: none;
 }
 
-.note-preview p {
-  margin: 0;
+.cm-line.cm-live-task-done,
+.cm-line.cm-live-task-done span {
+  color: var(--color-faint);
 }
 
-.note-preview a {
+.cm-live-task-box {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  margin-right: 0.5ch;
+  vertical-align: -0.05em;
+}
+
+.cm-live-task-input {
+  height: 0;
+  opacity: 0;
+  position: absolute;
+  width: 0;
+}
+
+.cm-live-task-tick {
+  align-items: center;
+  background: #fff;
+  border: 1.5px solid var(--color-line-strong);
+  border-radius: 4px;
+  color: transparent;
+  display: inline-flex;
+  font-size: 10px;
+  height: 13px;
+  justify-content: center;
+  line-height: 1;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+  width: 13px;
+}
+
+.cm-live-task-box:hover .cm-live-task-tick,
+.cm-live-task-input:focus-visible + .cm-live-task-tick {
+  border-color: var(--color-accent);
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+  outline-offset: 1px;
+}
+
+.cm-live-task-input:checked + .cm-live-task-tick {
+  background: var(--color-accent);
+  border-color: var(--color-accent-strong);
+  color: #fff;
+}
+
+.cm-live-task-input:checked + .cm-live-task-tick::after {
+  content: "✓";
+}
+
+.cm-live-bold {
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+.cm-live-italic {
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.cm-live-strike {
+  color: var(--color-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.cm-live-highlight {
+  background: color-mix(in srgb, #f4d35e 42%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.cm-live-inline-code {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  color: var(--color-ink);
+  font-size: 0.9em;
+  padding: 0.04em 0.3em;
+}
+
+.cm-live-tag {
+  background: var(--color-accent-soft);
+  border-radius: 3px;
   color: var(--color-accent-strong);
+  font-size: 0.92em;
+  padding: 0 0.25em;
+}
+
+.cm-live-wikilink {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 4px;
+  color: var(--color-accent-strong);
+  cursor: pointer;
+  padding: 0 0.22em;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.cm-live-wikilink:hover,
+.cm-live-wikilink:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border-bottom-color: var(--color-accent);
+  outline: none;
+}
+
+.cm-live-wikilink.is-missing {
+  background: transparent;
+  border-bottom: 1px dashed color-mix(in srgb, var(--color-danger) 55%, transparent);
+  color: var(--color-danger);
+}
+
+.cm-live-wikilink.is-missing:hover {
+  background: color-mix(in srgb, var(--color-danger) 9%, transparent);
+}
+
+.cm-live-link {
+  color: var(--color-accent-strong);
+  cursor: pointer;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
   text-underline-offset: 3px;
 }
 
-.note-preview ul,
-.note-preview ol {
-  padding-left: 1.35rem;
+.cm-line.cm-live-code-line {
+  background: #211d29;
+  color: #ece7f5;
+  font-size: 0.92em;
+  padding-left: 0.95rem;
+  padding-right: 0.95rem;
 }
 
-.note-preview ul {
-  list-style: disc;
-}
-.note-preview ol {
-  list-style: decimal;
+.cm-line.cm-live-code-start {
+  border-radius: 9px 9px 0 0;
+  padding-top: 0.45rem;
 }
 
-.note-preview li + li {
-  margin-top: 0.25em;
+.cm-line.cm-live-code-end {
+  border-radius: 0 0 9px 9px;
+  padding-bottom: 0.45rem;
 }
 
-.note-preview blockquote {
-  border-left: 2px solid var(--color-line-strong);
-  color: var(--color-muted);
-  padding-left: 0.9rem;
+.cm-line.cm-live-code-fence {
+  color: color-mix(in srgb, #ece7f5 48%, transparent);
 }
 
-.note-preview code {
-  background: var(--color-panel);
-  border: 1px solid var(--color-line);
-  border-radius: 5px;
-  font-family: var(--font-mono);
-  font-size: 0.83em;
-  padding: 0.08em 0.35em;
+.cm-line.cm-live-code-fence-hidden {
+  font-size: 0;
+  line-height: 8px;
+  padding-bottom: 0;
+  padding-top: 0;
 }
 
-.note-preview pre {
-  background: #1f1b24;
-  border-radius: 10px;
-  color: #e9e4f5;
-  overflow-x: auto;
-  padding: 1rem 1.1rem;
+.cm-line.cm-live-hr {
+  padding: 0.65rem 0;
 }
 
-.note-preview pre code {
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font-size: 0.82rem;
-  padding: 0;
-}
-
-.note-preview table {
-  border-collapse: collapse;
+.cm-live-hr-line {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-line-strong) 16%,
+    var(--color-line-strong) 84%,
+    transparent
+  );
+  display: block;
+  height: 1px;
+  position: relative;
   width: 100%;
-  font-size: 0.9rem;
 }
 
-.note-preview th,
-.note-preview td {
-  border: 1px solid var(--color-line);
-  padding: 0.4rem 0.6rem;
-  text-align: left;
+.cm-live-hr-line::after {
+  background: var(--color-accent);
+  content: "";
+  height: 4px;
+  left: 50%;
+  opacity: 0.55;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 4px;
 }
 
-.note-preview hr {
-  border: 0;
-  border-top: 1px solid var(--color-line);
-  margin: 1.5em 0;
-}
-
-.note-preview img {
-  border-radius: 8px;
-  max-width: 100%;
-}
-
-.wikilink {
-  color: var(--color-accent-strong);
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
-}
-
-.wikilink:hover {
-  background: var(--color-accent-soft);
-  border-radius: 4px;
-}
-
-.editor-textarea {
-  field-sizing: content;
-  min-height: 100%;
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
 }

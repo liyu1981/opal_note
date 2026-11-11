@@ -111,7 +111,7 @@ export function NotesPanel() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search notes…"
-            className="w-full rounded-lg border border-line bg-white/70 py-1.5 pl-8 pr-12 text-[12.5px] outline-none transition placeholder:text-faint focus:border-accent/60 focus:bg-white"
+            className="w-full rounded-lg border border-line bg-white/70 py-1.5 pl-8 pr-12 font-mono text-[12px] outline-none transition placeholder:text-faint focus:border-accent/60 focus:bg-white"
           />
           {query ? (
             <button
@@ -175,7 +175,7 @@ export function NotesPanel() {
               >
                 <div className="flex items-baseline gap-2">
                   <span
-                    className={`truncate text-[12.5px] font-medium ${
+                    className={`truncate font-mono text-[12px] font-medium ${
                       active ? "text-accent-strong" : "text-ink-soft"
                     }`}
                   >
@@ -191,7 +191,7 @@ export function NotesPanel() {
                   )}
                 </div>
                 {note.excerpt && (
-                  <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-muted">
+                  <p className="mt-0.5 line-clamp-2 font-mono text-[10px] leading-snug text-muted">
                     {note.excerpt}
                   </p>
                 )}

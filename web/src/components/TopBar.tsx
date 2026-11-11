@@ -43,7 +43,7 @@ export function TopBar() {
 
       <div className="hidden min-w-0 items-center gap-2 md:flex">
         <IconBook className="h-3.5 w-3.5 shrink-0 text-faint" />
-        <span className="truncate text-[12px] font-medium text-ink-soft">
+        <span className="truncate font-mono text-[12px] font-medium text-ink-soft">
           {notebook?.name ?? "No notebook selected"}
         </span>
         {notebook && (

@@ -180,7 +180,7 @@ export function NotebookRail() {
                       active ? "bg-accent" : "bg-line-strong"
                     }`}
                   />
-                  <span className="truncate text-[13px] font-medium text-ink-soft">
+                  <span className="truncate font-mono text-[12.5px] font-medium text-ink-soft">
                     {notebook.name}
                   </span>
                   <span className="ml-auto shrink-0 font-mono text-[10px] text-faint">
@@ -188,7 +188,7 @@ export function NotebookRail() {
                   </span>
                 </div>
                 {notebook.description && (
-                  <p className="mt-0.5 truncate pl-3.5 text-[10.5px] text-muted">
+                  <p className="mt-0.5 truncate pl-3.5 font-mono text-[10px] text-muted">
                     {notebook.description}
                   </p>
                 )}

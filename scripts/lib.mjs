@@ -26,7 +26,8 @@ export function fail(message) {
   process.exit(1);
 }
 
-export function run(command, args) {
+/** Run a command, reporting but not exiting on failure (watch mode). */
+export function tryRun(command, args) {
   console.log(`  $ ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     cwd: ROOT,
@@ -34,8 +35,19 @@ export function run(command, args) {
     env: process.env,
     shell: process.platform === "win32",
   });
-  if (result.error) fail(result.error.message);
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.error) {
+    console.error(`  ✖ ${result.error.message}`);
+    return false;
+  }
+  if (result.status !== 0) {
+    console.error(`  ✖ ${command} exited with ${result.status}`);
+    return false;
+  }
+  return true;
+}
+
+export function run(command, args) {
+  if (!tryRun(command, args)) process.exit(1);
 }
 
 export function ensureWebDependencies() {
