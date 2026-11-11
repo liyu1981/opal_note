@@ -88,9 +88,13 @@ function buildDecorations(
   const overlaps = (from: number, to: number) =>
     occupied.some(([start, end]) => from < end && to > start);
 
-  const addLine = (lineNumber: number, className: string) => {
+  const addLine = (
+    lineNumber: number,
+    className: string,
+    attributes?: Record<string, string>,
+  ) => {
     const line = doc.line(lineNumber);
-    ranges.push(Decoration.line({ class: className }).range(line.from));
+    ranges.push(Decoration.line({ class: className, attributes }).range(line.from));
   };
 
   const addMark = (from: number, to: number, className: string) => {
@@ -125,7 +129,11 @@ function buildDecorations(
     const line = doc.line(lineNumber);
     const text = line.text;
     const active = activeLines.has(lineNumber);
-    if (active) addLine(lineNumber, "cm-live-active");
+    if (active) {
+      addLine(lineNumber, "cm-live-active", {
+        style: `--block-indent:${leadingIndentColumns(text)}ch`,
+      });
+    }
 
     // ---- fenced code -----------------------------------------------------
     if (fence) {
@@ -191,9 +199,20 @@ function buildDecorations(
     const task = /^(\s*)([-*+])\s+\[([ xX])\]\s?/u.exec(text);
     if (task) {
       const checked = (task[3] ?? " ").toLowerCase() === "x";
+      const taskIndent = leadingIndentColumns(text);
+      // In preview the checkbox is ~2ch wide; while editing, reserve the full
+      // source marker (`- [ ] `) so wrapped content stays under the text.
+      const taskPad = active
+        ? columnsOf(task[0])
+        : taskIndent + 2;
       addLine(
         lineNumber,
-        checked ? "cm-live-task cm-live-task-done" : "cm-live-task",
+        `${
+          checked ? "cm-live-task cm-live-task-done" : "cm-live-task"
+        } cm-live-hang`,
+        {
+          style: `--block-indent:${taskIndent}ch;--block-pad:${taskPad}ch;padding-left:${taskPad}ch;text-indent:-${taskPad}ch`,
+        },
       );
 
       if (!active) {
@@ -212,7 +231,11 @@ function buildDecorations(
     } else {
       const bullet = /^(\s*)([-*+])\s+/u.exec(text);
       if (bullet) {
-        addLine(lineNumber, "cm-live-list");
+        const bulletIndent = leadingIndentColumns(text);
+        const bulletPad = columnsOf(bullet[0]);
+        addLine(lineNumber, "cm-live-list cm-live-hang", {
+          style: `--block-indent:${bulletIndent}ch;--block-pad:${bulletPad}ch;padding-left:${bulletPad}ch;text-indent:-${bulletPad}ch`,
+        });
         if (!active) {
           replace(
             line.from + (bullet[1]?.length ?? 0),
@@ -223,7 +246,11 @@ function buildDecorations(
       } else {
         const ordered = /^(\s*)(\d+[.)])\s+/u.exec(text);
         if (ordered) {
-          addLine(lineNumber, "cm-live-list cm-live-list-ordered");
+          const orderedIndent = leadingIndentColumns(text);
+          const orderedPad = columnsOf(ordered[0]);
+          addLine(lineNumber, "cm-live-list cm-live-list-ordered cm-live-hang", {
+            style: `--block-indent:${orderedIndent}ch;--block-pad:${orderedPad}ch;padding-left:${orderedPad}ch;text-indent:-${orderedPad}ch`,
+          });
           addMark(
             line.from + (ordered[1]?.length ?? 0),
             line.from + (ordered[1]?.length ?? 0) + (ordered[2] ?? "").length,
@@ -372,6 +399,26 @@ function buildDecorations(
   }
 
   return Decoration.set(ranges, true);
+}
+
+function columnsOf(text: string, limit = 40): number {
+  let columns = 0;
+  for (const char of text) {
+    if (char === "\t") columns += 4;
+    else columns += 1;
+    if (columns >= limit) break;
+  }
+  return Math.min(columns, limit);
+}
+
+function leadingIndentColumns(text: string): number {
+  let columns = 0;
+  for (const char of text) {
+    if (char === " ") columns += 1;
+    else if (char === "\t") columns += 4;
+    else break;
+  }
+  return Math.min(columns, 40);
 }
 
 class WikiLinkWidget extends WidgetType {

@@ -87,12 +87,26 @@ body {
 }
 
 .cm-line.cm-live-active {
+  position: relative;
+  z-index: 0;
+}
+
+.cm-line.cm-live-active::before {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--color-accent) 8%, transparent),
+    color-mix(in srgb, var(--color-accent) 9%, transparent),
     transparent 58%
   );
+  border-radius: 0 6px 6px 0;
+  bottom: 0;
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
+  content: "";
+  left: calc(var(--block-indent, 0ch) - 0.15ch);
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: -1;
 }
 
 .cm-line.cm-live-h1,
@@ -144,8 +158,19 @@ body {
   padding-left: 0.9rem;
 }
 
-.cm-line.cm-live-list {
-  padding-left: 0;
+/* List content hangs under its marker so wrapped URLs/text stay aligned. */
+.cm-line.cm-live-hang {
+  padding-left: calc(var(--block-pad, 0) * 1ch);
+  text-indent: calc(var(--block-pad, 0) * -1ch);
+}
+
+/* text-indent is inherited; keep widget contents on their own left edge. */
+.cm-live-bullet,
+.cm-live-task-box,
+.cm-live-wikilink,
+.cm-live-link,
+.cm-live-hr-line {
+  text-indent: 0;
 }
 
 .cm-live-list-marker {
@@ -157,8 +182,9 @@ body {
   color: var(--color-accent);
   display: inline-block;
   font-size: 1.05em;
-  margin-right: 0.45ch;
+  text-align: left;
   user-select: none;
+  width: 2ch;
 }
 
 .cm-line.cm-live-task-done,
