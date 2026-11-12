@@ -336,6 +336,34 @@ body {
   text-underline-offset: 3px;
 }
 
+/* Focused source lines read as plain markdown: reset token styling while the
+   active-line tint remains the only cue. */
+.cm-line.cm-live-edit span {
+  color: inherit !important;
+  font-style: normal !important;
+  font-weight: inherit !important;
+  text-decoration: none !important;
+}
+
+/* While a fence is being edited, strip the rendered code surface and token
+   colors so the source reads as plain markdown. */
+.cm-line.cm-live-code-edit {
+  background: transparent;
+  color: var(--color-ink-soft);
+}
+
+.cm-line.cm-live-code-edit span {
+  color: inherit !important;
+  font-style: normal !important;
+  font-weight: inherit !important;
+  text-decoration: none !important;
+}
+
+.cm-line.cm-live-code-edit.cm-live-active::before {
+  background: transparent;
+  box-shadow: none;
+}
+
 .cm-line.cm-live-code-line {
   background: var(--color-panel);
   border-left: 1px solid var(--color-line);

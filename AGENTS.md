@@ -143,10 +143,17 @@ web/
   CodeMirror with `readOnly`/`editable(false)`, disables task toggles, hides
   save/delete and keeps wikilinks clickable. Do not reintroduce a separate
   source-mode switcher; focusing a block already reveals its source.
+- A focused source line is plain markdown: `.cm-live-edit` suppresses token
+  colors, heading sizes/weights, inline emphasis and list/quote styling, while
+  the active-line tint remains the focus cue. Keep the source hanging indent
+  (`.cm-live-hang` + content-column `--block-pad`) so wrapped focused list and
+  paragraph lines stay under their content, not at the editor edge.
 - Fenced code is block-scoped: `findCodeBlocks` scans the document so focusing
   any line (not just the opening fence) reveals the entire fenced source and
-  restores the rendered block on blur. Keep code lines hanging-indented while
-  in source mode so the active-line highlight starts at the code column.
+  restores the rendered block on blur. While editing, `.cm-live-code-edit`
+  deliberately removes the code surface, syntax colors and active-line tint:
+  source mode should read as plain markdown. Keep code lines hanging-indented
+  so wrapped source remains aligned.
 - Code blocks use the light code surface (`--color-panel` plus theme syntax
   colors) and `@codemirror/language-data` for lazy language highlighting. Use
   theme tokens for token colors; do not bring back the dark code surface.

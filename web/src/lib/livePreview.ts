@@ -193,9 +193,17 @@ function buildDecorations(
     const text = line.text;
     const active = activeLines.has(lineNumber);
     if (active) {
-      addLine(lineNumber, "cm-live-active", {
-        style: `--block-indent:${leadingIndentColumns(text)}`,
-      });
+      const indent = leadingIndentColumns(text);
+      const pad = sourceContentColumns(text);
+      addLine(
+        lineNumber,
+        `cm-live-active cm-live-edit${pad > 0 ? " cm-live-hang" : ""}`,
+        {
+          style: `--block-indent:${indent}${
+            pad > 0 ? `;--block-pad:${pad}` : ""
+          }`,
+        },
+      );
     }
 
     // Focusing any line of a fenced block reveals the entire source block:
@@ -203,13 +211,20 @@ function buildDecorations(
     // resumes when focus leaves the block.
     if (editingCodeLines.has(lineNumber)) {
       const indent = leadingIndentColumns(text);
-      if (indent > 0) {
-        addLine(lineNumber, "cm-live-hang", {
-          style: `--block-indent:${indent};--block-pad:${indent}`,
-        });
-      }
+      addLine(
+        lineNumber,
+        `cm-live-code-edit${indent > 0 ? " cm-live-hang" : ""}`,
+        indent > 0
+          ? { style: `--block-indent:${indent};--block-pad:${indent}` }
+          : undefined,
+      );
       continue;
     }
+
+    // A focused source line is plain markdown: no heading/list/quote styling,
+    // no inline markup colors and no rendered widgets. The active-line tint
+    // remains as the only focus cue.
+    if (active) continue;
 
     // ---- fenced code -----------------------------------------------------
     const addCodeLine = (
@@ -538,6 +553,26 @@ function buildDecorations(
   }
 
   return Decoration.set(ranges, true);
+}
+
+/** Column where a source block's content starts, including list markers. */
+function sourceContentColumns(text: string): number {
+  const task = /^(\s*)([-*+])\s+\[[ xX]\]\s?/u.exec(text);
+  if (task) return columnsOf(task[0]);
+
+  const bullet = /^(\s*)([-*+])\s+/u.exec(text);
+  if (bullet) return columnsOf(bullet[0]);
+
+  const ordered = /^(\s*)(\d+[.)])\s+/u.exec(text);
+  if (ordered) return columnsOf(ordered[0]);
+
+  const quote = /^(\s*)((?:>\s?)+)/u.exec(text);
+  if (quote) return columnsOf(quote[0]);
+
+  const heading = /^(\s*)(#{1,6})\s+/u.exec(text);
+  if (heading) return columnsOf(heading[0]);
+
+  return leadingIndentColumns(text);
 }
 
 function columnsOf(text: string, limit = 40): number {
