@@ -353,7 +353,7 @@ export function LeftSidebar() {
                 <button
                   type="button"
                   onClick={openJournalFeed}
-                  className="mt-1 w-full rounded px-2 py-1 text-left font-mono text-[9.5px] text-faint transition hover:bg-panel-strong hover:text-ink"
+                  className="mt-1 w-full rounded px-2 py-1 text-left font-mono text-[10px] text-faint transition hover:bg-panel-strong hover:text-ink"
                 >
                   Open journal feed →
                 </button>
@@ -412,26 +412,28 @@ function SidebarSection({
 }) {
   const [open, setOpen] = useState(true);
   return (
-    <section className="border-b border-line/60 py-1.5 last:border-0">
+    <section className="border-b border-line/60 py-2.5 last:border-0">
       <div className="flex items-center gap-1 px-1">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-left font-mono text-[9.5px] font-semibold uppercase tracking-[0.13em] text-faint transition hover:text-ink-soft"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left font-mono text-[1rem] font-semibold leading-tight tracking-[-0.025em] text-ink-soft transition hover:bg-white/50 hover:text-ink"
         >
           <IconChevron
-            className={`h-3 w-3 transition-transform ${open ? "" : "-rotate-90"}`}
+            className={`h-4 w-4 shrink-0 text-faint transition-transform ${
+              open ? "" : "-rotate-90"
+            }`}
           />
           <span className="truncate">{title}</span>
           {count !== undefined && (
-            <span className="ml-1 font-mono text-[8.5px] font-normal tracking-normal text-line-strong">
+            <span className="ml-1 rounded-full bg-panel px-1.5 py-0.5 font-mono text-[9.5px] font-medium tracking-normal text-faint">
               {count}
             </span>
           )}
         </button>
         {action}
       </div>
-      {open && <div className="mt-0.5 space-y-0.5">{children}</div>}
+      {open && <div className="mt-1 space-y-0.5">{children}</div>}
     </section>
   );
 }
@@ -502,7 +504,7 @@ function NavItem({
 
 function Hint({ children }: { children: ReactNode }) {
   return (
-    <p className="px-2 py-1.5 font-mono text-[9.5px] leading-relaxed text-faint">
+    <p className="px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-faint">
       {children}
     </p>
   );
