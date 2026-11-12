@@ -94,11 +94,6 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: t.strikethrough, textDecoration: "line-through" },
   { tag: t.link, color: "var(--color-accent-strong)" },
   { tag: t.url, color: "var(--color-muted)" },
-  {
-    tag: t.monospace,
-    color: "var(--color-ink)",
-    backgroundColor: "var(--color-panel)",
-  },
   { tag: t.quote, color: "var(--color-muted)" },
   { tag: t.list, color: "var(--color-ink-soft)" },
   { tag: t.contentSeparator, color: "var(--color-line-strong)" },

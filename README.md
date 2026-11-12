@@ -249,7 +249,8 @@ The shell follows a Logseq-like split:
 - **Center** — the current page, the journal feed, or the Pages directory view
   (a placeholder for the future page browser). Both sidebars start collapsed
   and can be toggled from the top bar, leaving the writing surface to fill the
-  window.
+  window. The single-page editor grows with its content and scrolls the page,
+  not an inner editor box; journal cards use the same renderer.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab is a
   placeholder for the notebook connection graph; the extra width leaves room

@@ -64,6 +64,7 @@ function buildDecorations(
   const doc = view.state.doc;
   const ranges: Range<Decoration>[] = [];
   const occupied: Array<[number, number]> = [];
+  const claimed: Array<[number, number]> = [];
 
   // Show source only for the block(s) being edited. With focus elsewhere the
   // whole note reads as preview, like Obsidian's reading surface.
@@ -88,6 +89,11 @@ function buildDecorations(
 
   const overlaps = (from: number, to: number) =>
     occupied.some(([start, end]) => from < end && to > start);
+
+  // A range fully inside a code span/link must not be reformatted. Container
+  // formatting (e.g. bold around `code`) is still allowed.
+  const insideClaimed = (from: number, to: number) =>
+    claimed.some(([start, end]) => start <= from && end >= to);
 
   const addLine = (
     lineNumber: number,
@@ -124,7 +130,7 @@ function buildDecorations(
     return slashes % 2 === 1;
   };
 
-  let fence: { char: string } | null = null;
+  let fence: { char: string; indent: number } | null = null;
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -132,24 +138,40 @@ function buildDecorations(
     const active = activeLines.has(lineNumber);
     if (active) {
       addLine(lineNumber, "cm-live-active", {
-        style: `--block-indent:${leadingIndentColumns(text)}ch`,
+        style: `--block-indent:${leadingIndentColumns(text)}`,
       });
     }
 
     // ---- fenced code -----------------------------------------------------
+    const addCodeLine = (
+      className: string,
+      indent: number,
+      hideWholeLine: boolean,
+    ) => {
+      addLine(lineNumber, className, {
+        style: `--code-indent:${indent}`,
+      });
+      if (hideWholeLine) {
+        hide(line.from, line.to);
+      } else {
+        const prefix = leadingWhitespaceChars(text, indent);
+        if (prefix > 0) hide(line.from, line.from + prefix);
+      }
+    };
+
     if (fence) {
       const closing = /^(\s*)(`{3,}|~{3,})\s*$/.exec(text);
       if (closing && closing[2]?.[0] === fence.char) {
-        addLine(
-          lineNumber,
+        addCodeLine(
           `cm-live-code-line cm-live-code-fence cm-live-code-end${
             active ? "" : " cm-live-code-fence-hidden"
           }`,
+          fence.indent,
+          !active,
         );
-        if (!active) hide(line.from + (closing[1]?.length ?? 0), line.from + closing[0].length);
         fence = null;
       } else {
-        addLine(lineNumber, "cm-live-code-line");
+        addCodeLine("cm-live-code-line", fence.indent, false);
       }
       continue;
     }
@@ -157,24 +179,57 @@ function buildDecorations(
     const opening = /^(\s*)(`{3,}|~{3,})(.*)$/.exec(text);
     if (opening) {
       const marker = opening[2] ?? "```";
-      fence = { char: marker[0] ?? "`" };
-      addLine(
-        lineNumber,
+      const indent = leadingIndentColumns(text);
+      fence = { char: marker[0] ?? "`", indent };
+      addCodeLine(
         `cm-live-code-line cm-live-code-fence cm-live-code-start${
           active ? "" : " cm-live-code-fence-hidden"
         }`,
+        indent,
+        !active,
       );
-      if (!active) hide(line.from + (opening[1]?.length ?? 0), line.from + opening[0].length);
+      continue;
+    }
+
+    // Collapse blank source lines in preview; an active blank line stays
+    // normal height so the caret remains easy to use.
+    if (!active && text.trim() === "") {
+      addLine(lineNumber, "cm-live-blank");
+      continue;
+    }
+
+    // ---- HTML-only comment lines (Logseq export trailer) -----------------
+    if (/^\s*<!--.*-->\s*$/u.test(text)) {
+      if (!active) {
+        addLine(lineNumber, "cm-live-blank");
+        hide(line.from, line.to);
+      }
       continue;
     }
 
     // ---- horizontal rule -------------------------------------------------
     if (/^\s*([-*_])(?:\s*\1){2,}\s*$/u.test(text)) {
-      addLine(lineNumber, "cm-live-hr");
+      const hrIndent = leadingIndentColumns(text);
+      addLine(
+        lineNumber,
+        "cm-live-hr",
+        active ? undefined : { style: `--hr-indent:${hrIndent}` },
+      );
       if (!active) {
         replace(line.from, line.to, new HorizontalRuleWidget());
       }
       continue;
+    }
+
+    const leadingIndent = leadingIndentColumns(text);
+    const isListLine = /^(\s*)([-*+]|\d+[.)])\s+/u.test(text);
+    const isQuoteLine = /^(\s*)>/u.test(text);
+    if (leadingIndent > 0 && !isListLine && !isQuoteLine) {
+      // Indented continuation blocks in Logseq files: keep wrapped lines at
+      // the same content column as the first line.
+      addLine(lineNumber, "cm-live-hang", {
+        style: `--block-indent:${leadingIndent};--block-pad:${leadingIndent}`,
+      });
     }
 
     // ---- block prefix ----------------------------------------------------
@@ -212,7 +267,7 @@ function buildDecorations(
           checked ? "cm-live-task cm-live-task-done" : "cm-live-task"
         } cm-live-hang`,
         {
-          style: `--block-indent:${taskIndent}ch;--block-pad:${taskPad}ch;padding-left:${taskPad}ch;text-indent:-${taskPad}ch`,
+          style: `--block-indent:${taskIndent};--block-pad:${taskPad}`,
         },
       );
 
@@ -233,10 +288,24 @@ function buildDecorations(
       const bullet = /^(\s*)([-*+])\s+/u.exec(text);
       if (bullet) {
         const bulletIndent = leadingIndentColumns(text);
-        const bulletPad = columnsOf(bullet[0]);
+        const nestedHeading = /^(\s*)([-*+])\s+(#{1,6})\s+/u.exec(text);
+        const bulletPad =
+          nestedHeading && active ? columnsOf(nestedHeading[0]) : columnsOf(bullet[0]);
         addLine(lineNumber, "cm-live-list cm-live-hang", {
-          style: `--block-indent:${bulletIndent}ch;--block-pad:${bulletPad}ch;padding-left:${bulletPad}ch;text-indent:-${bulletPad}ch`,
+          style: `--block-indent:${bulletIndent};--block-pad:${bulletPad}`,
         });
+        if (nestedHeading) {
+          addLine(lineNumber, `cm-live-h${nestedHeading[3]?.length ?? 1}`);
+          if (!active) {
+            const hashIndex = text.indexOf(
+              "#",
+              (bullet[1]?.length ?? 0) + (bullet[2]?.length ?? 0) + 1,
+            );
+            if (hashIndex >= 0) {
+              hide(line.from + hashIndex, line.from + nestedHeading[0].length);
+            }
+          }
+        }
         if (!active) {
           replace(
             line.from + (bullet[1]?.length ?? 0),
@@ -250,7 +319,7 @@ function buildDecorations(
           const orderedIndent = leadingIndentColumns(text);
           const orderedPad = columnsOf(ordered[0]);
           addLine(lineNumber, "cm-live-list cm-live-list-ordered cm-live-hang", {
-            style: `--block-indent:${orderedIndent}ch;--block-pad:${orderedPad}ch;padding-left:${orderedPad}ch;text-indent:-${orderedPad}ch`,
+            style: `--block-indent:${orderedIndent};--block-pad:${orderedPad}`,
           });
           addMark(
             line.from + (ordered[1]?.length ?? 0),
@@ -282,14 +351,14 @@ function buildDecorations(
         hide(end - 1, end);
       }
       addMark(start + 1, end - 1, "cm-live-inline-code");
-      occupied.push([start, end]);
+      claimed.push([start, end]);
     });
 
     const wikilink = /\[\[([^\]\n]+)\]\]/gu;
     process(wikilink, (match) => {
       const start = line.from + match.index;
       const end = start + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end) || overlaps(start, end)) return;
       if (match.index > 0 && text[match.index - 1] === "!") return;
 
       const { target, label } = splitWikilink(match[1] ?? "");
@@ -305,7 +374,7 @@ function buildDecorations(
           new WikiLinkWidget(target, label, resolved, options.onWikiLink),
         );
       }
-      occupied.push([start, end]);
+      claimed.push([start, end]);
     });
 
     const markdownLink = /(!?)\[([^\]\n]+)\]\(([^)\n]+)\)/gu;
@@ -313,7 +382,7 @@ function buildDecorations(
       if (match[1] === "!") return; // embedding is deliberately out of scope
       const start = line.from + match.index;
       const end = start + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end) || overlaps(start, end)) return;
 
       const label = match[2] ?? "";
       const url = match[3] ?? "";
@@ -327,14 +396,14 @@ function buildDecorations(
           new ExternalLinkWidget(label, url, options.onOpenLink),
         );
       }
-      occupied.push([start, end]);
+      claimed.push([start, end]);
     });
 
     const bold = /\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu;
     process(bold, (match) => {
       const start = line.from + match.index;
       const end = start + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end)) return;
       const marker = match[1] !== undefined ? "**" : "__";
       const contentFrom = start + marker.length;
       const contentTo = end - marker.length;
@@ -343,40 +412,37 @@ function buildDecorations(
         hide(contentTo, end);
       }
       addMark(contentFrom, contentTo, "cm-live-bold");
-      occupied.push([start, end]);
     });
 
     const strike = /~~([^~\n]+)~~/gu;
     process(strike, (match) => {
       const start = line.from + match.index;
       const end = start + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end)) return;
       if (!active) {
         hide(start, start + 2);
         hide(end - 2, end);
       }
       addMark(start + 2, end - 2, "cm-live-strike");
-      occupied.push([start, end]);
     });
 
     const highlight = /==([^=\n]+)==/gu;
     process(highlight, (match) => {
       const start = line.from + match.index;
       const end = start + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end)) return;
       if (!active) {
         hide(start, start + 2);
         hide(end - 2, end);
       }
       addMark(start + 2, end - 2, "cm-live-highlight");
-      occupied.push([start, end]);
     });
 
     const italic = /\*([^*\n]+)\*|(?<![\p{L}\p{N}])_([^_\n]+)_(?![\p{L}\p{N}])/gu;
     process(italic, (match) => {
       const start = line.from + match.index;
       const end = start + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end)) return;
       const marker = match[1] !== undefined ? "*" : "_";
       const contentFrom = start + marker.length;
       const contentTo = end - marker.length;
@@ -385,7 +451,6 @@ function buildDecorations(
         hide(contentTo, end);
       }
       addMark(contentFrom, contentTo, "cm-live-italic");
-      occupied.push([start, end]);
     });
 
     const tag = /(^|[\s([{,])#([\p{L}\p{N}_./-]+)/gu;
@@ -393,9 +458,8 @@ function buildDecorations(
       const prefixLength = match[1]?.length ?? 0;
       const start = line.from + match.index + prefixLength;
       const end = line.from + match.index + match[0].length;
-      if (overlaps(start, end)) return;
+      if (insideClaimed(start, end) || overlaps(start, end)) return;
       addMark(start, end, "cm-live-tag");
-      occupied.push([start, end]);
     });
   }
 
@@ -420,6 +484,19 @@ function leadingIndentColumns(text: string): number {
     else break;
   }
   return Math.min(columns, 40);
+}
+
+function leadingWhitespaceChars(text: string, columns: number): number {
+  let count = 0;
+  let seen = 0;
+  for (const char of text) {
+    if (char === " ") seen += 1;
+    else if (char === "\t") seen += 4;
+    else break;
+    count += 1;
+    if (seen >= columns) break;
+  }
+  return count;
 }
 
 class WikiLinkWidget extends WidgetType {

@@ -143,6 +143,10 @@ web/
   CodeMirror with `readOnly`/`editable(false)`, disables task toggles, hides
   save/delete and keeps wikilinks clickable. Do not reintroduce a separate
   source-mode switcher; focusing a block already reveals its source.
+- The single-page editor uses `autoHeight`: the page/main pane scrolls and
+  the editor grows with its content. Do not put the editor back in a fixed
+  height container with an internal `.cm-scroller` scrollbar. Journal cards
+  use the same auto-height renderer and the same `--note-ch` hanging indent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
   Pages, Favorites, Recent and a Graph placeholder. The right panel is wider

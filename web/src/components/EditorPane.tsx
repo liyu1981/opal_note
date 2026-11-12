@@ -368,8 +368,8 @@ function NoteEditor({ note }: { note: Note }) {
           : "Saved";
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col bg-canvas px-5 py-4">
-      <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas px-5 py-4">
+      <div className="mx-auto w-full max-w-4xl pb-16">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <input
@@ -532,21 +532,20 @@ function NoteEditor({ note }: { note: Note }) {
           </label>
         )}
 
-        <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-white/45 shadow-panel focus-within:border-accent/40">
-          <div className="min-h-0 flex-1">
-            <LiveMarkdownEditor
-              ref={editorRef}
-              value={content}
-              onChange={(next) => {
-                setContent(next);
-                touch();
-              }}
-              onWikiLink={navigateWiki}
-              linkKeys={linkKeys}
-              linkTargets={linkTargets}
-              readOnly={locked}
-            />
-          </div>
+        <div className="note-editor-surface mt-3 overflow-hidden rounded-xl border border-line bg-white/45 shadow-panel focus-within:border-accent/40">
+          <LiveMarkdownEditor
+            ref={editorRef}
+            value={content}
+            onChange={(next) => {
+              setContent(next);
+              touch();
+            }}
+            onWikiLink={navigateWiki}
+            linkKeys={linkKeys}
+            linkTargets={linkTargets}
+            readOnly={locked}
+            autoHeight
+          />
           <div className="flex items-center justify-between border-t border-line bg-panel/30 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.13em] text-faint">
             <span>{locked ? "Read only" : "Live blocks"}</span>
             <span className="normal-case tracking-normal">
