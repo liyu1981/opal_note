@@ -123,7 +123,14 @@ web/
 ### Client
 
 - Server state is the source of truth. Read atoms live in `src/state/atoms.ts`
-  and are invalidated by bumping `revisionAtom` via `refreshAtom`.
+  and are invalidated by bumping `revisionAtom` via `refreshAtom`. Ordinary note
+  autosaves must bump only `notesRevisionAtom` via `refreshNotesAtom`;
+  `revisionAtom` also invalidates notebook/shell atoms and will suspend the
+  root workspace mid-edit. Keep `ActiveNote` outside Jotai Suspense and retain
+  its last loaded note while refreshing.
+- Structural changes (new/deleted notes or notebooks, notebook switches,
+  reindex) use `refreshAtom`; note content/title/tag saves use
+  `refreshNotesAtom`. Do not call global refresh from the autosave path.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
 - The server embeds `web/dist` via `rust-embed`; `scripts/lib.mjs` owns the
   build/sync step. Any new asset location must be wired through both.

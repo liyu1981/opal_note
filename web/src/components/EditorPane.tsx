@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { Note, NoteSummary } from "../api/types";
 import { parseTags, relativeTime, tagList, wordCount } from "../lib/format";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
@@ -27,14 +27,15 @@ import {
   type LiveMarkdownEditorHandle,
 } from "./editor/LiveMarkdownEditor";
 import {
-  activeNoteAtom,
   activeNoteIdAtom,
   activeNotebookIdAtom,
   favoritesAtom,
   navigateAtom,
   readOnlyAtom,
   recordRecentAtom,
+  notesRevisionAtom,
   refreshAtom,
+  refreshNotesAtom,
   renameNoteRefsAtom,
   replaceNoteIdAtom,
   revisionAtom,
@@ -72,9 +73,70 @@ export function EditorPane() {
   );
 }
 
+type ActiveNoteLoad = {
+  key: string;
+  note: Note | null;
+  error?: Error;
+};
+
+/**
+ * Load the active note outside Jotai's Suspense boundary and keep the last
+ * value while a refresh is in flight. Server saves bump `notesRevisionAtom`;
+ * using the async atom directly would suspend this pane and unmount the editor
+ * every time autosave runs, losing focus and the [[ completion popup.
+ */
 function ActiveNote() {
-  const note = useAtomValue(activeNoteAtom);
-  if (!note) {
+  const notebookId = useAtomValue(activeNotebookIdAtom);
+  const noteId = useAtomValue(activeNoteIdAtom);
+  const notesRevision = useAtomValue(notesRevisionAtom);
+  const key = `${notebookId ?? ""}/${noteId ?? ""}`;
+  const [loaded, setLoaded] = useState<ActiveNoteLoad | null>(null);
+
+  useEffect(() => {
+    if (!notebookId || !noteId) {
+      setLoaded({ key, note: null });
+      return;
+    }
+    let cancelled = false;
+    api
+      .getNote(notebookId, noteId)
+      .then((note) => {
+        if (!cancelled) setLoaded({ key, note });
+      })
+      .catch((cause) => {
+        if (cancelled) return;
+        if (cause instanceof ApiError && cause.status === 404) {
+          setLoaded({ key, note: null });
+          return;
+        }
+        // Keep an already loaded note if a background refresh fails; a
+        // transient network error must not tear down an open editor.
+        setLoaded((current) =>
+          current?.key === key && current.note
+            ? current
+            : {
+                key,
+                note: null,
+                error:
+                  cause instanceof Error ? cause : new Error(String(cause)),
+              },
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, notebookId, noteId, notesRevision]);
+
+  if (loaded?.key === key && loaded.error) {
+    return (
+      <EmptyState
+        title="Could not load this note"
+        body={loaded.error.message}
+      />
+    );
+  }
+  if (!loaded || loaded.key !== key) return <EditorSkeleton />;
+  if (!loaded.note) {
     return (
       <EmptyState
         title="This note is gone"
@@ -82,14 +144,15 @@ function ActiveNote() {
       />
     );
   }
-  return <NoteEditor key={`${note.notebook_id}/${note.id}`} note={note} />;
+  return <NoteEditor key={key} note={loaded.note} />;
 }
 
 function NoteEditor({ note }: { note: Note }) {
   const refresh = useSetAtom(refreshAtom);
+  const refreshNotes = useSetAtom(refreshNotesAtom);
   const replaceNoteId = useSetAtom(replaceNoteIdAtom);
-  const navigate = useSetAtom(navigateAtom);
   const revision = useAtomValue(revisionAtom);
+  const navigate = useSetAtom(navigateAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
   const favorites = useAtomValue(favoritesAtom);
@@ -171,13 +234,13 @@ function NoteEditor({ note }: { note: Note }) {
           content: draft.content,
           tags: parseTags(draft.tagsInput),
         })
-        .then(() => refresh())
+        .then(() => refreshNotes())
         .catch(() => {
           // The unmounted view has nowhere to show the failure; the next
           // autosave/edit path will surface it if the user returns.
         });
     };
-  }, [note.id, note.notebook_id, refresh]);
+  }, [note.id, note.notebook_id, refreshNotes]);
 
   const touch = useCallback(() => {
     changeVersion.current += 1;
@@ -209,7 +272,7 @@ function NoteEditor({ note }: { note: Note }) {
         newPath: updated.id,
         title: updated.title,
       });
-      refresh();
+      refreshNotes();
       if (changeVersion.current === version) {
         setDirty(false);
         setStatus("saved");

@@ -4,11 +4,22 @@ import { atomWithStorage } from "jotai/utils";
 import { ApiError, api, getStoredToken, storeToken } from "../api/client";
 import type { Note, NoteSummary, Notebook, Stats, TagCount } from "../api/types";
 
-/** Bumped after every mutation to invalidate the read atoms below. */
+/** Bumped after structural mutations (notebooks, note count) to invalidate all
+ * read atoms. Ordinary note saves use notesRevisionAtom instead so the root
+ * workspace and its editors do not suspend mid-edit. */
 export const revisionAtom = atom(0);
+
+/** Bumped after note content/title/tag changes. Readers with their own
+ * Suspense boundary can refresh without invalidating notebooks or the shell. */
+export const notesRevisionAtom = atom(0);
 
 export const refreshAtom = atom(null, (_get, set) => {
   set(revisionAtom, (revision) => revision + 1);
+  set(notesRevisionAtom, (revision) => revision + 1);
+});
+
+export const refreshNotesAtom = atom(null, (_get, set) => {
+  set(notesRevisionAtom, (revision) => revision + 1);
 });
 
 export const activeNotebookIdAtom = atomWithStorage<string | null>(
@@ -284,7 +295,7 @@ export const activeNotebookAtom = atom(
 );
 
 export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
-  get(revisionAtom);
+  get(notesRevisionAtom);
   const notebookId = get(activeNotebookIdAtom);
   if (!notebookId) return [];
 
@@ -299,7 +310,7 @@ export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
 });
 
 export const activeNoteAtom = atom(async (get): Promise<Note | null> => {
-  get(revisionAtom);
+  get(notesRevisionAtom);
   const notebookId = get(activeNotebookIdAtom);
   const id = get(activeNoteIdAtom);
   if (!notebookId || !id) return null;
@@ -312,12 +323,12 @@ export const activeNoteAtom = atom(async (get): Promise<Note | null> => {
 });
 
 export const statsAtom = atom(async (get): Promise<Stats> => {
-  get(revisionAtom);
+  get(notesRevisionAtom);
   return api.stats();
 });
 
 export const tagsAtom = atom(async (get): Promise<TagCount[]> => {
-  get(revisionAtom);
+  get(notesRevisionAtom);
   const notebookId = get(activeNotebookIdAtom);
   if (!notebookId) return [];
   try {

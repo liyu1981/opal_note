@@ -239,6 +239,8 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 - Rendered wikilinks are clickable. Clicking a missing page offers to create
   it, which then shows up in the target's backlinks.
 - Task checkboxes toggle `[ ]` / `[x]` in the file and autosave.
+- Autosave refreshes note/list data without suspending or remounting the
+  editor, so focus and the `[[` completion popup survive a save.
 - The backlinks panel is fed by the server's `link` relation, so bidi linking
   stays accurate after external edits.
 
