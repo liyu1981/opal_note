@@ -25,6 +25,7 @@ import {
   activeNotebookAtom,
   activeNotebookIdAtom,
   favoritesAtom,
+  graphViewAtom,
   journalViewAtom,
   navigateAtom,
   notesAtom,
@@ -45,6 +46,7 @@ export function LeftSidebar() {
   const activeNoteId = useAtomValue(activeNoteIdAtom);
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
+  const graphView = useAtomValue(graphViewAtom);
   const favorites = useAtomValue(favoritesAtom);
   const recents = useAtomValue(recentsAtom);
   const locked = useAtomValue(readOnlyAtom);
@@ -89,6 +91,10 @@ export function LeftSidebar() {
 
   function openPagesView() {
     navigate({ view: "pages" });
+  }
+
+  function openGraphView() {
+    navigate({ view: "graph" });
   }
 
   async function openToday() {
@@ -277,9 +283,8 @@ export function LeftSidebar() {
               <NavItem
                 icon={<IconGraph className="h-3.5 w-3.5" />}
                 label="Graph view"
-                active={false}
-                disabled
-                soon
+                active={graphView}
+                onClick={openGraphView}
               />
             </div>
 

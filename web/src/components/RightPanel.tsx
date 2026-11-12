@@ -3,7 +3,8 @@ import { useAtomValue, useSetAtom } from "jotai";
 
 import type { Note, TagCount } from "../api/types";
 import { fullTime, wordCount } from "../lib/format";
-import { IconFile, IconGraph, IconLink, IconTag } from "./Icons";
+import { IconFile, IconLink, IconTag } from "./Icons";
+import { GraphPanel } from "./GraphPanel";
 import {
   activeNoteAtom,
   activeNotebookAtom,
@@ -116,26 +117,10 @@ export function RightPanel() {
         )}
 
         {tab === "graph" && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-dashed border-line-strong bg-white/35 px-4 py-6 text-center">
-              <IconGraph className="mx-auto h-6 w-6 text-accent/70" />
-              <h3 className="mt-2 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                Document graph
-              </h3>
-              <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
-                A connection graph for this notebook will live here.
-              </p>
-              {note && (
-                <p className="mt-3 font-mono text-[9px] text-faint">
-                  {note.links.length} outgoing · {note.backlinks.length} backlinks
-                </p>
-              )}
-            </div>
-            <p className="font-mono text-[9.5px] leading-relaxed text-faint">
-              The index already stores link and backlink relations, so this
-              panel can become a navigable graph later.
-            </p>
-          </div>
+          <GraphPanel
+            notebookId={notebookId}
+            activeNoteId={note?.id ?? null}
+          />
         )}
       </div>
 

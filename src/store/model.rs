@@ -51,6 +51,27 @@ pub struct PageList {
     pub offset: usize,
 }
 
+/// A node in the notebook graph.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GraphNode {
+    pub id: String,
+    pub title: String,
+    pub tags: Vec<String>,
+}
+
+/// A resolved link between two existing notes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GraphEdge {
+    pub source: String,
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GraphData {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
 /// A resolved outgoing `[[wikilink]]`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LinkRef {

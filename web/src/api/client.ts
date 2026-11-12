@@ -1,4 +1,5 @@
 import type {
+  GraphData,
   Health,
   JournalPage,
   Note,
@@ -150,6 +151,9 @@ export const api = {
 
   listOrphans: (notebookId: string) =>
     request<PageOverview[]>(`/notebooks/${encode(notebookId)}/orphans`),
+
+  graph: (notebookId: string) =>
+    request<GraphData>(`/notebooks/${encode(notebookId)}/graph`),
 
   searchNotes: (notebookId: string, query: string, limit = 50) =>
     request<NoteSummary[]>(

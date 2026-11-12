@@ -39,6 +39,22 @@ export interface PageList {
   offset: number;
 }
 
+export interface GraphNode {
+  id: string;
+  title: string;
+  tags: string[];
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 export interface LinkRef {
   target: string;
   label: string;

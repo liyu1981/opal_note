@@ -272,12 +272,16 @@ back/forward history controls, and a Home button on the right.
   dialog instead of filtering the left panel. Results come from the server's
   `note:fts` index and open the selected page directly.
 - **Navigation** — back/forward (⌘[ / ⌘] or Alt+← / Alt+→) walk a session
-  history of notes, journal feeds and directory views. Switching notebooks
+  history of notes, journal feeds, directory and graph views. Switching notebooks
   starts a fresh history at that notebook's journal.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
-  backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab is a
-  placeholder for the notebook connection graph; the extra width leaves room
-  for that and future assistant panels.
+  backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
+  renders an interactive local/full notebook graph: click a node to open its
+  page, hover to focus its links, and switch between the active page's
+  neighborhood and the complete graph.
+- **Graph view** — the left-sidebar Graph view opens a full-page notebook graph
+  using the same resolved-link data. It participates in normal back/forward
+  history.
 
 Favorites and recents are stored in the browser, scoped per notebook. A page
 can be pinned with the star in the editor toolbar.
@@ -320,6 +324,7 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/notes`                      | `?limit=&offset=` newest first                 |
 | GET    | `/notebooks/{id}/pages`                      | Paged/filtered pages with backlink counts       |
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
+| GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
 | POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
 | GET    | `/notebooks/{id}/journals`                   | `?before=<path>&limit=` date-desc feed          |
 | GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |
@@ -415,11 +420,10 @@ web/
 
 - serving notebook `assets/` through the API (images in imported notes are not
   rewritten yet);
-- pagination for notebooks with more than a few hundred pages;
+- keyset/virtualized pagination at very large notebook sizes;
 - real-time collaboration and a sync protocol;
 - per-notebook permissions and multi-user accounts;
 - CRDT-based collaborative editing;
-- the interactive graph view (the right panel currently reserves a Graph tab);
 - true block references and transclusion (the live editor is block-oriented,
   but pages remain plain markdown files);
 - embedded images/objects and executable code blocks;

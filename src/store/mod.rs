@@ -22,8 +22,8 @@ use self::markdown::{
     extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page, summarize,
 };
 use self::model::{
-    BacklinkRef, JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList, PageOverview, Stats,
-    TagCount,
+    BacklinkRef, GraphData, GraphEdge, GraphNode, JournalPage, LinkRef, Note, NoteSummary,
+    Notebook, PageList, PageOverview, Stats, TagCount,
 };
 
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
@@ -774,6 +774,57 @@ impl Store {
         let mut pages = self.all_page_overviews_locked(notebook_id)?;
         pages.retain(|page| page.is_orphan);
         Ok(pages)
+    }
+
+    /// Nodes and resolved links for the notebook graph.
+    pub fn graph(&self, notebook_id: &str) -> Result<GraphData> {
+        self.ensure_synced()?;
+        let rows = self.run(
+            queries::LIST_ALL_NOTES,
+            params([("notebook_id", DataValue::from(notebook_id))]),
+            ScriptMutability::Immutable,
+        )?;
+        let notes = self.list_rows_to_summaries(&rows, notebook_id)?;
+
+        let mut key_to_path: HashMap<String, String> = HashMap::new();
+        for note in &notes {
+            for key in note_link_keys(&note.title, &note.id) {
+                key_to_path.entry(key).or_insert_with(|| note.id.clone());
+            }
+        }
+
+        let edge_rows = self.run(
+            queries::NOTEBOOK_LINK_EDGES,
+            params([("notebook_id", DataValue::from(notebook_id))]),
+            ScriptMutability::Immutable,
+        )?;
+        let mut edges = Vec::new();
+        let mut seen = HashSet::new();
+        for row in &edge_rows.rows {
+            let target_key = col_str(row, 0);
+            let source = col_str(row, 1);
+            let Some(target) = key_to_path.get(&target_key) else {
+                continue;
+            };
+            if seen.insert((source.clone(), target.clone())) {
+                edges.push(GraphEdge {
+                    source,
+                    target: target.clone(),
+                });
+            }
+        }
+
+        Ok(GraphData {
+            nodes: notes
+                .into_iter()
+                .map(|note| GraphNode {
+                    id: note.id,
+                    title: note.title,
+                    tags: note.tags,
+                })
+                .collect(),
+            edges,
+        })
     }
 
     pub fn search_notes(
@@ -1677,6 +1728,22 @@ mod tests {
             .unwrap();
         assert_eq!(tagged.total, 1);
         assert_eq!(tagged.pages[0].id, "pages/Source.md");
+    }
+
+    #[test]
+    fn graph_contains_resolved_links_only() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Graph", "").unwrap().unwrap();
+        store.create_note(&notebook.id, "One", "body", &[]).unwrap();
+        store
+            .create_note(&notebook.id, "Two", "[[One]] and [[Missing]]", &[])
+            .unwrap();
+
+        let graph = store.graph(&notebook.id).unwrap();
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.edges[0].source, "pages/Two.md");
+        assert_eq!(graph.edges[0].target, "pages/One.md");
     }
 
     #[test]

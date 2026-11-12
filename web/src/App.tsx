@@ -3,6 +3,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 
 import { EditorPane } from "./components/EditorPane";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { GraphView } from "./components/GraphView";
 import { JournalFeed } from "./components/JournalFeed";
 import { LeftSidebar } from "./components/LeftSidebar";
 import { PagesView } from "./components/PagesView";
@@ -13,6 +14,7 @@ import { TopBar } from "./components/TopBar";
 import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
+  graphViewAtom,
   journalViewAtom,
   leftPanelOpenAtom,
   notebooksAtom,
@@ -38,6 +40,7 @@ function Workspace() {
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
+  const graphView = useAtomValue(graphViewAtom);
   const leftOpen = useAtomValue(leftPanelOpenAtom);
   const rightOpen = useAtomValue(rightPanelOpenAtom);
 
@@ -51,11 +54,11 @@ function Workspace() {
     }
   }, [notebooks, activeNotebookId, selectNotebook]);
 
-  // Home and the page directory are notebook-level views; do not keep a stale
-  // note open in the right panel when one of them is showing.
+  // Home, the page directory and graph are notebook-level views; do not keep a
+  // stale note open in the right panel when one of them is showing.
   useEffect(() => {
-    if (journalView || pagesView) setActiveNote(null);
-  }, [journalView, pagesView, setActiveNote]);
+    if (journalView || pagesView || graphView) setActiveNote(null);
+  }, [journalView, pagesView, graphView, setActiveNote]);
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -72,6 +75,8 @@ function Workspace() {
               <JournalFeed />
             ) : pagesView ? (
               <PagesView />
+            ) : graphView ? (
+              <GraphView />
             ) : (
               <EditorPane />
             )}

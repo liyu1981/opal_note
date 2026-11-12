@@ -41,8 +41,11 @@ export const activeNoteIdAtom = atomWithStorage<string | null>(
 /** When true the main pane is the journal feed rather than a single note. */
 export const journalViewAtom = atom(true);
 
-/** Dedicated page-directory view (placeholder for now). */
+/** Dedicated page-directory view. */
 export const pagesViewAtom = atom(false);
+
+/** Full-page notebook graph view. */
+export const graphViewAtom = atom(false);
 
 export const searchOpenAtom = atom(false);
 
@@ -52,7 +55,7 @@ export const pagesPageSizeAtom = atomWithStorage<number>(
   20,
 );
 
-export type WorkspaceView = "journal" | "pages" | "note";
+export type WorkspaceView = "journal" | "pages" | "graph" | "note";
 
 export type WorkspaceLocation = {
   notebookId: string | null;
@@ -63,13 +66,21 @@ export type WorkspaceLocation = {
 export type NavigationTarget =
   | { view: "journal"; notebookId?: string | null }
   | { view: "pages"; notebookId?: string | null }
+  | { view: "graph"; notebookId?: string | null }
   | { view: "note"; notebookId?: string | null; noteId: string };
 
 /** The location currently shown by the workspace. */
 export const currentLocationAtom = atom<WorkspaceLocation>((get) => {
   const journal = get(journalViewAtom);
   const pages = get(pagesViewAtom);
-  const view: WorkspaceView = journal ? "journal" : pages ? "pages" : "note";
+  const graph = get(graphViewAtom);
+  const view: WorkspaceView = journal
+    ? "journal"
+    : pages
+      ? "pages"
+      : graph
+        ? "graph"
+        : "note";
   return {
     notebookId: get(activeNotebookIdAtom),
     view,
@@ -111,6 +122,7 @@ const applyWorkspaceLocationAtom = atom(
     set(activeNotebookIdAtom, location.notebookId);
     set(journalViewAtom, location.view === "journal");
     set(pagesViewAtom, location.view === "pages");
+    set(graphViewAtom, location.view === "graph");
     set(activeNoteIdAtom, location.view === "note" ? location.noteId : null);
   },
 );
@@ -192,6 +204,7 @@ export const selectNotebookAtom = atom(
     set(activeNoteIdAtom, null);
     set(journalViewAtom, true);
     set(pagesViewAtom, false);
+    set(graphViewAtom, false);
     set(navigationHistoryAtom, { entries: [], index: -1 });
     set(searchOpenAtom, false);
   },

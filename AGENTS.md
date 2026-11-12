@@ -181,11 +181,12 @@ web/
   put search back into `LeftSidebar` or make `notesAtom` query-dependent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
-  Pages, Favorites, Recent and a Graph placeholder. The right panel is wider
-  and tabbed Context / Info / Graph. Keep it that way rather than adding new
-  permanent side panels.
+  Pages, Favorites, Recent and Graph view. The right panel is wider and tabbed
+  Context / Info / Graph. Keep it that way rather than adding new permanent
+  side panels.
 - All in-app location changes go through `navigateAtom` so back/forward
-  (`goBackAtom`, `goForwardAtom`) stay correct. Notebook switches use
+  (`goBackAtom`, `goForwardAtom`) stay correct across note, journal, pages and
+  graph views. Notebook switches use
   `selectNotebookAtom` (fresh history); a filename rename uses
   `replaceNoteIdAtom` so it does not create a history entry.
 - `JournalFeed` pages through `GET /notebooks/{id}/journals` newest-first
@@ -199,9 +200,15 @@ web/
   with server-side q/tag/sort/order parameters. `PageOverview` carries the resolved backlink count, tags,
   timestamps and an `is_orphan` flag; the view supports sortable columns, tag
   filtering, text filtering, table/cards modes and page controls.
-  Journal/Pages/note views are mutually exclusive. Use
+  Journal/Pages/Graph/note views are mutually exclusive. Use
   `api.createNote(..., { section: "journals" })` for journal pages. Search
   calls `GET /notebooks/{id}/search` and opens results via `navigateAtom`.
+- Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
+  `GET /notebooks/{id}/graph`. Nodes are all notes; edges only resolved
+  wikilinks. `GraphPanel` defaults to the active note's 1-hop neighborhood with
+  a Full toggle; the full-page view is the whole notebook. `graphLayout.ts`
+  is a deterministic synchronous force layout, and clicking nodes uses
+  `navigateAtom`. Keep graph data out of the editor's Suspense path.
 - Backlink counts for the pages table are computed in one pass over
   `NOTEBOOK_LINK_EDGES` and resolved with `note_link_keys`; do not issue a
   backlink query per row.
@@ -234,13 +241,14 @@ GET|PATCH|DELETE /api/notebooks/{notebook}/notes/{*path}
 GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
 GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
+GET /api/notebooks/{notebook}/graph
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.
 `GET /journals` is a cursor-paginated, newest-first feed. `GET /pages` returns
 one page of all notes (pages and journals) with resolved backlink counts;
 `total` is the filtered row count. `GET /orphans` returns empty pages with no
-backlinks.
+backlinks. `GET /graph` returns graph nodes and resolved link edges.
 
 `POST /api/reindex` forces a full filesystem read. The ad-hoc `/api/query`
 endpoint is read-only and must keep rejecting `::` system commands.

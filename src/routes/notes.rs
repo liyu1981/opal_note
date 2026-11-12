@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::error::{ApiResult, AppError};
 use crate::routes::{check_content, check_tags, clamp_limit, clamp_offset, clean_title, db_call};
 use crate::state::AppState;
-use crate::store::model::{JournalPage, Note, NoteSummary, PageList, PageOverview};
+use crate::store::model::{GraphData, JournalPage, Note, NoteSummary, PageList, PageOverview};
 use crate::store::{NoteSection, NoteUpdate};
 
 fn default_limit() -> usize {
@@ -136,6 +136,26 @@ pub async fn pages(
     .ok_or_else(|| AppError::not_found("notebook not found"))?;
 
     Ok(Json(pages))
+}
+
+pub async fn graph(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+) -> ApiResult<Json<GraphData>> {
+    let store = state.store.clone();
+    let graph = db_call(
+        move || -> anyhow::Result<Option<GraphData>> {
+            if !store.notebook_exists(&notebook_id)? {
+                return Ok(None);
+            }
+            Ok(Some(store.graph(&notebook_id)?))
+        },
+        AppError::Internal,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("notebook not found"))?;
+
+    Ok(Json(graph))
 }
 
 pub async fn orphans(
