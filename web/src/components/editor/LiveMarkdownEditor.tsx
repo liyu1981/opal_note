@@ -30,6 +30,7 @@ import {
 } from "../../lib/livePreview";
 import { noteEditorTheme, noteMarkdownHighlighting } from "../../lib/editorTheme";
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
+import { slashCommandSource } from "../../lib/slashCommands";
 
 export type LiveMarkdownEditorHandle = {
   focus: () => void;
@@ -127,7 +128,10 @@ export const LiveMarkdownEditor = forwardRef<
       markdown({ addKeymap: true, codeLanguages: languages }),
       noteMarkdownHighlighting,
       autocompletion({
-        override: [wikiLinkCompletionSource(linkTargetsRef)],
+        override: [
+          wikiLinkCompletionSource(linkTargetsRef),
+          slashCommandSource,
+        ],
         activateOnTyping: true,
         icons: false,
       }),

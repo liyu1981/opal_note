@@ -155,6 +155,12 @@ web/
   the active-line tint remains the focus cue. Keep the source hanging indent
   (`.cm-live-hang` + content-column `--block-pad`) so wrapped focused list and
   paragraph lines stay under their content, not at the editor edge.
+- Slash commands live in `src/lib/slashCommands.ts` and are a second
+  CodeMirror completion source after wikilinks. They trigger only when `/` is
+  the first non-whitespace character of a source line and are suppressed inside
+  fenced code blocks. Use `apply` callbacks to edit the line, keep Escape and
+  arrow/Enter selection behavior from CodeMirror, and keep the wiki-link source
+  working after the "Link to page" command.
 - Fenced code is block-scoped: `findCodeBlocks` scans the document so focusing
   any line (not just the opening fence) reveals the entire fenced source and
   restores the rendered block on blur. While editing, `.cm-live-code-edit`

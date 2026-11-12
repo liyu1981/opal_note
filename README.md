@@ -230,6 +230,10 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   Focusing any line inside the fence reveals the whole block as plain markdown
   source, including both fence markers, with no code or token styling so the
   text is easy to edit. Blur restores the rendered block.
+- Type `/` at the start of a source line for a block command menu: headings,
+  lists, task, quote, code block, divider, page link and inline code. Arrows
+  and Enter apply a command; Escape cancels. The menu does not appear inside
+  fenced code blocks.
 - **Read only** locks the note for presentation: title/tags are not editable,
   save/delete are hidden, the editor is non-editable, and task checkboxes are
   disabled. Wikilinks stay clickable for navigation.
