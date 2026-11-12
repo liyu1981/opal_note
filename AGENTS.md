@@ -193,10 +193,22 @@ web/
   `JournalCard`s built on `LiveMarkdownEditor` with per-card debounced
   autosave; keep them editable rather than reverting to a read-only renderer.
   `Today` opens or creates `journals/YYYY-MM-DD.md`.
-- `Pages` opens a dedicated placeholder view (`pagesViewAtom`, `PagesView`),
-  not just a scroll target. Journal/Pages/note views are mutually exclusive.
-  Use `api.createNote(..., { section: "journals" })` for journal pages.
-  Search calls `GET /notebooks/{id}/search` and opens results via `navigateAtom`.
+- `Pages` opens the All-pages directory (`pagesViewAtom`, `PagesView`), not a
+  scroll target. It covers both `pages/` and `journals/` and paginates through
+  `GET /notebooks/{id}/pages` (default 20/page, user-selectable 10/20/50/100/200)
+  with server-side q/tag/sort/order parameters. `PageOverview` carries the resolved backlink count, tags,
+  timestamps and an `is_orphan` flag; the view supports sortable columns, tag
+  filtering, text filtering, table/cards modes and page controls.
+  Journal/Pages/note views are mutually exclusive. Use
+  `api.createNote(..., { section: "journals" })` for journal pages. Search
+  calls `GET /notebooks/{id}/search` and opens results via `navigateAtom`.
+- Backlink counts for the pages table are computed in one pass over
+  `NOTEBOOK_LINK_EDGES` and resolved with `note_link_keys`; do not issue a
+  backlink query per row.
+- An orphan page is an empty body with zero resolved backlinks. The Clean
+  action loads `GET /notebooks/{id}/orphans`, shows a custom confirmation
+  dialog and deletes selected files through the normal note DELETE route (so
+  they land in `data/.trash/`). Do not bypass the trash path.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (⌘K search dialog, ⌘S save).
 
@@ -220,10 +232,15 @@ Notes are scoped to a notebook and identified by their relative path:
 ```
 GET|PATCH|DELETE /api/notebooks/{notebook}/notes/{*path}
 GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
+GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
+GET /api/notebooks/{notebook}/orphans
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.
-`GET /journals` is a cursor-paginated, newest-first feed.
+`GET /journals` is a cursor-paginated, newest-first feed. `GET /pages` returns
+one page of all notes (pages and journals) with resolved backlink counts;
+`total` is the filtered row count. `GET /orphans` returns empty pages with no
+backlinks.
 
 `POST /api/reindex` forces a full filesystem read. The ad-hoc `/api/query`
 endpoint is read-only and must keep rejecting `::` system commands.

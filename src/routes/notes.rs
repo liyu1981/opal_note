@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::error::{ApiResult, AppError};
 use crate::routes::{check_content, check_tags, clamp_limit, clamp_offset, clean_title, db_call};
 use crate::state::AppState;
-use crate::store::model::{JournalPage, Note, NoteSummary};
+use crate::store::model::{JournalPage, Note, NoteSummary, PageList, PageOverview};
 use crate::store::{NoteSection, NoteUpdate};
 
 fn default_limit() -> usize {
@@ -34,6 +34,22 @@ fn default_search_limit() -> usize {
 
 fn default_journal_limit() -> usize {
     7
+}
+
+fn default_page_limit() -> usize {
+    20
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PageQuery {
+    #[serde(default = "default_page_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+    pub q: Option<String>,
+    pub tag: Option<String>,
+    pub sort: Option<String>,
+    pub dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +100,62 @@ pub async fn list(
     .ok_or_else(|| AppError::not_found("notebook not found"))?;
 
     Ok(Json(notes))
+}
+
+pub async fn pages(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<PageQuery>,
+) -> ApiResult<Json<PageList>> {
+    let limit = clamp_limit(query.limit);
+    let offset = clamp_offset(query.offset);
+    let q = query.q.unwrap_or_default().trim().to_string();
+    let tag = query.tag.unwrap_or_default().trim().to_string();
+    let sort = query.sort.unwrap_or_default();
+    let dir = query.dir.unwrap_or_default();
+    let store = state.store.clone();
+
+    let pages = db_call(
+        move || -> anyhow::Result<Option<PageList>> {
+            if !store.notebook_exists(&notebook_id)? {
+                return Ok(None);
+            }
+            Ok(Some(store.list_page_overviews(
+                &notebook_id,
+                limit,
+                offset,
+                (!q.is_empty()).then_some(q.as_str()),
+                (!tag.is_empty()).then_some(tag.as_str()),
+                (!sort.is_empty()).then_some(sort.as_str()),
+                (!dir.is_empty()).then_some(dir.as_str()),
+            )?))
+        },
+        AppError::Internal,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("notebook not found"))?;
+
+    Ok(Json(pages))
+}
+
+pub async fn orphans(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+) -> ApiResult<Json<Vec<PageOverview>>> {
+    let store = state.store.clone();
+    let pages = db_call(
+        move || -> anyhow::Result<Option<Vec<PageOverview>>> {
+            if !store.notebook_exists(&notebook_id)? {
+                return Ok(None);
+            }
+            Ok(Some(store.list_orphan_pages(&notebook_id)?))
+        },
+        AppError::Internal,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("notebook not found"))?;
+
+    Ok(Json(pages))
 }
 
 pub async fn search(

@@ -131,6 +131,19 @@ pub const LIST_NOTES: &str = r#"
 :offset $offset
 "#;
 
+pub const LIST_ALL_NOTES: &str = r#"
+?[path, title, summary, created_at, updated_at, content] :=
+    *note{notebook_id, path, title, summary, content, created_at, updated_at},
+    notebook_id = $notebook_id
+:order -updated_at
+"#;
+
+pub const NOTEBOOK_LINK_EDGES: &str = r#"
+?[target, from_note] :=
+    *link{notebook_id, from_note, target},
+    notebook_id = $notebook_id
+"#;
+
 pub const NOTE_INDEX_ROWS: &str = r#"
 ?[path, mtime_ns, size, created_at] :=
     *note{notebook_id, path, mtime_ns, size, created_at},

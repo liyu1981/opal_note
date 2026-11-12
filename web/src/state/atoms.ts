@@ -2,7 +2,13 @@ import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 
 import { ApiError, api, getStoredToken, storeToken } from "../api/client";
-import type { Note, NoteSummary, Notebook, Stats, TagCount } from "../api/types";
+import type {
+  Note,
+  NoteSummary,
+  Notebook,
+  Stats,
+  TagCount,
+} from "../api/types";
 
 /** Bumped after structural mutations (notebooks, note count) to invalidate all
  * read atoms. Ordinary note saves use notesRevisionAtom instead so the root
@@ -39,6 +45,12 @@ export const journalViewAtom = atom(true);
 export const pagesViewAtom = atom(false);
 
 export const searchOpenAtom = atom(false);
+
+/** Rows per page in the pages directory; persisted per browser. */
+export const pagesPageSizeAtom = atomWithStorage<number>(
+  "opalnote.pages-page-size",
+  20,
+);
 
 export type WorkspaceView = "journal" | "pages" | "note";
 

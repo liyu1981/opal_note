@@ -4,6 +4,8 @@ import type {
   Note,
   NoteSummary,
   Notebook,
+  PageList,
+  PageOverview,
   QueryResult,
   Stats,
   TagCount,
@@ -122,6 +124,32 @@ export const api = {
     request<NoteSummary[]>(
       `/notebooks/${encode(notebookId)}/notes?limit=${limit}&offset=${offset}`,
     ),
+
+  listPages: (
+    notebookId: string,
+    params: {
+      limit?: number;
+      offset?: number;
+      q?: string;
+      tag?: string;
+      sort?: string;
+      dir?: string;
+    } = {},
+  ) => {
+    const search = new URLSearchParams();
+    search.set("limit", String(params.limit ?? 20));
+    search.set("offset", String(params.offset ?? 0));
+    if (params.q) search.set("q", params.q);
+    if (params.tag) search.set("tag", params.tag);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.dir) search.set("dir", params.dir);
+    return request<PageList>(
+      `/notebooks/${encode(notebookId)}/pages?${search.toString()}`,
+    );
+  },
+
+  listOrphans: (notebookId: string) =>
+    request<PageOverview[]>(`/notebooks/${encode(notebookId)}/orphans`),
 
   searchNotes: (notebookId: string, query: string, limit = 50) =>
     request<NoteSummary[]>(

@@ -67,6 +67,50 @@ export function IconTrash(props: IconProps) {
   );
 }
 
+export function IconTable(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3.5" y="4" width="17" height="16" rx="2" />
+      <path d="M3.5 9h17M9.5 9v11" />
+    </svg>
+  );
+}
+
+export function IconLayoutGrid(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" />
+    </svg>
+  );
+}
+
+export function IconRows(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+export function IconSort(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M8 5v14M5 8l3-3 3 3M16 19V5M13 16l3 3 3-3" />
+    </svg>
+  );
+}
+
+export function IconFilter(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 5h16l-6.2 7.2v5.3L10 20v-7.8z" />
+    </svg>
+  );
+}
+
 export function IconBook(props: IconProps) {
   return (
     <svg {...base(props)}>

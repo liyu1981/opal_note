@@ -22,7 +22,8 @@ use self::markdown::{
     extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page, summarize,
 };
 use self::model::{
-    BacklinkRef, JournalPage, LinkRef, Note, NoteSummary, Notebook, Stats, TagCount,
+    BacklinkRef, JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList, PageOverview, Stats,
+    TagCount,
 };
 
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
@@ -93,6 +94,38 @@ impl NotebookRow {
             created_at: fmt_ts(self.created_at),
             updated_at: fmt_ts(self.updated_at),
             note_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PageSortKey {
+    Title,
+    Backlinks,
+    Tags,
+    CreatedAt,
+    UpdatedAt,
+}
+
+impl PageSortKey {
+    fn parse(value: Option<&str>) -> Self {
+        match value.unwrap_or("updated_at") {
+            "title" => Self::Title,
+            "backlinks" => Self::Backlinks,
+            "tags" => Self::Tags,
+            "created_at" => Self::CreatedAt,
+            "updated_at" => Self::UpdatedAt,
+            _ => Self::UpdatedAt,
+        }
+    }
+
+    fn compare(self, left: &PageOverview, right: &PageOverview) -> std::cmp::Ordering {
+        match self {
+            Self::Title => left.title.to_lowercase().cmp(&right.title.to_lowercase()),
+            Self::Backlinks => left.backlink_count.cmp(&right.backlink_count),
+            Self::Tags => left.tags.join(" ").cmp(&right.tags.join(" ")),
+            Self::CreatedAt => left.created_at.cmp(&right.created_at),
+            Self::UpdatedAt => left.updated_at.cmp(&right.updated_at),
         }
     }
 }
@@ -647,6 +680,102 @@ impl Store {
         self.list_rows_to_summaries(&rows, notebook_id)
     }
 
+    fn all_page_overviews_locked(&self, notebook_id: &str) -> Result<Vec<PageOverview>> {
+        let rows = self.run(
+            queries::LIST_ALL_NOTES,
+            params([("notebook_id", DataValue::from(notebook_id))]),
+            ScriptMutability::Immutable,
+        )?;
+        let notes = self.list_rows_to_summaries(&rows, notebook_id)?;
+        let counts = self.backlink_counts_locked(notebook_id, &notes)?;
+        let empty_by_path: HashMap<String, bool> = rows
+            .rows
+            .iter()
+            .map(|row| (col_str(row, 0), col_str(row, 5).trim().is_empty()))
+            .collect();
+
+        Ok(notes
+            .into_iter()
+            .map(|note| {
+                let backlink_count = counts.get(&note.id).copied().unwrap_or(0);
+                PageOverview {
+                    is_orphan: backlink_count == 0
+                        && empty_by_path.get(&note.id).copied().unwrap_or(false),
+                    backlink_count,
+                    id: note.id,
+                    notebook_id: note.notebook_id,
+                    title: note.title,
+                    tags: note.tags,
+                    created_at: note.created_at,
+                    updated_at: note.updated_at,
+                }
+            })
+            .collect())
+    }
+
+    /// All notes in a notebook with resolved backlink counts and orphan flags,
+    /// filtered/sorted/paginated for the pages directory.
+    pub fn list_page_overviews(
+        &self,
+        notebook_id: &str,
+        limit: usize,
+        offset: usize,
+        query: Option<&str>,
+        tag: Option<&str>,
+        sort: Option<&str>,
+        direction: Option<&str>,
+    ) -> Result<PageList> {
+        self.ensure_synced()?;
+        let mut pages = self.all_page_overviews_locked(notebook_id)?;
+
+        let needle = query.unwrap_or("").trim().to_lowercase();
+        let tag = tag.map(str::trim).filter(|value| !value.is_empty());
+        if !needle.is_empty() || tag.is_some() {
+            pages.retain(|page| {
+                if let Some(tag) = tag {
+                    if !page.tags.iter().any(|candidate| candidate == tag) {
+                        return false;
+                    }
+                }
+                if needle.is_empty() {
+                    return true;
+                }
+                format!("{} {} {}", page.title, page.id, page.tags.join(" "))
+                    .to_lowercase()
+                    .contains(&needle)
+            });
+        }
+
+        let sort = PageSortKey::parse(sort);
+        let ascending = matches!(direction, Some("asc"));
+        pages.sort_by(|left, right| {
+            let ordering = sort.compare(left, right);
+            if ascending {
+                ordering
+            } else {
+                ordering.reverse()
+            }
+        });
+
+        let total = pages.len() as i64;
+        let offset = offset.min(pages.len());
+        let end = offset.saturating_add(limit).min(pages.len());
+        Ok(PageList {
+            pages: pages[offset..end].to_vec(),
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    /// Empty pages with no resolved backlinks.
+    pub fn list_orphan_pages(&self, notebook_id: &str) -> Result<Vec<PageOverview>> {
+        self.ensure_synced()?;
+        let mut pages = self.all_page_overviews_locked(notebook_id)?;
+        pages.retain(|page| page.is_orphan);
+        Ok(pages)
+    }
+
     pub fn search_notes(
         &self,
         notebook_id: &str,
@@ -726,6 +855,38 @@ impl Store {
                 }
             })
             .collect())
+    }
+
+    fn backlink_counts_locked(
+        &self,
+        notebook_id: &str,
+        notes: &[NoteSummary],
+    ) -> Result<HashMap<String, i64>> {
+        let rows = self.run(
+            queries::NOTEBOOK_LINK_EDGES,
+            params([("notebook_id", DataValue::from(notebook_id))]),
+            ScriptMutability::Immutable,
+        )?;
+
+        let mut by_target: HashMap<String, HashSet<String>> = HashMap::new();
+        for row in &rows.rows {
+            by_target
+                .entry(col_str(row, 0))
+                .or_default()
+                .insert(col_str(row, 1));
+        }
+
+        let mut counts = HashMap::with_capacity(notes.len());
+        for note in notes {
+            let mut sources = HashSet::new();
+            for key in note_link_keys(&note.title, &note.id) {
+                if let Some(from_notes) = by_target.get(&key) {
+                    sources.extend(from_notes.iter().cloned());
+                }
+            }
+            counts.insert(note.id.clone(), sources.len() as i64);
+        }
+        Ok(counts)
     }
 
     fn tags_for_paths_locked(
@@ -1436,6 +1597,86 @@ mod tests {
             .join("pages/Alpha.md")
             .exists());
         assert!(dir.path().join(".trash").is_dir());
+    }
+
+    #[test]
+    fn page_overviews_include_tags_and_backlink_counts() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Overview", "").unwrap().unwrap();
+        store
+            .create_note(
+                &notebook.id,
+                "Target",
+                "target body",
+                &["explicit".to_string()],
+            )
+            .unwrap();
+        store
+            .create_note(&notebook.id, "Empty Linked", "", &[])
+            .unwrap();
+        store
+            .create_note(
+                &notebook.id,
+                "Source",
+                "[[Target]] [[Empty Linked]] and [[journals/2023-03-29]] #inline",
+                &[],
+            )
+            .unwrap();
+
+        store.create_note(&notebook.id, "Empty", "", &[]).unwrap();
+
+        let page_list = store
+            .list_page_overviews(&notebook.id, 50, 0, None, None, None, None)
+            .unwrap();
+        assert_eq!(page_list.total, 4);
+        let pages = page_list.pages;
+        let target = pages
+            .iter()
+            .find(|page| page.id == "pages/Target.md")
+            .expect("target page");
+        assert_eq!(target.backlink_count, 1);
+        assert!(target.tags.contains(&"explicit".to_string()));
+
+        let source = pages
+            .iter()
+            .find(|page| page.id == "pages/Source.md")
+            .expect("source page");
+        assert_eq!(source.backlink_count, 0);
+        assert!(!source.is_orphan);
+        assert!(source.tags.contains(&"inline".to_string()));
+
+        let empty_linked = pages
+            .iter()
+            .find(|page| page.id == "pages/Empty Linked.md")
+            .expect("empty linked page");
+        assert_eq!(empty_linked.backlink_count, 1);
+        assert!(!empty_linked.is_orphan);
+
+        let empty = pages
+            .iter()
+            .find(|page| page.id == "pages/Empty.md")
+            .expect("empty page");
+        assert!(empty.is_orphan);
+        let orphans = store.list_orphan_pages(&notebook.id).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].id, "pages/Empty.md");
+
+        let first = store
+            .list_page_overviews(&notebook.id, 2, 0, None, None, Some("title"), Some("asc"))
+            .unwrap();
+        assert_eq!(first.pages.len(), 2);
+        assert_eq!(first.total, 4);
+        let second = store
+            .list_page_overviews(&notebook.id, 2, 2, None, None, Some("title"), Some("asc"))
+            .unwrap();
+        assert_eq!(second.pages.len(), 2);
+        assert_eq!(second.offset, 2);
+
+        let tagged = store
+            .list_page_overviews(&notebook.id, 50, 0, None, Some("inline"), None, None)
+            .unwrap();
+        assert_eq!(tagged.total, 1);
+        assert_eq!(tagged.pages[0].id, "pages/Source.md");
     }
 
     #[test]

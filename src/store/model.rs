@@ -27,6 +27,30 @@ pub struct NoteSummary {
     pub score: Option<f64>,
 }
 
+/// Compact row for the pages/all-pages table.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageOverview {
+    /// Relative path, e.g. `pages/hello.md` or `journals/2026-11-12.md`.
+    pub id: String,
+    pub notebook_id: String,
+    pub title: String,
+    pub backlink_count: i64,
+    pub tags: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    /// Empty body and no resolved backlinks.
+    pub is_orphan: bool,
+}
+
+/// One page of the pages/all-pages directory.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageList {
+    pub pages: Vec<PageOverview>,
+    pub total: i64,
+    pub limit: usize,
+    pub offset: usize,
+}
+
 /// A resolved outgoing `[[wikilink]]`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LinkRef {

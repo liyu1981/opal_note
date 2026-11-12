@@ -259,11 +259,15 @@ back/forward history controls, and a Home button on the right.
   single page; the feed loads the newest seven pages and appends older pages as
   you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the live
   block editor and autosaves. A Today action opens or creates the date page.
-- **Center** — the current page, the journal feed, or the Pages directory view
-  (a placeholder for the future page browser). Both sidebars start collapsed
-  and can be toggled from the top bar, leaving the writing surface to fill the
-  window. The single-page editor grows with its content and scrolls the page,
-  not an inner editor box; journal cards use the same renderer.
+- **Center** — the current page, the journal feed, or the Pages directory. The
+  Pages view is a Logseq-style **All pages** table across pages and journals,
+  with backlink counts, tags, created/updated timestamps, sortable columns,
+  tag filtering, a page filter, table/card modes and server-side pagination.
+  A **Clean** action lists empty pages with no backlinks and can move them to
+  the server trash after confirmation. Both sidebars start collapsed and can
+  be toggled from the top bar, leaving the writing surface to fill the window.
+  The single-page editor grows with its content and scrolls the page, not an
+  inner editor box; journal cards use the same renderer.
 - **Search** — the search button beside the sidebar toggle opens a centered
   dialog instead of filtering the left panel. Results come from the server's
   `note:fts` index and open the selected page directly.
@@ -314,6 +318,8 @@ Public (no token): `GET /health`, `GET /meta`.
 | PATCH  | `/notebooks/{id}`                            | `{name?, description?}` — may rename the folder|
 | DELETE | `/notebooks/{id}`                            | Move notebook folder to `.trash/`              |
 | GET    | `/notebooks/{id}/notes`                      | `?limit=&offset=` newest first                 |
+| GET    | `/notebooks/{id}/pages`                      | Paged/filtered pages with backlink counts       |
+| GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
 | GET    | `/notebooks/{id}/journals`                   | `?before=<path>&limit=` date-desc feed          |
 | GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |

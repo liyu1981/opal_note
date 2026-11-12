@@ -19,6 +19,26 @@ export interface NoteSummary {
   score?: number;
 }
 
+export interface PageOverview {
+  /** Relative file path, e.g. `pages/hello.md` or `journals/2026-11-12.md`. */
+  id: string;
+  notebook_id: string;
+  title: string;
+  backlink_count: number;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  /** Empty body with no resolved backlinks. */
+  is_orphan: boolean;
+}
+
+export interface PageList {
+  pages: PageOverview[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface LinkRef {
   target: string;
   label: string;

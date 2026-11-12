@@ -27,6 +27,16 @@ export function fullTime(iso: string): string {
   });
 }
 
+/** Compact local timestamp used by the pages table: `2026-11-12 12:10`. */
+export function compactTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function wordCount(content: string): number {
   const trimmed = content.trim();
   if (!trimmed) return 0;

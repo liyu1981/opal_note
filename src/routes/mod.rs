@@ -43,6 +43,8 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
             "/notebooks/{id}/notes",
             get(notes::list).post(notes::create),
         )
+        .route("/notebooks/{id}/pages", get(notes::pages))
+        .route("/notebooks/{id}/orphans", get(notes::orphans))
         .route("/notebooks/{id}/search", get(notes::search))
         .route("/notebooks/{id}/journals", get(notes::journals))
         .route("/notebooks/{id}/tags", get(notebooks::tags))
