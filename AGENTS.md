@@ -139,6 +139,10 @@ web/
 - `[[` completion resolves titles and paths from the current notebook. Keep
   clickable wikilinks, missing-page creation and the backlinks panel working
   together; bidi linking is a core feature, not a plugin.
+- The editor has a **read-only lock** for presentations: reconfigures
+  CodeMirror with `readOnly`/`editable(false)`, disables task toggles, hides
+  save/delete and keeps wikilinks clickable. Do not reintroduce a separate
+  source-mode switcher; focusing a block already reveals its source.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (⌘K search, ⌘S save).
 

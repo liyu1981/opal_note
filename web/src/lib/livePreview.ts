@@ -20,6 +20,7 @@ export type LivePreviewOptions = {
   linkKeys: Set<string>;
   onWikiLink: (target: string) => void;
   onOpenLink: (url: string) => void;
+  readOnly: boolean;
 };
 
 type OptionsRef = { current: LivePreviewOptions };
@@ -224,7 +225,7 @@ function buildDecorations(
           replace(
             markerStart,
             line.from + task[0].length,
-            new TaskWidget(checked, checkFrom, checkTo, view),
+            new TaskWidget(checked, checkFrom, checkTo, view, options.readOnly),
           );
         }
       }
@@ -509,6 +510,7 @@ class TaskWidget extends WidgetType {
     private readonly checkFrom: number,
     private readonly checkTo: number,
     private readonly view: EditorView,
+    private readonly readOnly: boolean,
   ) {
     super();
   }
@@ -518,19 +520,23 @@ class TaskWidget extends WidgetType {
       other instanceof TaskWidget &&
       other.checked === this.checked &&
       other.checkFrom === this.checkFrom &&
-      other.checkTo === this.checkTo
+      other.checkTo === this.checkTo &&
+      other.readOnly === this.readOnly
     );
   }
 
   toDOM(): HTMLElement {
     const wrapper = document.createElement("label");
-    wrapper.className = "cm-live-task-box";
+    wrapper.className = this.readOnly
+      ? "cm-live-task-box is-readonly"
+      : "cm-live-task-box";
     wrapper.addEventListener("mousedown", (event) => event.stopPropagation());
 
     const input = document.createElement("input");
     input.type = "checkbox";
     input.className = "cm-live-task-input";
     input.checked = this.checked;
+    input.disabled = this.readOnly;
     input.setAttribute(
       "aria-label",
       this.checked ? "Mark task incomplete" : "Mark task complete",
@@ -540,17 +546,19 @@ class TaskWidget extends WidgetType {
     tick.className = "cm-live-task-tick";
 
     input.addEventListener("mousedown", (event) => event.stopPropagation());
-    input.addEventListener("change", () => {
-      const current = this.view.state.sliceDoc(this.checkFrom, this.checkTo);
-      if (!/^\[[ xX]\]$/u.test(current)) return;
-      this.view.dispatch({
-        changes: {
-          from: this.checkFrom,
-          to: this.checkTo,
-          insert: input.checked ? "[x]" : "[ ]",
-        },
+    if (!this.readOnly) {
+      input.addEventListener("change", () => {
+        const current = this.view.state.sliceDoc(this.checkFrom, this.checkTo);
+        if (!/^\[[ xX]\]$/u.test(current)) return;
+        this.view.dispatch({
+          changes: {
+            from: this.checkFrom,
+            to: this.checkTo,
+            insert: input.checked ? "[x]" : "[ ]",
+          },
+        });
       });
-    });
+    }
 
     wrapper.append(input, tick);
     return wrapper;

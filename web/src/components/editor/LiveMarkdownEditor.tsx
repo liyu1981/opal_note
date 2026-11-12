@@ -32,6 +32,7 @@ import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
 
 export type LiveMarkdownEditorHandle = {
   focus: () => void;
+  blur: () => void;
 };
 
 type Props = {
@@ -40,7 +41,7 @@ type Props = {
   onWikiLink: (target: string) => void;
   linkKeys: Set<string>;
   linkTargets: LinkTarget[];
-  live: boolean;
+  readOnly: boolean;
   autoFocus?: boolean;
 };
 
@@ -49,6 +50,13 @@ type Props = {
  * place and reveals itself on the block under the cursor; links and tasks are
  * interactive without leaving the editor.
  */
+function readOnlyExtensions(readOnly: boolean): Extension[] {
+  return [
+    EditorState.readOnly.of(readOnly),
+    EditorView.editable.of(!readOnly),
+  ];
+}
+
 export const LiveMarkdownEditor = forwardRef<
   LiveMarkdownEditorHandle,
   Props
@@ -59,20 +67,20 @@ export const LiveMarkdownEditor = forwardRef<
     onWikiLink,
     linkKeys,
     linkTargets,
-    live,
+    readOnly,
     autoFocus = false,
   },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const liveCompartment = useRef(new Compartment());
+  const readOnlyCompartment = useRef(new Compartment());
 
   const onChangeRef = useRef(onChange);
   const onWikiLinkRef = useRef(onWikiLink);
   const linkTargetsRef = useRef<LinkTarget[]>(linkTargets);
   const initialValueRef = useRef(value);
-  const initialLiveRef = useRef(live);
+  const initialReadOnlyRef = useRef(readOnly);
   const autoFocusRef = useRef(autoFocus);
 
   onChangeRef.current = onChange;
@@ -85,13 +93,15 @@ export const LiveMarkdownEditor = forwardRef<
     onOpenLink: (url) => {
       window.open(url, "_blank", "noopener,noreferrer");
     },
+    readOnly,
   });
-  optionsRef.current = { ...optionsRef.current, linkKeys };
+  optionsRef.current = { ...optionsRef.current, linkKeys, readOnly };
 
   useImperativeHandle(
     ref,
     () => ({
       focus: () => viewRef.current?.focus(),
+      blur: () => viewRef.current?.contentDOM.blur(),
     }),
     [],
   );
@@ -124,9 +134,10 @@ export const LiveMarkdownEditor = forwardRef<
         ...historyKeymap,
         indentWithTab,
       ]),
-      liveCompartment.current.of(
-        initialLiveRef.current ? livePreview(optionsRef) : [],
+      readOnlyCompartment.current.of(
+        readOnlyExtensions(initialReadOnlyRef.current),
       ),
+      livePreview(optionsRef),
       noteEditorTheme,
       placeholder(
         "Write in markdown. Type [[ to link a note, # to tag, - for a block.",
@@ -146,7 +157,7 @@ export const LiveMarkdownEditor = forwardRef<
       }),
     });
     viewRef.current = view;
-    if (autoFocusRef.current) view.focus();
+    if (autoFocusRef.current && !initialReadOnlyRef.current) view.focus();
 
     return () => {
       view.destroy();
@@ -167,12 +178,16 @@ export const LiveMarkdownEditor = forwardRef<
   }, [value]);
 
   useEffect(() => {
-    viewRef.current?.dispatch({
-      effects: liveCompartment.current.reconfigure(
-        live ? livePreview(optionsRef) : [],
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: readOnlyCompartment.current.reconfigure(
+        readOnlyExtensions(readOnly),
       ),
     });
-  }, [live]);
+    if (readOnly) view.contentDOM.blur();
+    view.dispatch({ effects: refreshLivePreview.of(null) });
+  }, [readOnly]);
 
   // Link resolution changes after saves/refreshes; rebuild the widgets without
   // touching the document or the cursor.

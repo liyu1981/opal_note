@@ -112,6 +112,24 @@ export function IconRefresh(props: IconProps) {
   );
 }
 
+export function IconLock(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+export function IconLockOpen(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 7.5-1.8" />
+    </svg>
+  );
+}
+
 export function IconOpal(props: IconProps) {
   return (
     <svg {...base(props)}>

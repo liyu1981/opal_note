@@ -86,6 +86,14 @@ body {
   font-feature-settings: "liga" 0, "calt" 0;
 }
 
+.cm-content[contenteditable="false"] {
+  cursor: default;
+}
+
+.cm-content[contenteditable="false"] .cm-placeholder {
+  display: none;
+}
+
 .cm-line.cm-live-active {
   position: relative;
   z-index: 0;
@@ -198,6 +206,11 @@ body {
   display: inline-flex;
   margin-right: 0.5ch;
   vertical-align: -0.05em;
+}
+
+.cm-live-task-box.is-readonly {
+  cursor: default;
+  pointer-events: none;
 }
 
 .cm-live-task-input {

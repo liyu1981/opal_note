@@ -12,7 +12,14 @@ import { api } from "../api/client";
 import type { Note, NoteSummary } from "../api/types";
 import { parseTags, relativeTime, tagList, wordCount } from "../lib/format";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
-import { IconCheck, IconFile, IconTag, IconTrash } from "./Icons";
+import {
+  IconCheck,
+  IconFile,
+  IconLock,
+  IconLockOpen,
+  IconTag,
+  IconTrash,
+} from "./Icons";
 import {
   LiveMarkdownEditor,
   type LiveMarkdownEditorHandle,
@@ -21,6 +28,7 @@ import {
   activeNoteAtom,
   activeNoteIdAtom,
   activeNotebookIdAtom,
+  readOnlyAtom,
   refreshAtom,
   revisionAtom,
 } from "../state/atoms";
@@ -73,11 +81,12 @@ function NoteEditor({ note }: { note: Note }) {
   const refresh = useSetAtom(refreshAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const revision = useAtomValue(revisionAtom);
+  const locked = useAtomValue(readOnlyAtom);
+  const setLocked = useSetAtom(readOnlyAtom);
 
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [tagsInput, setTagsInput] = useState(tagList(note.explicit_tags));
-  const [live, setLive] = useState(true);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -206,6 +215,7 @@ function NoteEditor({ note }: { note: Note }) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (locked) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void save();
@@ -213,7 +223,7 @@ function NoteEditor({ note }: { note: Note }) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [save]);
+  }, [locked, save]);
 
   // A close during the autosave window should at least warn, not silently drop
   // the last paragraph.
@@ -226,6 +236,20 @@ function NoteEditor({ note }: { note: Note }) {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
+
+  async function toggleLock() {
+    if (locked) {
+      setLocked(false);
+      return;
+    }
+    // Presentation mode should never freeze an unsaved draft.
+    if (dirty) {
+      const saved = await save();
+      if (!saved) return;
+    }
+    setLocked(true);
+    editorRef.current?.blur();
+  }
 
   const navigateWiki = useCallback(
     async (target: string) => {
@@ -249,7 +273,7 @@ function NoteEditor({ note }: { note: Note }) {
       // Do not fall back to full-text search here: the current note contains
       // the link text, so a fuzzy hit would just re-open it. Only an exact
       // title/path match may navigate; otherwise offer to create the page.
-      if (needle.includes("/")) return;
+      if (locked || needle.includes("/")) return;
       if (!window.confirm(`Create a new page named “${target}”?`)) return;
 
       try {
@@ -268,6 +292,7 @@ function NoteEditor({ note }: { note: Note }) {
     [
       dirty,
       linkTargets,
+      locked,
       note.notebook_id,
       refresh,
       save,
@@ -320,15 +345,20 @@ function NoteEditor({ note }: { note: Note }) {
                 touch();
               }}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
+                if (!locked && event.key === "Enter") {
                   event.preventDefault();
                   editorRef.current?.focus();
                 }
               }}
               placeholder="Untitled note"
               maxLength={300}
-              autoFocus={note.title === "Untitled" && note.content === ""}
-              className="w-full bg-transparent font-mono text-[26px] font-semibold leading-tight tracking-tight text-ink outline-none placeholder:text-faint"
+              readOnly={locked}
+              autoFocus={
+                !locked && note.title === "Untitled" && note.content === ""
+              }
+              className={`w-full bg-transparent font-mono text-[26px] font-semibold leading-tight tracking-tight text-ink outline-none placeholder:text-faint ${
+                locked ? "cursor-default" : ""
+              }`}
               aria-label="Note title"
             />
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-faint">
@@ -337,7 +367,9 @@ function NoteEditor({ note }: { note: Note }) {
                   status === "error" ? "text-danger" : ""
                 }`}
               >
-                {status === "saved" ? (
+                {locked ? (
+                  <IconLock className="h-3 w-3 text-accent" />
+                ) : status === "saved" ? (
                   <IconCheck className="h-3 w-3 text-mint" />
                 ) : (
                   <span
@@ -350,7 +382,7 @@ function NoteEditor({ note }: { note: Note }) {
                     }`}
                   />
                 )}
-                {statusLabel}
+                {locked ? "Read only" : statusLabel}
               </span>
               <span>{wordCount(content)} words</span>
               <span>Updated {relativeTime(note.updated_at)}</span>
@@ -358,68 +390,89 @@ function NoteEditor({ note }: { note: Note }) {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <div className="flex rounded-lg border border-line bg-white/60 p-0.5">
-              {(
-                [
-                  ["live", true],
-                  ["source", false],
-                ] as const
-              ).map(([label, value]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setLive(value)}
-                  className={`rounded-md px-2.5 py-1 text-[10.5px] font-medium uppercase tracking-wide transition ${
-                    live === value
-                      ? "bg-ink text-canvas shadow-sm"
-                      : "text-muted hover:text-ink"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
             <button
               type="button"
-              onClick={() => void save()}
-              disabled={status === "saving"}
-              className="rounded-lg border border-line bg-white/70 px-2.5 py-1.5 text-[10.5px] font-medium text-ink-soft transition hover:border-line-strong hover:bg-white disabled:opacity-50"
-              title="Save (⌘S)"
+              onClick={() => void toggleLock()}
+              aria-pressed={locked}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10.5px] font-medium transition ${
+                locked
+                  ? "border-accent/30 bg-accent-soft text-accent-strong"
+                  : "border-line bg-white/70 text-ink-soft hover:border-line-strong hover:bg-white"
+              }`}
+              title={locked ? "Unlock editing" : "Lock as read-only"}
             >
-              Save
+              {locked ? (
+                <IconLock className="h-3.5 w-3.5" />
+              ) : (
+                <IconLockOpen className="h-3.5 w-3.5" />
+              )}
+              {locked ? "Read only" : "Lock"}
             </button>
-            <button
-              type="button"
-              onClick={remove}
-              disabled={deleting}
-              className="rounded-lg border border-transparent p-1.5 text-faint transition hover:border-danger/20 hover:bg-danger/10 hover:text-danger disabled:opacity-50"
-              aria-label="Delete note"
-              title="Delete note"
-            >
-              <IconTrash className="h-4 w-4" />
-            </button>
+            {!locked && (
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={status === "saving"}
+                className="rounded-lg border border-line bg-white/70 px-2.5 py-1.5 text-[10.5px] font-medium text-ink-soft transition hover:border-line-strong hover:bg-white disabled:opacity-50"
+                title="Save (⌘S)"
+              >
+                Save
+              </button>
+            )}
+            {!locked && (
+              <button
+                type="button"
+                onClick={remove}
+                disabled={deleting}
+                className="rounded-lg border border-transparent p-1.5 text-faint transition hover:border-danger/20 hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                aria-label="Delete note"
+                title="Delete note"
+              >
+                <IconTrash className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        <label className="mt-3 flex items-center gap-2 border-b border-line pb-2">
-          <IconTag className="h-3.5 w-3.5 shrink-0 text-faint" />
-          <input
-            value={tagsInput}
-            onChange={(event) => {
-              setTagsInput(event.target.value);
-              touch();
-            }}
-            placeholder="Tags, comma separated — inline #tags are indexed too"
-            className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-ink-soft outline-none placeholder:text-faint"
-            aria-label="Tags"
-          />
-          {tagsInput.trim() && (
-            <span className="shrink-0 font-mono text-[9px] text-faint">
-              {parseTags(tagsInput).length}{" "}
-              {parseTags(tagsInput).length === 1 ? "tag" : "tags"}
-            </span>
-          )}
-        </label>
+        {locked ? (
+          <div className="mt-3 flex min-h-[1.8rem] flex-wrap items-center gap-1.5 border-b border-line pb-2">
+            <IconTag className="h-3.5 w-3.5 shrink-0 text-faint" />
+            {note.tags.length > 0 ? (
+              note.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
+                >
+                  #{tag}
+                </span>
+              ))
+            ) : (
+              <span className="font-mono text-[10.5px] text-faint">
+                No tags
+              </span>
+            )}
+          </div>
+        ) : (
+          <label className="mt-3 flex items-center gap-2 border-b border-line pb-2">
+            <IconTag className="h-3.5 w-3.5 shrink-0 text-faint" />
+            <input
+              value={tagsInput}
+              onChange={(event) => {
+                setTagsInput(event.target.value);
+                touch();
+              }}
+              placeholder="Tags, comma separated — inline #tags are indexed too"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-ink-soft outline-none placeholder:text-faint"
+              aria-label="Tags"
+            />
+            {tagsInput.trim() && (
+              <span className="shrink-0 font-mono text-[9px] text-faint">
+                {parseTags(tagsInput).length}{" "}
+                {parseTags(tagsInput).length === 1 ? "tag" : "tags"}
+              </span>
+            )}
+          </label>
+        )}
 
         <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-white/45 shadow-panel focus-within:border-accent/40">
           <div className="min-h-0 flex-1">
@@ -433,13 +486,15 @@ function NoteEditor({ note }: { note: Note }) {
               onWikiLink={navigateWiki}
               linkKeys={linkKeys}
               linkTargets={linkTargets}
-              live={live}
+              readOnly={locked}
             />
           </div>
           <div className="flex items-center justify-between border-t border-line bg-panel/30 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.13em] text-faint">
-            <span>{live ? "Live blocks" : "Markdown source"}</span>
+            <span>{locked ? "Read only" : "Live blocks"}</span>
             <span className="normal-case tracking-normal">
-              [[ link ]] · # tag · - block
+              {locked
+                ? "Click a link to navigate"
+                : "[[ link ]] · # tag · - block"}
             </span>
           </div>
         </div>

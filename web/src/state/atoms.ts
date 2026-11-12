@@ -23,6 +23,10 @@ export const activeNoteIdAtom = atomWithStorage<string | null>(
 
 export const searchQueryAtom = atom("");
 
+/** Presentation lock. Kept outside the note editor so link navigation stays
+ * read-only until the user unlocks. */
+export const readOnlyAtom = atom(false);
+
 export const settingsOpenAtom = atom(false);
 
 export const tokenAtom = atom(getStoredToken());

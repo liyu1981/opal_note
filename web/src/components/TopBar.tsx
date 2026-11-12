@@ -1,11 +1,12 @@
 import { useAtomValue, useSetAtom } from "jotai";
 
-import { IconBook, IconSettings } from "./Icons";
+import { IconBook, IconLock, IconSettings } from "./Icons";
 import {
   activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
   notebooksAtom,
+  readOnlyAtom,
   searchQueryAtom,
   settingsOpenAtom,
 } from "../state/atoms";
@@ -18,6 +19,8 @@ export function TopBar() {
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const setSearch = useSetAtom(searchQueryAtom);
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
+  const locked = useAtomValue(readOnlyAtom);
+  const setLocked = useSetAtom(readOnlyAtom);
 
   return (
     <header className="flex h-13 shrink-0 items-center gap-3 border-b border-line bg-canvas/80 px-4 backdrop-blur">
@@ -57,6 +60,17 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        {locked && (
+          <button
+            type="button"
+            onClick={() => setLocked(false)}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/30 bg-accent-soft text-accent-strong transition hover:bg-accent-soft/70"
+            aria-label="Unlock editing"
+            title="Read only — click to unlock"
+          >
+            <IconLock className="h-3.5 w-3.5" />
+          </button>
+        )}
         <span
           className="hidden items-center gap-1.5 rounded-full border border-line bg-white/60 px-2.5 py-1 text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted sm:inline-flex"
           title="Reads and writes go through the server's MnesticDB index"

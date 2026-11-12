@@ -8,6 +8,7 @@ import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
   notesAtom,
+  readOnlyAtom,
   refreshAtom,
   searchQueryAtom,
 } from "../state/atoms";
@@ -20,6 +21,7 @@ export function NotesPanel() {
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const setSearch = useSetAtom(searchQueryAtom);
   const refresh = useSetAtom(refreshAtom);
+  const locked = useAtomValue(readOnlyAtom);
 
   const [query, setQuery] = useState(search);
   const [creating, setCreating] = useState(false);
@@ -62,7 +64,7 @@ export function NotesPanel() {
   }, []);
 
   async function createNote() {
-    if (!notebookId || creating) return;
+    if (!notebookId || creating || locked) return;
     setCreating(true);
     try {
       const note = await api.createNote(notebookId, {
@@ -95,9 +97,9 @@ export function NotesPanel() {
           <button
             type="button"
             onClick={createNote}
-            disabled={!notebookId || creating}
+            disabled={!notebookId || creating || locked}
+            title={locked ? "Unlock editing to create notes" : "New note"}
             className="flex items-center gap-1 rounded-md border border-line bg-white/70 px-1.5 py-1 text-[10px] font-medium text-ink-soft transition hover:border-line-strong hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
-            title="New note"
           >
             <IconPlus className="h-3 w-3" />
             New
@@ -151,7 +153,8 @@ export function NotesPanel() {
               <button
                 type="button"
                 onClick={createNote}
-                className="mt-2 text-[11.5px] font-medium text-accent-strong underline underline-offset-2"
+                disabled={locked}
+                className="mt-2 text-[11.5px] font-medium text-accent-strong underline underline-offset-2 disabled:opacity-40"
               >
                 Write the first note
               </button>

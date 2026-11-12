@@ -7,6 +7,7 @@ import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
   notebooksAtom,
+  readOnlyAtom,
   refreshAtom,
   searchQueryAtom,
   settingsOpenAtom,
@@ -20,6 +21,7 @@ export function NotebookRail() {
   const setSearch = useSetAtom(searchQueryAtom);
   const refresh = useSetAtom(refreshAtom);
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
+  const locked = useAtomValue(readOnlyAtom);
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -106,15 +108,16 @@ export function NotebookRail() {
         <button
           type="button"
           onClick={() => setAdding((open) => !open)}
-          className="rounded-md p-1 text-muted transition hover:bg-panel-strong hover:text-ink"
+          disabled={locked}
+          className="rounded-md p-1 text-muted transition hover:bg-panel-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="New notebook"
-          title="New notebook"
+          title={locked ? "Unlock editing to create notebooks" : "New notebook"}
         >
           <IconPlus className="h-4 w-4" />
         </button>
       </div>
 
-      {adding && (
+      {adding && !locked && (
         <form
           onSubmit={createNotebook}
           className="animate-fade-up mx-2 mb-2 rounded-xl border border-line bg-white/80 p-2 shadow-sm"
@@ -196,7 +199,8 @@ export function NotebookRail() {
               <button
                 type="button"
                 onClick={() => removeNotebook(notebook.id, notebook.name)}
-                className="absolute right-1.5 top-2.5 hidden rounded-md p-1 text-faint transition hover:bg-danger/10 hover:text-danger group-hover:block"
+                disabled={locked}
+                className="absolute right-1.5 top-2.5 hidden rounded-md p-1 text-faint transition hover:bg-danger/10 hover:text-danger group-hover:block disabled:cursor-not-allowed disabled:opacity-30"
                 aria-label={`Delete ${notebook.name}`}
                 title="Delete notebook"
               >
