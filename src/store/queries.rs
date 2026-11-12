@@ -232,9 +232,9 @@ pub const PUT_LINK_ROWS: &str = r#"
 // ---------------------------------------------------------------------------
 
 pub const SEARCH_NOTES: &str = r#"
-?[path, title, summary, created_at, updated_at, score] :=
+?[path, title, summary, created_at, updated_at, score, content] :=
     ~note:fts{notebook_id, path | query: $query, k: $k, bind_score: score},
-    *note{notebook_id, path, title, summary, created_at, updated_at},
+    *note{notebook_id, path, title, summary, content, created_at, updated_at},
     notebook_id = $notebook_id
 :order -score
 :limit $limit

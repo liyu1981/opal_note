@@ -15,6 +15,7 @@
   --color-accent-soft: #ece9ff;
   --color-mint: #2f9c86;
   --color-danger: #b4453c;
+  --color-mark: #f3dfa0;
 
   /* Graph palette: deliberately darker than the paper surface so nodes,
      links and labels remain legible at full-page scale. */

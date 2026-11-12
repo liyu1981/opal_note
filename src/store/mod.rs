@@ -31,6 +31,121 @@ const SUMMARY_CHARS: usize = 220;
 
 /// User search text is not FTS syntax. Split it into alphanumeric words and
 /// quote each one so punctuation and operator words cannot break the parser.
+fn search_terms(query: &str) -> Vec<String> {
+    let mut terms: Vec<String> = query
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|token| !token.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    terms.sort_by_key(|term| std::cmp::Reverse(term.len()));
+    terms.dedup();
+    terms
+}
+
+fn search_excerpt(content: &str, terms: &[String]) -> Option<String> {
+    if content.trim().is_empty() || terms.is_empty() {
+        return None;
+    }
+
+    let lower = content.to_lowercase();
+    let mut hit: Option<usize> = None;
+    for term in terms {
+        if let Some(position) = lower.find(term) {
+            if hit.map_or(true, |earliest| position < earliest) {
+                hit = Some(position);
+            }
+        }
+    }
+    let position = hit?;
+
+    let start = floor_char_boundary(content, position.saturating_sub(52));
+    let end = ceil_char_boundary(content, (position + 150).min(content.len()));
+    let mut excerpt = clean_search_snippet(&content[start..end]);
+    if start > 0 {
+        excerpt.insert(0, '…');
+    }
+    if end < content.len() {
+        excerpt.push('…');
+    }
+    Some(excerpt)
+}
+
+/// Keep snippets readable while preserving search terms. This handles the
+/// common inline markdown constructs without pulling in a markdown parser.
+fn clean_search_snippet(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0;
+
+    while index < chars.len() {
+        if chars[index] == '[' {
+            if index + 1 < chars.len() && chars[index + 1] == '[' {
+                if let Some(end) = find_chars(&chars, index + 2, &[']', ']']) {
+                    let inner: String = chars[index + 2..end].iter().collect();
+                    let label = inner
+                        .split_once('|')
+                        .map(|(_, label)| label)
+                        .unwrap_or(inner.as_str());
+                    out.push_str(label);
+                    index = end + 2;
+                    continue;
+                }
+            } else if let Some(close) = find_char(&chars, index + 1, ']') {
+                if close + 1 < chars.len() && chars[close + 1] == '(' {
+                    if let Some(end) = find_char(&chars, close + 2, ')') {
+                        let label: String = chars[index + 1..close].iter().collect();
+                        out.push_str(&label);
+                        index = end + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if chars[index] == '`' {
+            index += 1;
+            continue;
+        }
+
+        out.push(if chars[index] == '\n' {
+            ' '
+        } else {
+            chars[index]
+        });
+        index += 1;
+    }
+
+    let cleaned = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    cleaned
+        .trim_start_matches(|c: char| matches!(c, '#' | '>' | '-' | '*' | '+' | ' '))
+        .to_string()
+}
+
+fn find_char(chars: &[char], start: usize, needle: char) -> Option<usize> {
+    (start..chars.len()).find(|index| chars[*index] == needle)
+}
+
+fn find_chars(chars: &[char], start: usize, needle: &[char; 2]) -> Option<usize> {
+    (start..chars.len().saturating_sub(1))
+        .find(|index| chars[*index] == needle[0] && chars[*index + 1] == needle[1])
+}
+
+fn floor_char_boundary(text: &str, mut index: usize) -> usize {
+    index = index.min(text.len());
+    while index > 0 && !text.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
+fn ceil_char_boundary(text: &str, mut index: usize) -> usize {
+    index = index.min(text.len());
+    while index < text.len() && !text.is_char_boundary(index) {
+        index += 1;
+    }
+    index
+}
+
 fn normalize_fts_query(query: &str) -> String {
     query
         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
@@ -834,6 +949,7 @@ impl Store {
         limit: usize,
     ) -> Result<Vec<NoteSummary>> {
         self.ensure_synced()?;
+        let terms = search_terms(query);
         let query = normalize_fts_query(query);
         if query.is_empty() {
             return Ok(Vec::new());
@@ -872,7 +988,8 @@ impl Store {
                     id: path,
                     notebook_id: notebook_id.to_string(),
                     title: col_str(row, 1),
-                    excerpt: col_str(row, 2),
+                    excerpt: search_excerpt(&col_str(row, 6), &terms)
+                        .unwrap_or_else(|| col_str(row, 2)),
                     created_at: fmt_ts(col_f64(row, 3)),
                     updated_at: fmt_ts(col_f64(row, 4)),
                     score: Some(col_f64(row, 5)),
@@ -1618,6 +1735,14 @@ mod tests {
             .search_notes(&notebook.id, "zzzz-no-hit", 10)
             .unwrap()
             .is_empty());
+
+        let deep_body = format!("{} needle {}", "prefix ".repeat(40), "suffix ".repeat(40));
+        store
+            .create_note(&notebook.id, "Deep", &deep_body, &[])
+            .unwrap();
+        let deep_hits = store.search_notes(&notebook.id, "needle", 10).unwrap();
+        assert_eq!(deep_hits.len(), 1);
+        assert!(deep_hits[0].excerpt.contains("needle"));
 
         let updated = match store
             .update_note(&notebook.id, &note.id, "Alpha", "only replaced", &[])

@@ -270,7 +270,8 @@ back/forward history controls, and a Home button on the right.
   inner editor box; journal cards use the same renderer.
 - **Search** — the search button beside the sidebar toggle opens a centered
   dialog instead of filtering the left panel. Results come from the server's
-  `note:fts` index and open the selected page directly.
+  `note:fts` index, show match-centered excerpts with highlighted terms, and
+  open the selected page directly.
 - **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
   `/graph`, and `/page?p=<page>`. Back/forward (⌘[ / ⌘] or Alt+← / Alt+→) use
   browser history, and page URLs can be reloaded or shared directly. Switching

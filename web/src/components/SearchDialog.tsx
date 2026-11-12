@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
@@ -28,6 +35,7 @@ export function SearchDialog() {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trimmed = query.trim();
+  const terms = useMemo(() => searchTerms(trimmed), [trimmed]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -247,14 +255,20 @@ export function SearchDialog() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-mono text-[11.5px] font-medium text-ink">
-                        {journal ? formatJournalDate(note.title) : note.title}
+                        <Highlight
+                          text={journal ? formatJournalDate(note.title) : note.title}
+                          terms={terms}
+                        />
                       </span>
-                      <span className="mt-0.5 block truncate font-mono text-[9.5px] text-muted">
-                        {note.excerpt || note.id}
+                      <span className="mt-0.5 line-clamp-2 font-mono text-[9.5px] leading-relaxed text-muted">
+                        <Highlight
+                          text={note.excerpt || note.id}
+                          terms={terms}
+                        />
                       </span>
                     </span>
                     <span className="max-w-[35%] shrink-0 truncate pt-0.5 font-mono text-[8.5px] text-faint">
-                      {note.id}
+                      <Highlight text={note.id} terms={terms} />
                     </span>
                   </button>
                 );
@@ -275,6 +289,47 @@ export function SearchDialog() {
         </div>
       </div>
     </div>
+  );
+}
+
+function searchTerms(query: string): string[] {
+  if (!query) return [];
+  return [
+    ...new Set(
+      query
+        .split(/[^\p{L}\p{N}_]+/u)
+        .filter(Boolean)
+        .map((term) => term.toLocaleLowerCase()),
+    ),
+  ].sort((left, right) => right.length - left.length);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  if (terms.length === 0) return <>{text}</>;
+  const pattern = new RegExp(
+    `(${terms.map(escapeRegExp).join("|")})`,
+    "giu",
+  );
+  const needles = new Set(terms);
+  return (
+    <>
+      {text.split(pattern).map((part, index) =>
+        needles.has(part.toLocaleLowerCase()) ? (
+          <mark
+            key={`${part}-${index}`}
+            className="rounded-sm bg-mark px-0.5 font-semibold text-ink"
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
   );
 }
 

@@ -206,6 +206,8 @@ web/
   Journal/Pages/Graph/note views are mutually exclusive. Use
   `api.createNote(..., { section: "journals" })` for journal pages. Search
   calls `GET /notebooks/{id}/search` and opens results with `useAppNavigate`.
+  Search returns match-centered plain-text excerpts; `SearchDialog` highlights
+  query terms in titles, excerpts and paths with the `--color-mark` token.
 - Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
   `GET /notebooks/{id}/graph`. Nodes are all notes; edges only resolved
   wikilinks. `GraphPanel` defaults to the active note's 1-hop neighborhood with
