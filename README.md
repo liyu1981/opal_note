@@ -237,6 +237,27 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 - The backlinks panel is fed by the server's `link` relation, so bidi linking
   stays accurate after external edits.
 
+### Workspace layout
+
+The shell follows a Logseq-like split:
+
+- **Left sidebar** — notebook switcher, Favorites, Recent, Journal and Pages.
+  Journals open a dedicated feed of **editable journal cards** rather than a
+  single page; the feed loads the newest seven pages and appends older pages as
+  you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the live
+  block editor and autosaves. A Today action opens or creates the date page.
+- **Center** — the current page, the journal feed, or the Pages directory view
+  (a placeholder for the future page browser). Both sidebars start collapsed
+  and can be toggled from the top bar, leaving the writing surface to fill the
+  window.
+- **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
+  backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab is a
+  placeholder for the notebook connection graph; the extra width leaves room
+  for that and future assistant panels.
+
+Favorites and recents are stored in the browser, scoped per notebook. A page
+can be pinned with the star in the editor toolbar.
+
 Embedding (images/objects) and executable blocks are deliberately out of scope
 for this pass.
 
@@ -273,7 +294,8 @@ Public (no token): `GET /health`, `GET /meta`.
 | PATCH  | `/notebooks/{id}`                            | `{name?, description?}` — may rename the folder|
 | DELETE | `/notebooks/{id}`                            | Move notebook folder to `.trash/`              |
 | GET    | `/notebooks/{id}/notes`                      | `?limit=&offset=` newest first                 |
-| POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?}` — creates `/pages` |
+| POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
+| GET    | `/notebooks/{id}/journals`                   | `?before=<path>&limit=` date-desc feed          |
 | GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |
 | GET    | `/notebooks/{id}/tags`                       | Tag counts                                     |
 | GET    | `/notebooks/{id}/notes/{*path}`              | Note + tags + links + backlinks                |
@@ -282,6 +304,9 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/stats`                                     | Global counts                                  |
 | POST   | `/reindex`                                   | Force a full filesystem → index rebuild        |
 | POST   | `/query`                                     | Ad-hoc read-only Datalog                       |
+
+`section` is `pages` (default) or `journals`; journal pages are written under
+`journals/`. `GET /journals` is cursor-paginated by relative path, newest first.
 
 `id` in note payloads is the relative path (`pages/hello.md`). Paths are
 URL-encoded per segment by the client, so spaces and unicode work:
@@ -341,9 +366,9 @@ src/
 web/
   src/api/           typed client + types
   src/state/         Jotai atoms
-  src/components/    rail, notes, inspector, settings
+  src/components/    collapsible left sidebar, journal feed, tabbed right panel
   src/components/editor/  live CodeMirror editor surface
-  src/lib/           live preview, completion, editor theme, markdown helpers
+  src/lib/           live preview, completion, editor theme, journal helpers
 ```
 
 ## Security notes
@@ -368,7 +393,7 @@ web/
 - real-time collaboration and a sync protocol;
 - per-notebook permissions and multi-user accounts;
 - CRDT-based collaborative editing;
-- graph view;
+- the interactive graph view (the right panel currently reserves a Graph tab);
 - true block references and transclusion (the live editor is block-oriented,
   but pages remain plain markdown files);
 - embedded images/objects and executable code blocks;

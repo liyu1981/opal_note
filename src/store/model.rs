@@ -65,6 +65,19 @@ pub struct Note {
     pub backlinks: Vec<BacklinkRef>,
 }
 
+/// One page in the journal feed (content only, no link graph).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct JournalPage {
+    /// Relative path, e.g. `journals/2026-11-12.md`.
+    pub id: String,
+    pub notebook_id: String,
+    pub title: String,
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub tags: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TagCount {
     pub tag: String,

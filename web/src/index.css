@@ -394,3 +394,33 @@ body {
   display: flex;
   gap: 0.5rem;
 }
+
+/* Editable journal cards. */
+.journal-card-editor .cm-content {
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.journal-card-editor .cm-content .cm-line:first-child {
+  padding-top: 0;
+}
+
+.journal-card-editor .cm-placeholder {
+  font-size: 12px;
+}
+
+/* Auto-height editor used by editable journal cards. */
+.cm-auto-height .cm-editor {
+  height: auto;
+}
+
+.cm-auto-height .cm-scroller {
+  overflow: visible;
+}
+
+.cm-auto-height .cm-content {
+  margin: 0 !important;
+  max-width: none !important;
+  min-height: 3.4rem;
+  padding: 0.4rem 0 0.9rem !important;
+}

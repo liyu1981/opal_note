@@ -83,9 +83,9 @@ web/
   package.json     build + typecheck only (no dev server)
   src/api/         typed fetch client + shared types
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
-  src/components/  rail, notes list, inspector, settings
+  src/components/  collapsible left sidebar, journal feed, tabbed right panel
   src/components/editor/  CodeMirror live editor + link completion
-  src/lib/         live preview decorations, editor theme, markdown helpers
+  src/lib/         live preview, editor theme, journal helpers, markdown
 ```
 
 ## Conventions
@@ -143,6 +143,19 @@ web/
   CodeMirror with `readOnly`/`editable(false)`, disables task toggles, hides
   save/delete and keeps wikilinks clickable. Do not reintroduce a separate
   source-mode switcher; focusing a block already reveals its source.
+- The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
+  `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
+  Pages, Favorites, Recent and a Graph placeholder. The right panel is wider
+  and tabbed Context / Info / Graph. Keep it that way rather than adding new
+  permanent side panels.
+- `JournalFeed` pages through `GET /notebooks/{id}/journals` newest-first
+  (7 at a time) and appends older pages on scroll. Journal entries are editable
+  `JournalCard`s built on `LiveMarkdownEditor` with per-card debounced
+  autosave; keep them editable rather than reverting to a read-only renderer.
+  `Today` opens or creates `journals/YYYY-MM-DD.md`.
+- `Pages` opens a dedicated placeholder view (`pagesViewAtom`, `PagesView`),
+  not just a scroll target. Journal/Pages/note views are mutually exclusive.
+  Use `api.createNote(..., { section: "journals" })` for journal pages.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (⌘K search, ⌘S save).
 
@@ -165,7 +178,11 @@ Notes are scoped to a notebook and identified by their relative path:
 
 ```
 GET|PATCH|DELETE /api/notebooks/{notebook}/notes/{*path}
+GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
 ```
+
+`POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.
+`GET /journals` is a cursor-paginated, newest-first feed.
 
 `POST /api/reindex` forces a full filesystem read. The ad-hoc `/api/query`
 endpoint is read-only and must keep rejecting `::` system commands.

@@ -23,6 +23,93 @@ export const activeNoteIdAtom = atomWithStorage<string | null>(
 
 export const searchQueryAtom = atom("");
 
+/** When true the main pane is the journal feed rather than a single note. */
+export const journalViewAtom = atom(false);
+
+/** Dedicated page-directory view (placeholder for now). */
+export const pagesViewAtom = atom(false);
+
+export type NoteRef = {
+  notebookId: string;
+  path: string;
+  title: string;
+};
+
+export const leftPanelOpenAtom = atomWithStorage<boolean>(
+  "opalnote.left-panel.v2",
+  false,
+);
+
+export const rightPanelOpenAtom = atomWithStorage<boolean>(
+  "opalnote.right-panel.v2",
+  false,
+);
+
+export const favoritesAtom = atomWithStorage<Record<string, NoteRef[]>>(
+  "opalnote.favorites",
+  {},
+);
+
+export const recentsAtom = atomWithStorage<Record<string, NoteRef[]>>(
+  "opalnote.recents",
+  {},
+);
+
+export const toggleFavoriteAtom = atom(
+  null,
+  (get, set, ref: NoteRef) => {
+    const all = get(favoritesAtom);
+    const list = all[ref.notebookId] ?? [];
+    const exists = list.some((item) => item.path === ref.path);
+    const next = exists
+      ? list.filter((item) => item.path !== ref.path)
+      : [ref, ...list.filter((item) => item.path !== ref.path)].slice(0, 30);
+    set(favoritesAtom, { ...all, [ref.notebookId]: next });
+  },
+);
+
+export const recordRecentAtom = atom(
+  null,
+  (get, set, ref: NoteRef) => {
+    const all = get(recentsAtom);
+    const list = all[ref.notebookId] ?? [];
+    const next = [ref, ...list.filter((item) => item.path !== ref.path)].slice(
+      0,
+      8,
+    );
+    set(recentsAtom, { ...all, [ref.notebookId]: next });
+  },
+);
+
+/** Keep favorites/recents pointing at the right file after a rename. */
+export const renameNoteRefsAtom = atom(
+  null,
+  (
+    get,
+    set,
+    change: {
+      notebookId: string;
+      oldPath: string;
+      newPath: string;
+      title: string;
+    },
+  ) => {
+    const update = (all: Record<string, NoteRef[]>) => {
+      const list = all[change.notebookId] ?? [];
+      return {
+        ...all,
+        [change.notebookId]: list.map((item) =>
+          item.path === change.oldPath
+            ? { ...item, path: change.newPath, title: change.title }
+            : item,
+        ),
+      };
+    };
+    set(favoritesAtom, update(get(favoritesAtom)));
+    set(recentsAtom, update(get(recentsAtom)));
+  },
+);
+
 /** Presentation lock. Kept outside the note editor so link navigation stays
  * read-only until the user unlocks. */
 export const readOnlyAtom = atom(false);
@@ -60,7 +147,7 @@ export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
   try {
     return query
       ? await api.searchNotes(notebookId, query, 50)
-      : await api.listNotes(notebookId, 100);
+      : await api.listNotes(notebookId, 200);
   } catch (error) {
     // A notebook deleted in another tab must not take down the workspace;
     // the selection effect will pick a valid one on the next render.

@@ -17,6 +17,8 @@ import {
   IconFile,
   IconLock,
   IconLockOpen,
+  IconStar,
+  IconStarFilled,
   IconTag,
   IconTrash,
 } from "./Icons";
@@ -28,9 +30,13 @@ import {
   activeNoteAtom,
   activeNoteIdAtom,
   activeNotebookIdAtom,
+  favoritesAtom,
   readOnlyAtom,
+  recordRecentAtom,
   refreshAtom,
+  renameNoteRefsAtom,
   revisionAtom,
+  toggleFavoriteAtom,
 } from "../state/atoms";
 
 type SaveStatus = "saved" | "dirty" | "saving" | "error";
@@ -52,7 +58,7 @@ export function EditorPane() {
     return (
       <EmptyState
         title="No note selected"
-        body="Choose a note from the list, or start a new one. Everything is saved to the server automatically."
+        body="Open the left sidebar from the top bar to choose a page or start a new one. Everything is saved to the server automatically."
       />
     );
   }
@@ -83,6 +89,10 @@ function NoteEditor({ note }: { note: Note }) {
   const revision = useAtomValue(revisionAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
+  const favorites = useAtomValue(favoritesAtom);
+  const toggleFavorite = useSetAtom(toggleFavoriteAtom);
+  const recordRecent = useSetAtom(recordRecentAtom);
+  const renameNoteRefs = useSetAtom(renameNoteRefsAtom);
 
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
@@ -133,6 +143,18 @@ function NoteEditor({ note }: { note: Note }) {
     [linkTargets],
   );
 
+  const isFavorite = (favorites[note.notebook_id] ?? []).some(
+    (ref) => ref.path === note.id,
+  );
+
+  useEffect(() => {
+    recordRecent({
+      notebookId: note.notebook_id,
+      path: note.id,
+      title: note.title,
+    });
+  }, [note.id, note.notebook_id, note.title, recordRecent]);
+
   // Switching notes by list/link unmounts this editor. Flush a pending draft
   // before that happens so a quick click cannot lose a paragraph. Navigation
   // side effects are left to the regular save path.
@@ -178,6 +200,12 @@ function NoteEditor({ note }: { note: Note }) {
       if (updated.id !== note.id) {
         setActiveNote(updated.id);
       }
+      renameNoteRefs({
+        notebookId: note.notebook_id,
+        oldPath: note.id,
+        newPath: updated.id,
+        title: updated.title,
+      });
       refresh();
       if (changeVersion.current === version) {
         setDirty(false);
@@ -194,7 +222,13 @@ function NoteEditor({ note }: { note: Note }) {
     } finally {
       savingRef.current = false;
     }
-  }, [note.id, note.notebook_id, refresh, setActiveNote]);
+  }, [
+    note.id,
+    note.notebook_id,
+    refresh,
+    renameNoteRefs,
+    setActiveNote,
+  ]);
 
   // Debounced autosave. The tick dependency restarts the timer on every
   // keystroke and after a save that raced with further edits.
@@ -390,6 +424,30 @@ function NoteEditor({ note }: { note: Note }) {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                toggleFavorite({
+                  notebookId: note.notebook_id,
+                  path: note.id,
+                  title: note.title,
+                })
+              }
+              className={`rounded-lg border p-1.5 transition ${
+                isFavorite
+                  ? "border-accent/30 bg-accent-soft text-accent-strong"
+                  : "border-line bg-white/70 text-faint hover:border-line-strong hover:bg-white hover:text-ink"
+              }`}
+              aria-pressed={isFavorite}
+              aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            >
+              {isFavorite ? (
+                <IconStarFilled className="h-3.5 w-3.5" />
+              ) : (
+                <IconStar className="h-3.5 w-3.5" />
+              )}
+            </button>
             <button
               type="button"
               onClick={() => void toggleLock()}

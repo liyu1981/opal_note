@@ -6,8 +6,8 @@ use serde::Deserialize;
 use crate::error::{ApiResult, AppError};
 use crate::routes::{check_content, check_tags, clamp_limit, clamp_offset, clean_title, db_call};
 use crate::state::AppState;
-use crate::store::model::{Note, NoteSummary};
-use crate::store::NoteUpdate;
+use crate::store::model::{JournalPage, Note, NoteSummary};
+use crate::store::{NoteSection, NoteUpdate};
 
 fn default_limit() -> usize {
     50
@@ -32,6 +32,17 @@ fn default_search_limit() -> usize {
     30
 }
 
+fn default_journal_limit() -> usize {
+    7
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JournalQuery {
+    pub before: Option<String>,
+    #[serde(default = "default_journal_limit")]
+    pub limit: usize,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateNoteRequest {
     #[serde(default)]
@@ -40,6 +51,8 @@ pub struct CreateNoteRequest {
     pub content: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// `pages` (default) or `journals`.
+    pub section: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +113,43 @@ pub async fn search(
     Ok(Json(notes))
 }
 
+pub async fn journals(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<JournalQuery>,
+) -> ApiResult<Json<Vec<JournalPage>>> {
+    if let Some(before) = &query.before {
+        let valid = before.starts_with("journals/")
+            && before.ends_with(".md")
+            && !before.contains("..")
+            && !before.contains('\\');
+        if !valid {
+            return Err(AppError::bad_request("invalid journal cursor"));
+        }
+    }
+    let before = query.before.clone();
+    let limit = query.limit.clamp(1, 30);
+
+    let store = state.store.clone();
+    let pages = db_call(
+        move || -> anyhow::Result<Option<Vec<JournalPage>>> {
+            if !store.notebook_exists(&notebook_id)? {
+                return Ok(None);
+            }
+            Ok(Some(store.list_journals(
+                &notebook_id,
+                before.as_deref(),
+                limit,
+            )?))
+        },
+        AppError::Internal,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("notebook not found"))?;
+
+    Ok(Json(pages))
+}
+
 pub async fn create(
     State(state): State<AppState>,
     Path(notebook_id): Path<String>,
@@ -108,10 +158,23 @@ pub async fn create(
     let title = clean_title(&body.title)?;
     check_content(&body.content)?;
     check_tags(&body.tags)?;
+    let section = NoteSection::parse(body.section.as_deref().unwrap_or("pages"))
+        .ok_or_else(|| AppError::bad_request("section must be `pages` or `journals`"))?;
 
     let store = state.store.clone();
     let note = db_call(
-        move || store.create_note(&notebook_id, &title, &body.content, &body.tags),
+        move || match section {
+            NoteSection::Pages => {
+                store.create_note(&notebook_id, &title, &body.content, &body.tags)
+            }
+            NoteSection::Journals => store.create_note_in_section(
+                &notebook_id,
+                section,
+                &title,
+                &body.content,
+                &body.tags,
+            ),
+        },
         AppError::Internal,
     )
     .await?

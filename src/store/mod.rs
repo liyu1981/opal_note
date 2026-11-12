@@ -21,7 +21,9 @@ use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, ScriptRunOptions}
 use self::markdown::{
     extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page, summarize,
 };
-use self::model::{BacklinkRef, LinkRef, Note, NoteSummary, Notebook, Stats, TagCount};
+use self::model::{
+    BacklinkRef, JournalPage, LinkRef, Note, NoteSummary, Notebook, Stats, TagCount,
+};
 
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 const SUMMARY_CHARS: usize = 220;
@@ -37,6 +39,22 @@ pub enum NotebookUpdate {
 pub enum NoteUpdate {
     Updated(Box<Note>),
     NotFound,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteSection {
+    Pages,
+    Journals,
+}
+
+impl NoteSection {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "pages" | "" => Some(Self::Pages),
+            "journals" => Some(Self::Journals),
+            _ => None,
+        }
+    }
 }
 
 pub struct Store {
@@ -869,6 +887,23 @@ impl Store {
         content: &str,
         explicit_tags: &[String],
     ) -> Result<Option<Note>> {
+        self.create_note_in_section(
+            notebook_id,
+            NoteSection::Pages,
+            title,
+            content,
+            explicit_tags,
+        )
+    }
+
+    pub fn create_note_in_section(
+        &self,
+        notebook_id: &str,
+        section: NoteSection,
+        title: &str,
+        content: &str,
+        explicit_tags: &[String],
+    ) -> Result<Option<Note>> {
         let _guard = self.lock_fs();
         self.sync_all_locked(false)?;
 
@@ -877,8 +912,9 @@ impl Store {
             return Ok(None);
         }
         files::canonicalize_layout(&notebook)?;
-        let pages = files::page_dir_for_new_notes(&notebook)?;
-        let absolute = files::unique_file_path(&pages, title, files::NOTE_EXT);
+        let directory =
+            files::section_dir_for_new_notes(&notebook, section == NoteSection::Journals)?;
+        let absolute = files::unique_file_path(&directory, title, files::NOTE_EXT);
         let raw = render_page(content, explicit_tags, "");
         files::write_atomic(&absolute, &raw)?;
 
@@ -962,6 +998,49 @@ impl Store {
         files::trash_file(&self.data_dir, notebook_id, path, &absolute)?;
         self.sync_notebook_locked(notebook_id, false)?;
         Ok(true)
+    }
+
+    /// Journal pages ordered by path descending (newest date first).
+    ///
+    /// `before` is the exclusive relative path cursor; `None` starts at the
+    /// newest page.
+    pub fn list_journals(
+        &self,
+        notebook_id: &str,
+        before: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<JournalPage>> {
+        self.ensure_synced()?;
+        let before = before.unwrap_or("journals~");
+        let rows = self.run(
+            queries::LIST_JOURNALS,
+            params([
+                ("notebook_id", DataValue::from(notebook_id)),
+                ("prefix", DataValue::from("journals/")),
+                ("before", DataValue::from(before)),
+                ("limit", DataValue::from(limit.max(1) as i64)),
+            ]),
+            ScriptMutability::Immutable,
+        )?;
+        let paths: Vec<String> = rows.rows.iter().map(|row| col_str(row, 0)).collect();
+        let tags = self.tags_for_paths_locked(notebook_id, &paths)?;
+
+        Ok(rows
+            .rows
+            .iter()
+            .map(|row| {
+                let path = col_str(row, 0);
+                JournalPage {
+                    tags: tags.get(&path).cloned().unwrap_or_default(),
+                    id: path,
+                    notebook_id: notebook_id.to_string(),
+                    title: col_str(row, 1),
+                    content: col_str(row, 2),
+                    created_at: fmt_ts(col_f64(row, 3)),
+                    updated_at: fmt_ts(col_f64(row, 4)),
+                }
+            })
+            .collect())
     }
 
     pub fn list_tags(&self, notebook_id: &str) -> Result<Vec<TagCount>> {
@@ -1368,6 +1447,59 @@ mod tests {
         );
         assert_eq!(store.list_notes(&one.id, 10, 0).unwrap().len(), 1);
         assert_eq!(store.stats().unwrap().notes, 2);
+    }
+
+    #[test]
+    fn journals_are_created_in_the_journals_directory() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Journal", "").unwrap().unwrap();
+        let note = store
+            .create_note_in_section(
+                &notebook.id,
+                NoteSection::Journals,
+                "2026-11-12",
+                "daily",
+                &[],
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(note.id, "journals/2026-11-12.md");
+        assert_eq!(
+            store
+                .get_note(&notebook.id, &note.id)
+                .unwrap()
+                .unwrap()
+                .content,
+            "daily"
+        );
+    }
+
+    #[test]
+    fn journal_feed_is_newest_first_and_paginates() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Feed", "").unwrap().unwrap();
+        for date in ["2026-11-10", "2026-11-12", "2026-11-11"] {
+            store
+                .create_note_in_section(&notebook.id, NoteSection::Journals, date, "entry", &[])
+                .unwrap();
+        }
+        store
+            .create_note(&notebook.id, "Not a journal", "page", &[])
+            .unwrap();
+
+        let first = store.list_journals(&notebook.id, None, 2).unwrap();
+        assert_eq!(
+            first
+                .iter()
+                .map(|page| page.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2026-11-12", "2026-11-11"]
+        );
+        let second = store
+            .list_journals(&notebook.id, Some(&first[1].id), 2)
+            .unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].title, "2026-11-10");
     }
 
     #[test]

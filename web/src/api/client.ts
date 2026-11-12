@@ -1,5 +1,6 @@
 import type {
   Health,
+  JournalPage,
   Note,
   NoteSummary,
   Notebook,
@@ -130,9 +131,22 @@ export const api = {
   listTags: (notebookId: string) =>
     request<TagCount[]>(`/notebooks/${encode(notebookId)}/tags`),
 
+  listJournals: (notebookId: string, before?: string, limit = 7) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (before) params.set("before", before);
+    return request<JournalPage[]>(
+      `/notebooks/${encode(notebookId)}/journals?${params.toString()}`,
+    );
+  },
+
   createNote: (
     notebookId: string,
-    body: { title: string; content?: string; tags?: string[] },
+    body: {
+      title: string;
+      content?: string;
+      tags?: string[];
+      section?: "pages" | "journals";
+    },
   ) =>
     request<Note>(`/notebooks/${encode(notebookId)}/notes`, {
       method: "POST",

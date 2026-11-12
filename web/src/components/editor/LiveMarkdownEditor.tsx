@@ -42,6 +42,7 @@ type Props = {
   linkKeys: Set<string>;
   linkTargets: LinkTarget[];
   readOnly: boolean;
+  autoHeight?: boolean;
   autoFocus?: boolean;
 };
 
@@ -68,6 +69,7 @@ export const LiveMarkdownEditor = forwardRef<
     linkKeys,
     linkTargets,
     readOnly,
+    autoHeight = false,
     autoFocus = false,
   },
   ref,
@@ -195,5 +197,10 @@ export const LiveMarkdownEditor = forwardRef<
     viewRef.current?.dispatch({ effects: refreshLivePreview.of(null) });
   }, [linkKeys]);
 
-  return <div ref={hostRef} className="h-full min-h-0 w-full" />;
+  return (
+    <div
+      ref={hostRef}
+      className={autoHeight ? "cm-auto-height w-full" : "h-full min-h-0 w-full"}
+    />
+  );
 });

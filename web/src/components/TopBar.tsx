@@ -1,12 +1,20 @@
 import { useAtomValue, useSetAtom } from "jotai";
 
-import { IconBook, IconLock, IconSettings } from "./Icons";
+import {
+  IconBook,
+  IconLock,
+  IconPanelLeft,
+  IconPanelRight,
+  IconSettings,
+} from "./Icons";
 import {
   activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
+  leftPanelOpenAtom,
   notebooksAtom,
   readOnlyAtom,
+  rightPanelOpenAtom,
   searchQueryAtom,
   settingsOpenAtom,
 } from "../state/atoms";
@@ -21,9 +29,28 @@ export function TopBar() {
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
+  const leftOpen = useAtomValue(leftPanelOpenAtom);
+  const rightOpen = useAtomValue(rightPanelOpenAtom);
+  const setLeftOpen = useSetAtom(leftPanelOpenAtom);
+  const setRightOpen = useSetAtom(rightPanelOpenAtom);
 
   return (
-    <header className="flex h-13 shrink-0 items-center gap-3 border-b border-line bg-canvas/80 px-4 backdrop-blur">
+    <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-canvas/80 px-3 backdrop-blur">
+      <button
+        type="button"
+        onClick={() => setLeftOpen(!leftOpen)}
+        aria-pressed={leftOpen}
+        className={`rounded-md border p-1.5 transition ${
+          leftOpen
+            ? "border-line-strong bg-panel-strong text-ink"
+            : "border-transparent text-muted hover:bg-panel"
+        }`}
+        title={leftOpen ? "Collapse left sidebar" : "Expand left sidebar"}
+        aria-label="Toggle left sidebar"
+      >
+        <IconPanelLeft className="h-4 w-4" />
+      </button>
+
       <div className="md:hidden">
         <select
           value={activeId ?? ""}
@@ -60,6 +87,20 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setRightOpen(!rightOpen)}
+          aria-pressed={rightOpen}
+          className={`rounded-md border p-1.5 transition ${
+            rightOpen
+              ? "border-line-strong bg-panel-strong text-ink"
+              : "border-transparent text-muted hover:bg-panel"
+          }`}
+          title={rightOpen ? "Collapse right sidebar" : "Expand right sidebar"}
+          aria-label="Toggle right sidebar"
+        >
+          <IconPanelRight className="h-4 w-4" />
+        </button>
         {locked && (
           <button
             type="button"

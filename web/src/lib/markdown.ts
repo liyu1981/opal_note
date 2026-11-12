@@ -45,3 +45,4 @@ export function splitWikilink(inner: string): {
   const label = (alias ?? raw).trim() || target;
   return { target, label };
 }
+

@@ -49,6 +49,16 @@ export interface Note {
   backlinks: BacklinkRef[];
 }
 
+export interface JournalPage {
+  id: string;
+  notebook_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  tags: string[];
+}
+
 export interface TagCount {
   tag: string;
   count: number;

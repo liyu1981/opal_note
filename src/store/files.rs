@@ -236,13 +236,13 @@ fn merge_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn page_dir_for_new_notes(notebook: &Path) -> io::Result<PathBuf> {
-    let canonical = notebook.join(PAGE_DIR);
-    if canonical.is_dir() {
-        return Ok(canonical);
+pub fn section_dir_for_new_notes(notebook: &Path, journals: bool) -> io::Result<PathBuf> {
+    let dir = notebook.join(if journals { JOURNAL_DIR } else { PAGE_DIR });
+    if dir.is_dir() {
+        return Ok(dir);
     }
-    fs::create_dir_all(&canonical)?;
-    Ok(canonical)
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 pub fn list_notebook_dirs(notebooks_dir: &Path) -> io::Result<Vec<String>> {

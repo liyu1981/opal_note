@@ -233,6 +233,16 @@ pub const LIST_TAGS: &str = r#"
     notebook_id = $notebook_id
 "#;
 
+pub const LIST_JOURNALS: &str = r#"
+?[path, title, content, created_at, updated_at] :=
+    *note{notebook_id, path, title, content, created_at, updated_at},
+    notebook_id = $notebook_id,
+    path >= $prefix,
+    path < $before
+:order -path
+:limit $limit
+"#;
+
 pub const COUNT_NOTEBOOKS: &str = "?[count(id)] := *notebook{id}";
 pub const COUNT_NOTES: &str = "?[count(path)] := *note{path}";
 pub const COUNT_TAGS: &str = "?[count(tag)] := *note_tag{tag}";

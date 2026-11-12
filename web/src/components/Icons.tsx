@@ -87,6 +87,77 @@ export function IconSettings(props: IconProps) {
   );
 }
 
+export function IconCalendar(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="4" y="5" width="16" height="15" rx="2" />
+      <path d="M8 3v4M16 3v4M4 10h16" />
+    </svg>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}
+
+export function IconStar(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m12 3.8 2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z" />
+    </svg>
+  );
+}
+
+export function IconStarFilled(props: IconProps) {
+  return (
+    <svg {...base(props)} fill="currentColor">
+      <path d="m12 3.8 2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z" />
+    </svg>
+  );
+}
+
+export function IconGraph(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="6" cy="17" r="2.2" />
+      <circle cx="17.5" cy="6" r="2.2" />
+      <circle cx="17.5" cy="17" r="2.2" />
+      <path d="m8 15.5 7.4-8M8.4 17h6.9" />
+    </svg>
+  );
+}
+
+export function IconPanelLeft(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3.5" y="4" width="17" height="16" rx="2" />
+      <path d="M9.5 4v16" />
+    </svg>
+  );
+}
+
+export function IconPanelRight(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3.5" y="4" width="17" height="16" rx="2" />
+      <path d="M14.5 4v16" />
+    </svg>
+  );
+}
+
+export function IconChevron(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m8 10 4 4 4-4" />
+    </svg>
+  );
+}
+
 export function IconCheck(props: IconProps) {
   return (
     <svg {...base(props)}>
