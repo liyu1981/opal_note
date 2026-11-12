@@ -6,7 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 
 import { api } from "../api/client";
 import type { GraphData, GraphEdge, GraphNode } from "../api/types";
@@ -22,10 +22,8 @@ import {
   IconPlus,
   IconRefresh,
 } from "./Icons";
-import {
-  navigateAtom,
-  notesRevisionAtom,
-} from "../state/atoms";
+import { notesRevisionAtom } from "../state/atoms";
+import { useAppNavigate } from "../lib/appNavigation";
 
 type Scope = "local" | "all";
 
@@ -47,7 +45,7 @@ export function GraphPanel({
   title?: string;
 }) {
   const revision = useAtomValue(notesRevisionAtom);
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

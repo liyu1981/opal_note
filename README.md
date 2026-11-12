@@ -68,7 +68,7 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 | -------- | ------------------------------------------------------------- |
 | Server   | Rust 2021, Axum 0.8, Tokio                                     |
 | Database | [`mnestic`](https://www.mnesticdb.com/) 0.19 (Datalog, SQLite)  |
-| Client   | React 19, CodeMirror 6, TypeScript 7, Jotai 3                 |
+| Client   | React 19, TanStack Router, CodeMirror 6, TypeScript 7, Jotai 3 |
 | Styling  | Tailwind CSS 4                                                 |
 | Build    | Vite 8, pnpm, root `package.json` scripts                      |
 
@@ -271,9 +271,10 @@ back/forward history controls, and a Home button on the right.
 - **Search** — the search button beside the sidebar toggle opens a centered
   dialog instead of filtering the left panel. Results come from the server's
   `note:fts` index and open the selected page directly.
-- **Navigation** — back/forward (⌘[ / ⌘] or Alt+← / Alt+→) walk a session
-  history of notes, journal feeds, directory and graph views. Switching notebooks
-  starts a fresh history at that notebook's journal.
+- **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
+  `/graph`, and `/page?p=<page>`. Back/forward (⌘[ / ⌘] or Alt+← / Alt+→) use
+  browser history, and page URLs can be reloaded or shared directly. Switching
+  notebooks opens that notebook's journal.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
   renders an interactive local/full notebook graph: click a node to highlight
@@ -288,8 +289,21 @@ back/forward history controls, and a Home button on the right.
   canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,
   and reset the view. It participates in normal back/forward history.
 
-Favorites and recents are stored in the browser, scoped per notebook. A page
-can be pinned with the star in the editor toolbar.
+### Client routes
+
+| Route | View |
+| --- | --- |
+| `/` | Redirects to `/journal` |
+| `/journal` | Journal feed / Home |
+| `/pages` | All-pages table |
+| `/graph` | Full-page notebook graph |
+| `/page?p=pages/foo.md` | A page by relative path |
+| `/page?p=Some%20Page` | A page resolved by title |
+
+Routes use clean browser paths plus search params; no hash routing. They are
+scoped to the active notebook; switching notebooks returns to `/journal`.
+Favorites and recents are stored in the browser, scoped per notebook. A page can be
+pinned with the star in the editor toolbar.
 
 Embedding (images/objects) and executable blocks are deliberately out of scope
 for this pass.
@@ -401,10 +415,11 @@ src/
     model.rs         API models
 web/
   src/api/           typed client + types
+  src/router.tsx     TanStack route tree + URL/view synchronization
   src/state/         Jotai atoms
-  src/components/    collapsible left sidebar, journal feed, tabbed right panel
+  src/components/    workspace shell, journal feed, pages, graph, panels
   src/components/editor/  live CodeMirror editor surface
-  src/lib/           live preview, completion, editor theme, journal helpers
+  src/lib/           navigation, live preview, completion, editor theme
 ```
 
 ## Security notes

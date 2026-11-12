@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { useCanGoBack, useRouter } from "@tanstack/react-router";
 
 import {
   IconArrowLeft,
@@ -15,13 +16,8 @@ import {
 import {
   activeNotebookAtom,
   activeNotebookIdAtom,
-  canGoBackAtom,
-  canGoForwardAtom,
-  goBackAtom,
-  goForwardAtom,
   journalViewAtom,
   leftPanelOpenAtom,
-  navigateAtom,
   notebooksAtom,
   readOnlyAtom,
   rightPanelOpenAtom,
@@ -29,6 +25,7 @@ import {
   selectNotebookAtom,
   settingsOpenAtom,
 } from "../state/atoms";
+import { useAppNavigate } from "../lib/appNavigation";
 
 export function TopBar() {
   const notebooks = useAtomValue(notebooksAtom);
@@ -38,11 +35,11 @@ export function TopBar() {
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
   const setSearchOpen = useSetAtom(searchOpenAtom);
   const searchOpen = useAtomValue(searchOpenAtom);
-  const navigate = useSetAtom(navigateAtom);
-  const goBack = useSetAtom(goBackAtom);
-  const goForward = useSetAtom(goForwardAtom);
-  const canGoBack = useAtomValue(canGoBackAtom);
-  const canGoForward = useAtomValue(canGoForwardAtom);
+  const navigate = useAppNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  const [canGoForward, setCanGoForward] = useState(false);
+  const maxHistoryIndex = useRef(0);
   const journalView = useAtomValue(journalViewAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
@@ -50,6 +47,23 @@ export function TopBar() {
   const rightOpen = useAtomValue(rightPanelOpenAtom);
   const setLeftOpen = useSetAtom(leftPanelOpenAtom);
   const setRightOpen = useSetAtom(rightPanelOpenAtom);
+
+  useEffect(() => {
+    const indexOf = (state: unknown) =>
+      (state as { __TSR_index?: number } | undefined)?.__TSR_index ?? 0;
+    maxHistoryIndex.current = indexOf(router.history.location.state);
+    const unsubscribe = router.history.subscribe(({ action, location }) => {
+      const index = indexOf(location.state);
+      if (action.type === "PUSH" || action.type === "REPLACE") {
+        maxHistoryIndex.current = index;
+        setCanGoForward(false);
+        return;
+      }
+      maxHistoryIndex.current = Math.max(maxHistoryIndex.current, index);
+      setCanGoForward(index < maxHistoryIndex.current);
+    });
+    return unsubscribe;
+  }, [router]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -61,15 +75,15 @@ export function TopBar() {
         ((event.metaKey || event.ctrlKey) && event.key === "]");
       if (back) {
         event.preventDefault();
-        goBack();
+        router.history.back();
       } else if (forward) {
         event.preventDefault();
-        goForward();
+        router.history.forward();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goBack, goForward]);
+  }, [router]);
 
   return (
     <header className="flex h-13 shrink-0 items-center gap-1.5 border-b border-line bg-canvas/80 px-2 backdrop-blur sm:gap-2 sm:px-3">
@@ -107,7 +121,7 @@ export function TopBar() {
       <div className="ml-0.5 flex items-center gap-0.5 border-l border-line pl-1 sm:ml-1 sm:pl-1.5">
         <button
           type="button"
-          onClick={() => goBack()}
+          onClick={() => router.history.back()}
           disabled={!canGoBack}
           className="rounded-md border border-transparent p-1.5 text-muted transition hover:bg-panel hover:text-ink disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-muted"
           title="Back (⌘[ or Alt+←)"
@@ -117,7 +131,7 @@ export function TopBar() {
         </button>
         <button
           type="button"
-          onClick={() => goForward()}
+          onClick={() => router.history.forward()}
           disabled={!canGoForward}
           className="rounded-md border border-transparent p-1.5 text-muted transition hover:bg-panel hover:text-ink disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-muted"
           title="Forward (⌘] or Alt+→)"
@@ -132,6 +146,7 @@ export function TopBar() {
           value={activeId ?? ""}
           onChange={(event) => {
             selectNotebook(event.target.value || null);
+            navigate({ view: "journal" });
           }}
           className="max-w-[8.5rem] rounded-md border border-line bg-white/70 px-2 py-1 text-xs outline-none sm:max-w-[11rem]"
           aria-label="Notebook"

@@ -4,11 +4,11 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { api } from "../api/client";
 import type { NoteSummary } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
+import { useAppNavigate } from "../lib/appNavigation";
 import { IconCalendar, IconFile, IconSearch, IconX } from "./Icons";
 import {
   activeNotebookAtom,
   activeNotebookIdAtom,
-  navigateAtom,
   searchOpenAtom,
 } from "../state/atoms";
 
@@ -17,7 +17,7 @@ export function SearchDialog() {
   const setOpen = useSetAtom(searchOpenAtom);
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notebook = useAtomValue(activeNotebookAtom);
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NoteSummary[]>([]);

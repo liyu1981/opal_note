@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { PageList, PageOverview } from "../api/types";
 import { compactTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
+import { useAppNavigate } from "../lib/appNavigation";
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -23,7 +24,6 @@ import {
 import { OrphanDialog } from "./OrphanDialog";
 import {
   activeNotebookIdAtom,
-  navigateAtom,
   notesRevisionAtom,
   pagesPageSizeAtom,
   readOnlyAtom,
@@ -40,7 +40,7 @@ export function PagesView() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const revision = useAtomValue(notesRevisionAtom);
   const locked = useAtomValue(readOnlyAtom);
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
   const refresh = useSetAtom(refreshAtom);
 
   const [storedPageSize, setStoredPageSize] = useAtom(pagesPageSizeAtom);

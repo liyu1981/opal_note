@@ -30,8 +30,8 @@ Production is a **single binary** with the built web client embedded via
 - Server: Rust 2021, Axum 0.8, Tokio
 - Database: `mnestic` crate (MnesticDB, a maintained CozoDB fork); the library
   target is still imported as `cozo`. SQLite backend (bundled SQLite).
-- Client: React 19, CodeMirror 6, TypeScript 7 (`tsc` native), Vite 8,
-  Tailwind CSS 4, Jotai 3
+- Client: React 19, TanStack Router, CodeMirror 6, TypeScript 7 (`tsc`
+  native), Vite 8, Tailwind CSS 4, Jotai 3
 - Package manager: pnpm
 
 ## Commands
@@ -82,10 +82,11 @@ src/
 web/
   package.json     build + typecheck only (no dev server)
   src/api/         typed fetch client + shared types
+  src/router.tsx   TanStack route tree and URL/view synchronization
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
-  src/components/  collapsible left sidebar, journal feed, tabbed right panel
+  src/components/  workspace shell, journal, pages, graph and sidebar panels
   src/components/editor/  CodeMirror live editor + link completion
-  src/lib/         live preview, editor theme, journal helpers, markdown
+  src/lib/         app navigation, live preview, editor theme, graph layout
 ```
 
 ## Conventions
@@ -184,11 +185,13 @@ web/
   Pages, Favorites, Recent and Graph view. The right panel is wider and tabbed
   Context / Info / Graph. Keep it that way rather than adding new permanent
   side panels.
-- All in-app location changes go through `navigateAtom` so back/forward
-  (`goBackAtom`, `goForwardAtom`) stay correct across note, journal, pages and
-  graph views. Notebook switches use
-  `selectNotebookAtom` (fresh history); a filename rename uses
-  `replaceNoteIdAtom` so it does not create a history entry.
+- Client routing is TanStack Router with browser history, not hashes. Canonical
+  paths are `/journal`, `/pages`, `/graph` and `/page?p=<note-path-or-title>`.
+  All in-app destinations go through `useAppNavigate`; notes set the `p` search
+  param and journal/pages/graph are path segments. A title-only `p` resolves to
+  an existing note and replaces the URL with the canonical path. A filename
+  rename uses `navigate(..., { replace: true })`, not a second history entry.
+  Back/forward controls use TanStack history, not a custom atom history.
 - `JournalFeed` pages through `GET /notebooks/{id}/journals` newest-first
   (7 at a time) and appends older pages on scroll. Journal entries are editable
   `JournalCard`s built on `LiveMarkdownEditor` with per-card debounced
@@ -202,7 +205,7 @@ web/
   filtering, text filtering, table/cards modes and page controls.
   Journal/Pages/Graph/note views are mutually exclusive. Use
   `api.createNote(..., { section: "journals" })` for journal pages. Search
-  calls `GET /notebooks/{id}/search` and opens results via `navigateAtom`.
+  calls `GET /notebooks/{id}/search` and opens results with `useAppNavigate`.
 - Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
   `GET /notebooks/{id}/graph`. Nodes are all notes; edges only resolved
   wikilinks. `GraphPanel` defaults to the active note's 1-hop neighborhood with
@@ -214,7 +217,7 @@ web/
   and dragging a node sets its `fx/fy` so link forces pull its neighbours.
   Auto-fit follows the simulation until the user pans or zooms; Reset restores
   the initial seed, fit and simulation. Double-clicking (or Enter on) a node
-  uses `navigateAtom`; a single click only highlights that node's connections.
+  uses `useAppNavigate`; a single click only highlights that node's connections.
   Preserve this distinction and the ResizeObserver-driven full-page sizing.
 - Graph colors are theme tokens in `src/index.css`:
   `--color-graph-bg`, `--color-graph-node`, `--color-graph-node-journal`,

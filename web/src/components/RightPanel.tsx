@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 
 import type { Note, TagCount } from "../api/types";
 import { fullTime, wordCount } from "../lib/format";
+import { useAppNavigate } from "../lib/appNavigation";
 import { IconFile, IconLink, IconTag } from "./Icons";
 import { GraphPanel } from "./GraphPanel";
 import {
   activeNoteAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
-  navigateAtom,
   statsAtom,
   tagsAtom,
 } from "../state/atoms";
@@ -22,7 +22,7 @@ export function RightPanel() {
   const note = useAtomValue(activeNoteAtom);
   const tags = useAtomValue(tagsAtom);
   const stats = useAtomValue(statsAtom);
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
   const [tab, setTab] = useState<Tab>("context");
 
   if (!notebookId) return null;

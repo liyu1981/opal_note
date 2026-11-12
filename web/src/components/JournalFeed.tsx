@@ -4,6 +4,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { api } from "../api/client";
 import type { JournalPage } from "../api/types";
 import { ensureJournal } from "../lib/journal";
+import { useAppNavigate } from "../lib/appNavigation";
 import {
   noteLinkKeys,
   normalizeLinkTarget,
@@ -12,7 +13,6 @@ import { IconCalendar } from "./Icons";
 import { JournalCard } from "./JournalCard";
 import {
   activeNotebookIdAtom,
-  navigateAtom,
   notesAtom,
   readOnlyAtom,
   refreshAtom,
@@ -24,7 +24,7 @@ export function JournalFeed() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notes = useAtomValue(notesAtom);
   const locked = useAtomValue(readOnlyAtom);
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
   const refresh = useSetAtom(refreshAtom);
 
   const [pages, setPages] = useState<JournalPage[]>([]);

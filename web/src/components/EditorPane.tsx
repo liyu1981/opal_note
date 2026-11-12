@@ -11,6 +11,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { ApiError, api } from "../api/client";
 import type { Note, NoteSummary } from "../api/types";
 import { parseTags, relativeTime, tagList, wordCount } from "../lib/format";
+import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import {
   IconCheck,
@@ -30,14 +31,12 @@ import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
   favoritesAtom,
-  navigateAtom,
   readOnlyAtom,
   recordRecentAtom,
   notesRevisionAtom,
   refreshAtom,
   refreshNotesAtom,
   renameNoteRefsAtom,
-  replaceNoteIdAtom,
   revisionAtom,
   toggleFavoriteAtom,
 } from "../state/atoms";
@@ -150,9 +149,8 @@ function ActiveNote() {
 function NoteEditor({ note }: { note: Note }) {
   const refresh = useSetAtom(refreshAtom);
   const refreshNotes = useSetAtom(refreshNotesAtom);
-  const replaceNoteId = useSetAtom(replaceNoteIdAtom);
   const revision = useAtomValue(revisionAtom);
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
   const favorites = useAtomValue(favoritesAtom);
@@ -264,7 +262,7 @@ function NoteEditor({ note }: { note: Note }) {
         tags: parseTags(draft.tagsInput),
       });
       if (updated.id !== note.id) {
-        replaceNoteId(updated.id);
+        navigate({ view: "note", noteId: updated.id }, { replace: true });
       }
       renameNoteRefs({
         notebookId: note.notebook_id,
@@ -289,11 +287,11 @@ function NoteEditor({ note }: { note: Note }) {
       savingRef.current = false;
     }
   }, [
+    navigate,
     note.id,
     note.notebook_id,
-    refresh,
+    refreshNotes,
     renameNoteRefs,
-    replaceNoteId,
   ]);
 
   // Debounced autosave. The tick dependency restarts the timer on every

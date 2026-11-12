@@ -9,6 +9,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import { formatJournalDate, ensureJournal } from "../lib/journal";
+import { useAppNavigate } from "../lib/appNavigation";
 import {
   IconCalendar,
   IconChevron,
@@ -27,7 +28,6 @@ import {
   favoritesAtom,
   graphViewAtom,
   journalViewAtom,
-  navigateAtom,
   notesAtom,
   notebooksAtom,
   pagesViewAtom,
@@ -51,7 +51,7 @@ export function LeftSidebar() {
   const recents = useAtomValue(recentsAtom);
   const locked = useAtomValue(readOnlyAtom);
 
-  const navigate = useSetAtom(navigateAtom);
+  const navigate = useAppNavigate();
   const selectNotebook = useSetAtom(selectNotebookAtom);
   const refresh = useSetAtom(refreshAtom);
 
@@ -131,6 +131,7 @@ export function LeftSidebar() {
 
   function switchNotebook(id: string) {
     selectNotebook(id || null);
+    navigate({ view: "journal" });
   }
 
   async function createNotebook(event: FormEvent) {

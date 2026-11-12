@@ -17,6 +17,7 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@lezer/highlight": "^1.2.5",
+    "@tanstack/react-router": "^1.170.46",
     "d3-force": "^3.0.1",
     "jotai": "^3.0.2",
     "react": "^19.3.1",
