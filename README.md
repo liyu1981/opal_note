@@ -225,6 +225,9 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 - **Live** renders headings, emphasis, links, tags, lists, tasks, quotes and
   code in place. The block under the cursor reveals its markdown source, the
   way Obsidian live preview does — there is no separate source mode.
+- Fenced code blocks use a light panel and language-aware syntax highlighting.
+  Focusing any line inside the fence reveals the whole block as source,
+  including both fence markers, and returns to the rendered block on blur.
 - **Read only** locks the note for presentation: title/tags are not editable,
   save/delete are hidden, the editor is non-editable, and task checkboxes are
   disabled. Wikilinks stay clickable for navigation.

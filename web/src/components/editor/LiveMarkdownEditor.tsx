@@ -19,6 +19,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 
 import {
@@ -123,7 +124,7 @@ export const LiveMarkdownEditor = forwardRef<
         autocapitalize: "off",
         autocomplete: "off",
       }),
-      markdown({ addKeymap: true }),
+      markdown({ addKeymap: true, codeLanguages: languages }),
       noteMarkdownHighlighting,
       autocompletion({
         override: [wikiLinkCompletionSource(linkTargetsRef)],

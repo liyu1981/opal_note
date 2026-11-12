@@ -2,6 +2,7 @@ import {
   StateEffect,
   type Extension,
   type Range,
+  type Text,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -24,6 +25,49 @@ export type LivePreviewOptions = {
 };
 
 type OptionsRef = { current: LivePreviewOptions };
+
+const CODE_FENCE_OPEN =
+  /^(\s*)((?:[-*+]|\d+[.)])\s+)?(`{3,}|~{3,})(.*)$/u;
+const CODE_FENCE_CLOSE = /^(\s*)(`{3,}|~{3,})\s*$/u;
+
+type CodeBlockRange = {
+  start: number;
+  end: number;
+  char: string;
+  indent: number;
+};
+
+/** Locate fenced blocks so focusing any line can reveal the whole block. */
+function findCodeBlocks(doc: Text): CodeBlockRange[] {
+  const blocks: CodeBlockRange[] = [];
+  let open: { start: number; char: string; indent: number } | null = null;
+
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
+    const text = doc.line(lineNumber).text;
+    if (open) {
+      const closing = CODE_FENCE_CLOSE.exec(text);
+      if (closing && closing[2]?.[0] === open.char) {
+        blocks.push({ ...open, end: lineNumber });
+        open = null;
+      }
+      continue;
+    }
+
+    const opening = CODE_FENCE_OPEN.exec(text);
+    if (!opening) continue;
+    const marker = opening[3] ?? "```";
+    open = {
+      start: lineNumber,
+      char: marker[0] ?? "`",
+      indent:
+        leadingIndentColumns(text) +
+        (opening[2] ? columnsOf(opening[2]) : 0),
+    };
+  }
+
+  if (open) blocks.push({ ...open, end: doc.lines });
+  return blocks;
+}
 
 /** Ask the live decorations to rebuild even when the document did not change. */
 export const refreshLivePreview = StateEffect.define<null>();
@@ -87,6 +131,18 @@ function buildDecorations(
     }
   }
 
+  const codeBlocks = findCodeBlocks(doc);
+  const editingCodeLines = new Set<number>();
+  for (const block of codeBlocks) {
+    const touched = Array.from(activeLines).some(
+      (line) => line >= block.start && line <= block.end,
+    );
+    if (!touched) continue;
+    for (let line = block.start; line <= block.end; line += 1) {
+      editingCodeLines.add(line);
+    }
+  }
+
   const overlaps = (from: number, to: number) =>
     occupied.some(([start, end]) => from < end && to > start);
 
@@ -142,6 +198,19 @@ function buildDecorations(
       });
     }
 
+    // Focusing any line of a fenced block reveals the entire source block:
+    // both fences, original indentation and all code lines. Preview styling
+    // resumes when focus leaves the block.
+    if (editingCodeLines.has(lineNumber)) {
+      const indent = leadingIndentColumns(text);
+      if (indent > 0) {
+        addLine(lineNumber, "cm-live-hang", {
+          style: `--block-indent:${indent};--block-pad:${indent}`,
+        });
+      }
+      continue;
+    }
+
     // ---- fenced code -----------------------------------------------------
     const addCodeLine = (
       className: string,
@@ -160,7 +229,7 @@ function buildDecorations(
     };
 
     if (fence) {
-      const closing = /^(\s*)(`{3,}|~{3,})\s*$/.exec(text);
+      const closing = CODE_FENCE_CLOSE.exec(text);
       if (closing && closing[2]?.[0] === fence.char) {
         addCodeLine(
           `cm-live-code-line cm-live-code-fence cm-live-code-end${
@@ -176,10 +245,15 @@ function buildDecorations(
       continue;
     }
 
-    const opening = /^(\s*)(`{3,}|~{3,})(.*)$/.exec(text);
+    // A Logseq block may open its fence after a bullet or ordered marker:
+    //   - ```javascript
+    // Treat the marker as indentation so the code body aligns with the list
+    // content rather than falling back to plain markdown lines.
+    const opening = CODE_FENCE_OPEN.exec(text);
     if (opening) {
-      const marker = opening[2] ?? "```";
-      const indent = leadingIndentColumns(text);
+      const marker = opening[3] ?? "```";
+      const indent =
+        leadingIndentColumns(text) + (opening[2] ? columnsOf(opening[2]) : 0);
       fence = { char: marker[0] ?? "`", indent };
       addCodeLine(
         `cm-live-code-line cm-live-code-fence cm-live-code-start${

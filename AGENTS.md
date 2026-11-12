@@ -143,6 +143,13 @@ web/
   CodeMirror with `readOnly`/`editable(false)`, disables task toggles, hides
   save/delete and keeps wikilinks clickable. Do not reintroduce a separate
   source-mode switcher; focusing a block already reveals its source.
+- Fenced code is block-scoped: `findCodeBlocks` scans the document so focusing
+  any line (not just the opening fence) reveals the entire fenced source and
+  restores the rendered block on blur. Keep code lines hanging-indented while
+  in source mode so the active-line highlight starts at the code column.
+- Code blocks use the light code surface (`--color-panel` plus theme syntax
+  colors) and `@codemirror/language-data` for lazy language highlighting. Use
+  theme tokens for token colors; do not bring back the dark code surface.
 - The single-page editor uses `autoHeight`: the page/main pane scrolls and
   the editor grows with its content. Do not put the editor back in a fixed
   height container with an internal `.cm-scroller` scrollbar. Journal cards

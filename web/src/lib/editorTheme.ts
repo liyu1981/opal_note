@@ -97,6 +97,69 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: t.quote, color: "var(--color-muted)" },
   { tag: t.list, color: "var(--color-ink-soft)" },
   { tag: t.contentSeparator, color: "var(--color-line-strong)" },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment, t.docComment],
+    color: "var(--color-muted)",
+    fontStyle: "italic",
+  },
+  {
+    tag: [
+      t.keyword,
+      t.controlKeyword,
+      t.definitionKeyword,
+      t.moduleKeyword,
+      t.operatorKeyword,
+      t.modifier,
+      t.self,
+    ],
+    color: "var(--color-accent-strong)",
+  },
+  {
+    tag: [t.string, t.special(t.string), t.regexp, t.escape],
+    color: "var(--color-mint)",
+  },
+  {
+    tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom],
+    color: "var(--color-danger)",
+  },
+  {
+    tag: [
+      t.function(t.variableName),
+      t.function(t.propertyName),
+      t.definition(t.variableName),
+    ],
+    color: "var(--color-accent)",
+  },
+  {
+    tag: [t.typeName, t.className, t.namespace],
+    color: "var(--color-muted)",
+  },
+  {
+    tag: [t.propertyName, t.attributeName, t.attributeValue],
+    color: "var(--color-accent-strong)",
+  },
+  { tag: t.tagName, color: "var(--color-danger)" },
+  {
+    tag: [
+      t.operator,
+      t.punctuation,
+      t.bracket,
+      t.brace,
+      t.paren,
+      t.squareBracket,
+      t.angleBracket,
+    ],
+    color: "var(--color-muted)",
+  },
+  {
+    tag: [t.meta, t.annotation, t.processingInstruction],
+    color: "var(--color-faint)",
+  },
+  {
+    tag: t.invalid,
+    color: "var(--color-danger)",
+    textDecoration: "underline wavy",
+  },
 ]);
 
 export const noteMarkdownHighlighting = syntaxHighlighting(
