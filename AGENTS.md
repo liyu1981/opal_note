@@ -206,9 +206,28 @@ web/
 - Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
   `GET /notebooks/{id}/graph`. Nodes are all notes; edges only resolved
   wikilinks. `GraphPanel` defaults to the active note's 1-hop neighborhood with
-  a Full toggle; the full-page view is the whole notebook. `graphLayout.ts`
-  is a deterministic synchronous force layout, and clicking nodes uses
-  `navigateAtom`. Keep graph data out of the editor's Suspense path.
+  a Full toggle; `fill` mode is the full-page whole-notebook graph. Keep graph
+  data out of the editor's Suspense path.
+- `GraphCanvas` owns view state: live force simulation, wheel/button zoom,
+  background pan, node drag, reset, and single-click selection. Connected
+  nodes animate from `createLiveSimulation`; anchors keep the Logseq seed shape,
+  and dragging a node sets its `fx/fy` so link forces pull its neighbours.
+  Auto-fit follows the simulation until the user pans or zooms; Reset restores
+  the initial seed, fit and simulation. Double-clicking (or Enter on) a node
+  uses `navigateAtom`; a single click only highlights that node's connections.
+  Preserve this distinction and the ResizeObserver-driven full-page sizing.
+- Graph colors are theme tokens in `src/index.css`:
+  `--color-graph-bg`, `--color-graph-node`, `--color-graph-node-journal`,
+  `--color-graph-edge`, `--color-graph-label`. Keep the SVG using these
+  variables rather than hard-coded graph colors; nodes and labels must stay
+  readable against the near-white graph surface.
+- `graphLayout.ts` follows Logseq's all-pages approach: `d3-force` with
+  link distance 82/strength .82, many-body charge -140/distanceMax 420,
+  collision radius +10, center force and Logseq's tick-count schedule. Isolated
+  pages are placed in deterministic rings around the connected cluster rather
+  than being force-simulated. The initial layout is synchronous and
+  deterministic; connected nodes then run a live anchored simulation for
+  movement and linked-node dragging.
 - Backlink counts for the pages table are computed in one pass over
   `NOTEBOOK_LINK_EDGES` and resolved with `note_link_keys`; do not issue a
   backlink query per row.

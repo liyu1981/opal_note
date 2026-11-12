@@ -276,12 +276,17 @@ back/forward history controls, and a Home button on the right.
   starts a fresh history at that notebook's journal.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
-  renders an interactive local/full notebook graph: click a node to open its
-  page, hover to focus its links, and switch between the active page's
-  neighborhood and the complete graph.
+  renders an interactive local/full notebook graph: click a node to highlight
+  its links, double-click to open its page, hover to preview links, and switch
+  between the active page's neighborhood and the complete graph. The full graph
+  follows Logseq's all-pages layout: d3-force for connected pages and a
+  deterministic ring of isolated pages around the connected cluster. Connected
+  nodes animate under force; drag a node to pull its neighbours, and use
+  zoom/pan/reset controls.
 - **Graph view** — the left-sidebar Graph view opens a full-page notebook graph
-  using the same resolved-link data. It participates in normal back/forward
-  history.
+  using the same resolved-link data, filling the available workspace. Drag the
+  canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,
+  and reset the view. It participates in normal back/forward history.
 
 Favorites and recents are stored in the browser, scoped per notebook. A page
 can be pinned with the star in the editor toolbar.

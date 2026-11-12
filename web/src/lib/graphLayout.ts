@@ -1,3 +1,16 @@
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+  type Simulation,
+  type SimulationLinkDatum,
+  type SimulationNodeDatum,
+} from "d3-force";
+
 import type { GraphEdge, GraphNode } from "../api/types";
 
 export type PositionedNode = GraphNode & {
@@ -7,136 +20,306 @@ export type PositionedNode = GraphNode & {
   degree: number;
 };
 
+type SimNode = SimulationNodeDatum & {
+  id: string;
+  title: string;
+  tags: string[];
+  degree: number;
+  radius: number;
+};
+
+type SimLink = SimulationLinkDatum<SimNode>;
+
+const LINK_DISTANCE = 82;
+const CHARGE_STRENGTH = -140;
+const CHARGE_DISTANCE = 420;
+const ISOLATED_START_RADIUS = 180;
+const ISOLATED_GAP = 58;
+
 /**
- * Small deterministic force layout for the notebook graph. It runs in one
- * synchronous pass (no animation) so the panel stays cheap and predictable.
+ * A compact adaptation of Logseq's all-pages graph layout:
+ *
+ * - connected pages run through d3-force with link/charge/collision forces
+ * - unlinked pages are arranged in deterministic rings around the connected
+ *   cluster (Logseq's isolated-page placement)
+ * - tick counts follow Logseq's small/medium/large graph schedule
+ *
+ * The result is deliberately synchronous so the React panel can render it
+ * without an animation loop.
  */
 export function layoutGraph(
   nodes: GraphNode[],
   edges: GraphEdge[],
   width: number,
   height: number,
-  focusId: string | null = null,
 ): PositionedNode[] {
   if (nodes.length === 0) return [];
 
-  const pad = Math.max(20, Math.min(width, height) * 0.08);
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const seeded = nodes.map((node, index) => {
-    const angle = (index / nodes.length) * Math.PI * 2;
-    const spread = Math.min(width, height) * 0.3;
-    return {
-      ...node,
-      x: centerX + Math.cos(angle) * spread,
-      y: centerY + Math.sin(angle) * spread,
-      vx: 0,
-      vy: 0,
-      degree: 0,
-      radius: 5,
-    };
-  });
-
-  const byId = new Map(seeded.map((node) => [node.id, node]));
+  const degree = new Map<string, number>();
   for (const edge of edges) {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    if (source) source.degree += 1;
-    if (target) target.degree += 1;
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
   }
 
-  const iterations = seeded.length > 80 ? 150 : 260;
-  for (let step = 0; step < iterations; step += 1) {
-    // Repel every pair so disconnected pages still spread out.
-    for (let i = 0; i < seeded.length; i += 1) {
-      const a = seeded[i];
-      if (!a) continue;
-      for (let j = i + 1; j < seeded.length; j += 1) {
-        const b = seeded[j];
-        if (!b) continue;
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let distanceSq = dx * dx + dy * dy;
-        if (distanceSq < 0.01) {
-          dx = (i + 1) * 0.1;
-          dy = (j + 1) * 0.1;
-          distanceSq = dx * dx + dy * dy;
-        }
-        const distance = Math.sqrt(distanceSq);
-        const force = Math.min(18, 900 / distanceSq);
-        const fx = (dx / distance) * force;
-        const fy = (dy / distance) * force;
-        a.vx -= fx;
-        a.vy -= fy;
-        b.vx += fx;
-        b.vy += fy;
-      }
-    }
+  const radiusFor = (id: string) => {
+    const d = degree.get(id) ?? 0;
+    const base = id.startsWith("journals/") ? 4.4 : 3.8;
+    return Math.min(12, base + 3.4 * Math.sqrt(d));
+  };
 
-    // Link springs pull connected pages together.
-    for (const edge of edges) {
-      const a = byId.get(edge.source);
-      const b = byId.get(edge.target);
-      if (!a || !b) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (distance - Math.min(width, height) * 0.22) * 0.018;
-      const fx = (dx / distance) * force;
-      const fy = (dy / distance) * force;
-      a.vx += fx;
-      a.vy += fy;
-      b.vx -= fx;
-      b.vy -= fy;
-    }
-
-    for (const node of seeded) {
-      node.vx += (centerX - node.x) * 0.0025;
-      node.vy += (centerY - node.y) * 0.0025;
-      if (focusId && node.id === focusId) {
-        node.vx += (centerX - node.x) * 0.006;
-        node.vy += (centerY - node.y) * 0.006;
-      }
-      node.vx *= 0.82;
-      node.vy *= 0.82;
-      node.x = Math.max(pad, Math.min(width - pad, node.x + node.vx));
-      node.y = Math.max(pad, Math.min(height - pad, node.y + node.vy));
+  const linked: SimNode[] = [];
+  const isolated: GraphNode[] = [];
+  for (const node of nodes) {
+    if ((degree.get(node.id) ?? 0) > 0) {
+      linked.push({
+        id: node.id,
+        title: node.title,
+        tags: node.tags,
+        degree: degree.get(node.id) ?? 0,
+        radius: radiusFor(node.id),
+      });
+    } else {
+      isolated.push(node);
     }
   }
 
-  const xs = seeded.map((node) => node.x);
-  const ys = seeded.map((node) => node.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  const linkedIds = new Set(linked.map((node) => node.id));
+  const simLinks: SimLink[] = edges
+    .filter(
+      (edge) =>
+        linkedIds.has(edge.source) && linkedIds.has(edge.target),
+    )
+    .map((edge) => ({ source: edge.source, target: edge.target }));
+
+  if (linked.length > 0) {
+    const simulation = forceSimulation<SimNode>(linked)
+      .force(
+        "link",
+        forceLink<SimNode, SimLink>(simLinks)
+          .id((node) => node.id)
+          .distance(LINK_DISTANCE)
+          .strength(0.82),
+      )
+      .force(
+        "charge",
+        forceManyBody<SimNode>()
+          .strength(CHARGE_STRENGTH)
+          .distanceMax(CHARGE_DISTANCE),
+      )
+      .force(
+        "collision",
+        forceCollide<SimNode>()
+          .radius((node) => node.radius + 10)
+          .strength(0.86)
+          .iterations(2),
+      )
+      // Logseq's all-pages layout leaves Y unconstrained.
+      .force("y", forceY<SimNode>(0).strength(0))
+      .force("center", forceCenter(0, 0))
+      .stop();
+
+    const ticks =
+      nodes.length <= 120
+        ? 160
+        : nodes.length <= 400
+          ? 110
+          : nodes.length <= 900
+            ? 90
+            : 70;
+    for (let tick = 0; tick < ticks; tick += 1) simulation.tick();
+  }
+
+  const positioned: PositionedNode[] = linked.map((node) => ({
+    id: node.id,
+    title: node.title,
+    tags: node.tags,
+    degree: node.degree,
+    radius: node.radius,
+    x: node.x ?? 0,
+    y: node.y ?? 0,
+  }));
+
+  if (isolated.length > 0) {
+    const linkedRadius = graphRadius(positioned);
+    const startRadius = Math.max(
+      ISOLATED_START_RADIUS,
+      linkedRadius + 96,
+    );
+    const sorted = [...isolated].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+    let cursor = 0;
+    let ring = 0;
+    while (cursor < sorted.length) {
+      const ringRadius = startRadius + ring * ISOLATED_GAP;
+      const capacity = Math.max(
+        14,
+        Math.floor((2 * Math.PI * ringRadius) / 42),
+      );
+      const ringNodes = sorted.slice(cursor, cursor + capacity);
+      const offset = ring * 0.41;
+      ringNodes.forEach((node, index) => {
+        const angle =
+          offset + (index * Math.PI * 2) / Math.max(1, ringNodes.length);
+        positioned.push({
+          id: node.id,
+          title: node.title,
+          tags: node.tags,
+          degree: 0,
+          radius: radiusFor(node.id),
+          x: Math.cos(angle) * ringRadius,
+          y: Math.sin(angle) * ringRadius,
+        });
+      });
+      cursor += capacity;
+      ring += 1;
+    }
+  }
+
+  // Fit the graph into the canvas without distorting its shape. Small graphs
+  // keep a modest scale so a two-node local graph does not span edge to edge.
+  const minX = Math.min(...positioned.map((node) => node.x - node.radius));
+  const maxX = Math.max(...positioned.map((node) => node.x + node.radius));
+  const minY = Math.min(...positioned.map((node) => node.y - node.radius));
+  const maxY = Math.max(...positioned.map((node) => node.y + node.radius));
   const spanX = Math.max(maxX - minX, 1);
   const spanY = Math.max(maxY - minY, 1);
-  // Don't stretch a tiny local graph across the entire canvas. Large graphs
-  // use the available space; small ones keep a comfortable centered cluster.
+  const pad = Math.max(20, Math.min(width, height) * 0.08);
   const scale = Math.min(
     (width - pad * 2) / spanX,
     (height - pad * 2) / spanY,
-    2.2,
+    2,
   );
   const scaledWidth = spanX * scale;
   const scaledHeight = spanY * scale;
   const offsetX = (width - scaledWidth) / 2;
   const offsetY = (height - scaledHeight) / 2;
 
-  return seeded.map((node) => ({
-    id: node.id,
-    title: node.title,
-    tags: node.tags,
-    degree: node.degree,
-    radius: Math.min(12, 4.5 + Math.sqrt(node.degree + 1) * 2.4),
-    x:
-      seeded.length === 1
-        ? centerX
-        : offsetX + (node.x - minX) * scale,
-    y:
-      seeded.length === 1
-        ? centerY
-        : offsetY + (node.y - minY) * scale,
+  return positioned.map((node) => ({
+    ...node,
+    x: nodes.length === 1 ? width / 2 : offsetX + (node.x - minX) * scale,
+    y: nodes.length === 1 ? height / 2 : offsetY + (node.y - minY) * scale,
   }));
+}
+
+export type LiveGraphSimulation = {
+  simulation: Simulation<SimNode, SimLink> | null;
+  byId: Map<string, SimNode>;
+};
+
+/**
+ * The static layout supplies the fitted seed and isolated rings. Connected
+ * nodes then get a live d3 simulation so the graph visibly settles, and so
+ * dragging one node can pull its neighbours through the link forces.
+ */
+export function createLiveSimulation(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  width: number,
+  height: number,
+  initialPositions: PositionedNode[],
+): LiveGraphSimulation {
+  const degree = new Map<string, number>();
+  for (const edge of edges) {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  }
+
+  const initialById = new Map(
+    initialPositions.map((node) => [node.id, node]),
+  );
+  const linked = nodes
+    .filter((node) => (degree.get(node.id) ?? 0) > 0)
+    .map((node) => {
+      const position = initialById.get(node.id);
+      const id = node.id;
+      return {
+        id,
+        title: node.title,
+        tags: node.tags,
+        degree: degree.get(id) ?? 0,
+        radius: position?.radius ??
+          Math.min(
+            12,
+            (id.startsWith("journals/") ? 4.4 : 3.8) +
+              3.4 * Math.sqrt(degree.get(id) ?? 0),
+          ),
+        x: position?.x ?? width / 2,
+        y: position?.y ?? height / 2,
+        vx: seededVelocity(id, 1) * 5,
+        vy: seededVelocity(id, 2) * 5,
+      };
+    });
+
+  if (linked.length === 0) {
+    return { simulation: null, byId: new Map() };
+  }
+
+  const linkedIds = new Set(linked.map((node) => node.id));
+  const simLinks: SimLink[] = edges
+    .filter(
+      (edge) =>
+        linkedIds.has(edge.source) && linkedIds.has(edge.target),
+    )
+    .map((edge) => ({ source: edge.source, target: edge.target }));
+
+  const simulation = forceSimulation<SimNode>(linked)
+    .force(
+      "link",
+      forceLink<SimNode, SimLink>(simLinks)
+        .id((node) => node.id)
+        .distance(LINK_DISTANCE)
+        .strength(0.82),
+    )
+    .force(
+      "charge",
+      forceManyBody<SimNode>()
+        .strength(CHARGE_STRENGTH)
+        .distanceMax(CHARGE_DISTANCE),
+    )
+    .force(
+      "collision",
+      forceCollide<SimNode>()
+        .radius((node) => node.radius + 10)
+        .strength(0.86)
+        .iterations(2),
+    )
+    .force("center", forceCenter(width / 2, height / 2))
+    // Anchors keep the live simulation near the Logseq-style seed while still
+    // letting links pull neighbours when a node is dragged.
+    .force(
+      "x",
+      forceX<SimNode>((node) => initialById.get(node.id)?.x ?? width / 2)
+        .strength(0.055),
+    )
+    .force(
+      "y",
+      forceY<SimNode>((node) => initialById.get(node.id)?.y ?? height / 2)
+        .strength(0.055),
+    )
+    .alpha(1)
+    .restart();
+
+  return {
+    simulation,
+    byId: new Map(linked.map((node) => [node.id, node])),
+  };
+}
+
+function seededVelocity(id: string, salt: number): number {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 4294967295 - 0.5) * 2;
+}
+
+function graphRadius(nodes: PositionedNode[]): number {
+  if (nodes.length === 0) return 0;
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const maxX = Math.max(...nodes.map((node) => node.x));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxY = Math.max(...nodes.map((node) => node.y));
+  return Math.max(maxX - minX, maxY - minY) / 2;
 }
