@@ -2,6 +2,7 @@ mod assets;
 mod auth;
 mod config;
 mod error;
+mod plugins;
 mod routes;
 mod state;
 mod store;
@@ -33,7 +34,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::debug!(data_dir = %store.data_dir().display(), "store ready");
-    let state = AppState::new(store, token, args.query_timeout_secs);
+    let state = AppState::new(
+        store,
+        token,
+        args.query_timeout_secs,
+        args.plugin_timeout_secs,
+    );
     let app = routes::router(state, args.dev_cors);
 
     let listener = TcpListener::bind(&args.bind)

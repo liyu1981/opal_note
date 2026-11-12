@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { JournalPage } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
+import { refreshJournalPluginsAtom } from "../state/atoms";
 import type { LinkTarget } from "../lib/livePreview";
 import { IconFile, IconLock } from "./Icons";
 import { LiveMarkdownEditor } from "./editor/LiveMarkdownEditor";
@@ -35,6 +37,7 @@ export function JournalCard({
   const [tick, setTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  const refreshPlugins = useSetAtom(refreshJournalPluginsAtom);
   const contentRef = useRef(content);
   const dirtyRef = useRef(dirty);
   const versionRef = useRef(0);
@@ -55,6 +58,7 @@ export function JournalCard({
       });
       setTags(updated.tags);
       setUpdatedAt(updated.updated_at);
+      refreshPlugins();
       if (versionRef.current === version) {
         setDirty(false);
         setStatus("saved");
@@ -70,7 +74,7 @@ export function JournalCard({
     } finally {
       savingRef.current = false;
     }
-  }, [notebookId, page.id]);
+  }, [notebookId, page.id, refreshPlugins]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -94,7 +98,7 @@ export function JournalCard({
           });
       }
     };
-  }, [notebookId, page.id]);
+  }, [notebookId, page.id, refreshPlugins]);
 
   function change(next: string) {
     contentRef.current = next;

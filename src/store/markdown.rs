@@ -94,6 +94,89 @@ fn strip_code(content: &str) -> String {
     out
 }
 
+/// A task/checkbox extracted from a note body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTask {
+    /// 1-based line number within the body.
+    pub line: usize,
+    pub text: String,
+    pub status: String,
+}
+
+/// Extract block tasks from prose, ignoring fenced code. Supports markdown
+/// checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords.
+pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
+    let mut tasks = Vec::new();
+    let mut fence: Option<&str> = None;
+
+    for (index, line) in content.lines().enumerate() {
+        let trimmed = line.trim_start();
+
+        if let Some(marker) = fence {
+            if trimmed.starts_with(marker) {
+                fence = None;
+            }
+            continue;
+        }
+        if trimmed.starts_with("```") {
+            fence = Some("```");
+            continue;
+        }
+        if trimmed.starts_with("~~~") {
+            fence = Some("~~~");
+            continue;
+        }
+
+        let Some(rest) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+            .or_else(|| trimmed.strip_prefix("+ "))
+        else {
+            continue;
+        };
+
+        let (status, text) = if let Some(text) = rest.strip_prefix("[ ]") {
+            ("open", text)
+        } else if let Some(text) = rest
+            .strip_prefix("[x]")
+            .or_else(|| rest.strip_prefix("[X]"))
+        {
+            ("done", text)
+        } else if let Some(text) = rest.strip_prefix("[-]") {
+            ("cancelled", text)
+        } else if let Some(text) = keyword_task(rest, "TODO", "open")
+            .or_else(|| keyword_task(rest, "DOING", "doing"))
+            .or_else(|| keyword_task(rest, "DONE", "done"))
+            .or_else(|| keyword_task(rest, "CANCELED", "cancelled"))
+            .or_else(|| keyword_task(rest, "CANCELLED", "cancelled"))
+        {
+            text
+        } else {
+            continue;
+        };
+
+        let text = text.trim();
+        if !text.is_empty() {
+            tasks.push(ParsedTask {
+                line: index + 1,
+                text: text.to_string(),
+                status: status.to_string(),
+            });
+        }
+    }
+
+    tasks
+}
+
+fn keyword_task<'a>(rest: &'a str, keyword: &str, status: &'a str) -> Option<(&'a str, &'a str)> {
+    let after = rest.strip_prefix(keyword)?;
+    if after.is_empty() || after.starts_with(char::is_whitespace) {
+        Some((status, after.trim_start()))
+    } else {
+        None
+    }
+}
+
 /// Extract `[[target]]` / `[[target|label]]` / `[[target#heading]]` links.
 ///
 /// Returns `(normalized_target, label)` pairs, deduplicated by target.
@@ -545,6 +628,19 @@ mod tests {
     fn merges_and_normalizes_tags() {
         let tags = merge_tags("body #Inline", &["#Explicit".into(), " inline ".into()]);
         assert_eq!(tags, vec!["explicit", "inline"]);
+    }
+
+    #[test]
+    fn extracts_markdown_and_logseq_tasks() {
+        let content = "\n- [ ] open task\n  - [x] done task\n- TODO logseq open\n- DOING in progress\n- DONE finished\n- [-] cancelled\n```\n- [ ] code task\n```\n";
+        let tasks = extract_tasks(content);
+        let statuses: Vec<&str> = tasks.iter().map(|task| task.status.as_str()).collect();
+        assert_eq!(
+            statuses,
+            vec!["open", "done", "open", "doing", "done", "cancelled"]
+        );
+        assert_eq!(tasks[0].text, "open task");
+        assert_eq!(tasks[0].line, 2);
     }
 
     #[test]

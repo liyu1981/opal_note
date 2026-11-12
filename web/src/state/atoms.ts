@@ -28,6 +28,14 @@ export const refreshNotesAtom = atom(null, (_get, set) => {
   set(notesRevisionAtom, (revision) => revision + 1);
 });
 
+/** Bumped by journal-card saves so the plugin rail can refresh without
+ * invalidating notesAtom (and therefore without suspending the journal feed). */
+export const journalPluginsRevisionAtom = atom(0);
+
+export const refreshJournalPluginsAtom = atom(null, (_get, set) => {
+  set(journalPluginsRevisionAtom, (revision) => revision + 1);
+});
+
 export const activeNotebookIdAtom = atomWithStorage<string | null>(
   "opalnote.active-notebook",
   null,
@@ -53,6 +61,12 @@ export const searchOpenAtom = atom(false);
 export const pagesPageSizeAtom = atomWithStorage<number>(
   "opalnote.pages-page-size",
   20,
+);
+
+/** Expanded/collapsed state for left-sidebar sections, keyed by section title. */
+export const sidebarSectionsAtom = atomWithStorage<Record<string, boolean>>(
+  "opalnote.sidebar-sections.v1",
+  {},
 );
 
 /** Switching notebooks clears note selection and returns to the journal. */

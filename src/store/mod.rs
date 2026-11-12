@@ -19,7 +19,8 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, ScriptRunOptions};
 
 use self::markdown::{
-    extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page, summarize,
+    extract_tasks, extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page,
+    summarize, ParsedTask,
 };
 use self::model::{
     BacklinkRef, GraphData, GraphEdge, GraphNode, JournalPage, LinkRef, Note, NoteSummary,
@@ -258,6 +259,7 @@ struct PageRecord {
     summary: String,
     tags: Vec<String>,
     links: Vec<(String, String)>,
+    tasks: Vec<ParsedTask>,
     mtime_ns: i64,
     size: i64,
     created_at: f64,
@@ -292,10 +294,12 @@ impl Store {
             fs_lock: Mutex::new(()),
             default_query_timeout_secs,
         };
-        store.init_schema()?;
+        let task_backfill = store.init_schema()?;
 
-        // Build/refresh the index from whatever is already on disk.
-        store.sync_all_locked(false)?;
+        // Build/refresh the index from whatever is already on disk. A newly
+        // added task relation needs a one-time full read so existing notes get
+        // task rows without requiring a manual reindex.
+        store.sync_all_locked(task_backfill)?;
         Ok(store)
     }
 
@@ -303,7 +307,7 @@ impl Store {
         &self.data_dir
     }
 
-    fn init_schema(&self) -> Result<()> {
+    fn init_schema(&self) -> Result<bool> {
         let existing = self.run_raw("::relations", BTreeMap::new(), ScriptMutability::Immutable)?;
         let names: HashSet<String> = existing
             .rows
@@ -311,8 +315,12 @@ impl Store {
             .filter_map(|row| row.first().and_then(DataValue::get_str).map(str::to_string))
             .collect();
 
+        let mut created_task_relation = false;
         for (name, ddl) in queries::RELATIONS {
             if !names.contains(*name) {
+                if *name == "task" {
+                    created_task_relation = true;
+                }
                 self.run_raw(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                     .with_context(|| format!("creating relation `{name}`"))?;
             }
@@ -325,7 +333,7 @@ impl Store {
                 }
             }
         }
-        Ok(())
+        Ok(created_task_relation)
     }
 
     fn run_raw(
@@ -466,6 +474,7 @@ impl Store {
             changed.push(PageRecord {
                 tags: merge_tags(&parsed.body, &parsed.tags),
                 links: extract_wikilinks(&parsed.body),
+                tasks: extract_tasks(&parsed.body),
                 summary: summarize(&parsed.body, SUMMARY_CHARS),
                 path: file.rel.clone(),
                 title,
@@ -514,6 +523,7 @@ impl Store {
             ]);
             statements.push((queries::DELETE_TAG_ROWS, par.clone()));
             statements.push((queries::DELETE_LINK_ROWS, par.clone()));
+            statements.push((queries::DELETE_TASK_ROWS, par.clone()));
             statements.push((queries::DELETE_NOTE_ROWS, par));
         }
 
@@ -534,7 +544,8 @@ impl Store {
                 ),
             ]);
             statements.push((queries::DELETE_TAG_ROWS, par.clone()));
-            statements.push((queries::DELETE_LINK_ROWS, par));
+            statements.push((queries::DELETE_LINK_ROWS, par.clone()));
+            statements.push((queries::DELETE_TASK_ROWS, par));
 
             let tag_rows: Vec<DataValue> = changed
                 .iter()
@@ -572,6 +583,28 @@ impl Store {
                 statements.push((
                     queries::PUT_LINK_ROWS,
                     params([("rows", DataValue::List(link_rows))]),
+                ));
+            }
+
+            let task_rows: Vec<DataValue> = changed
+                .iter()
+                .flat_map(|page| {
+                    page.tasks.iter().map(|task| {
+                        DataValue::List(vec![
+                            DataValue::from(notebook_id),
+                            DataValue::from(page.path.as_str()),
+                            DataValue::from(task.line as i64),
+                            DataValue::from(task.text.as_str()),
+                            DataValue::from(task.status.as_str()),
+                            DataValue::from(page.updated_at),
+                        ])
+                    })
+                })
+                .collect();
+            if !task_rows.is_empty() {
+                statements.push((
+                    queries::PUT_TASK_ROWS,
+                    params([("rows", DataValue::List(task_rows))]),
                 ));
             }
         }
@@ -619,6 +652,7 @@ impl Store {
         self.run_atomic(vec![
             (queries::DELETE_NOTEBOOK_TAGS, par.clone()),
             (queries::DELETE_NOTEBOOK_LINKS, par.clone()),
+            (queries::DELETE_NOTEBOOK_TASKS, par.clone()),
             (queries::DELETE_NOTEBOOK_NOTES, par.clone()),
             (queries::DELETE_NOTEBOOK, par),
         ])

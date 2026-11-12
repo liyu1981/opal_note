@@ -28,6 +28,10 @@ pub struct ServeArgs {
     #[arg(long, env = "OPALNOTE_QUERY_TIMEOUT_SECS", default_value_t = 5.0)]
     pub query_timeout_secs: f64,
 
+    /// Maximum wall-clock budget for one journal plugin run, in seconds.
+    #[arg(long, env = "OPALNOTE_PLUGIN_TIMEOUT_SECS", default_value_t = 5.0)]
+    pub plugin_timeout_secs: f64,
+
     /// Allow cross-origin API requests (useful when calling the API from
     /// another origin or a separate frontend host).
     #[arg(long, env = "OPALNOTE_DEV_CORS", default_value_t = false)]

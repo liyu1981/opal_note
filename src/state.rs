@@ -10,16 +10,23 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub token: Option<Arc<str>>,
     pub query_timeout_secs: f64,
+    pub plugin_timeout_secs: f64,
     pub started_at: Instant,
     pub version: &'static str,
 }
 
 impl AppState {
-    pub fn new(store: Arc<Store>, token: Option<String>, query_timeout_secs: f64) -> Self {
+    pub fn new(
+        store: Arc<Store>,
+        token: Option<String>,
+        query_timeout_secs: f64,
+        plugin_timeout_secs: f64,
+    ) -> Self {
         Self {
             store,
             token: token.map(Arc::from),
             query_timeout_secs,
+            plugin_timeout_secs,
             started_at: Instant::now(),
             version: env!("CARGO_PKG_VERSION"),
         }

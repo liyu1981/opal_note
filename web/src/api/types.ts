@@ -39,6 +39,24 @@ export interface PageList {
   offset: number;
 }
 
+export interface JournalPluginItem {
+  id: string;
+  title: string;
+  detail: string;
+  note_path: string;
+  line: number;
+  status: string;
+  updated_at?: number;
+}
+
+export interface JournalPluginResult {
+  id: string;
+  title: string;
+  description: string;
+  items: JournalPluginItem[];
+  error?: string;
+}
+
 export interface GraphNode {
   id: string;
   title: string;

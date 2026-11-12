@@ -27,7 +27,7 @@ Production is a **single binary** with the built web client embedded via
 
 ## Stack
 
-- Server: Rust 2021, Axum 0.8, Tokio
+- Server: Rust 2021, Axum 0.8, Tokio, rquickjs for sandboxed journal plugins
 - Database: `mnestic` crate (MnesticDB, a maintained CozoDB fork); the library
   target is still imported as `cozo`. SQLite backend (bundled SQLite).
 - Client: React 19, TanStack Router, CodeMirror 6, TypeScript 7 (`tsc`
@@ -73,6 +73,7 @@ src/
   auth.rs          optional bearer-token middleware
   assets.rs        rust-embed static/SPA handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
+  plugins.rs       sandboxed QuickJS journal plugin runner
   store/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
     files.rs       folder layout, atomic writes, scanning, path safety, trash
@@ -84,7 +85,7 @@ web/
   src/api/         typed fetch client + shared types
   src/router.tsx   TanStack route tree and URL/view synchronization
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
-  src/components/  workspace shell, journal, pages, graph and sidebar panels
+  src/components/  workspace shell, journal/plugin rails, pages, graph, panels
   src/components/editor/  CodeMirror live editor + link completion
   src/lib/         app navigation, live preview, editor theme, graph layout
 ```
@@ -221,6 +222,23 @@ web/
   the initial seed, fit and simulation. Double-clicking (or Enter on) a node
   uses `useAppNavigate`; a single click only highlights that node's connections.
   Preserve this distinction and the ResizeObserver-driven full-page sizing.
+- Journal plugins live in `src/plugins.rs`: a fresh QuickJS runtime per run,
+  a read-only `__queryHost` bridge backed by `Store::run_query`, and a
+  per-plugin deadline that interrupts JS and bounds Datalog queries. Plugins
+  return a generic `{items: [...]}` JSON payload. Do not add filesystem or
+  network host APIs. The endpoint is `GET /notebooks/{id}/plugins` and uses
+  `OPALNOTE_PLUGIN_TIMEOUT_SECS`.
+- Tasks are derived during filesystem sync into the `task` relation from
+  markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
+  rows in sync with note insert/update/delete and notebook deletion.
+- `JournalPluginsPanel` is the right-hand journal rail (desktop only). It loads
+  the plugin endpoint, renders generic items, and opens item pages through
+  `useAppNavigate`. Journal card saves refresh `notesRevisionAtom` so task
+  widgets update after checkbox edits.
+- Sidebar section expansion is persisted in `sidebarSectionsAtom`
+  (`opalnote.sidebar-sections.v1`), keyed by section title. Panel
+  expand/collapse is persisted separately by `leftPanelOpenAtom` and
+  `rightPanelOpenAtom`.
 - Graph colors are theme tokens in `src/index.css`:
   `--color-graph-bg`, `--color-graph-node`, `--color-graph-node-journal`,
   `--color-graph-edge`, `--color-graph-label`. Keep the SVG using these
@@ -266,6 +284,7 @@ GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
 GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
 GET /api/notebooks/{notebook}/graph
+GET /api/notebooks/{notebook}/plugins
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.

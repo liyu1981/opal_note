@@ -49,6 +49,18 @@ pub const RELATIONS: &[(&str, &str)] = &[
             label: String
         }"#,
     ),
+    (
+        "task",
+        r#":create task {
+            notebook_id: String,
+            note_path: String,
+            line: Int
+            =>
+            text: String,
+            status: String,
+            updated_at: Float
+        }"#,
+    ),
 ];
 
 pub const INDEXES: &[&str] = &[
@@ -225,6 +237,26 @@ pub const PUT_TAG_ROWS: &str = r#"
 pub const PUT_LINK_ROWS: &str = r#"
 ?[notebook_id, from_note, target, label] <- $rows
 :put link {notebook_id, from_note, target => label}
+"#;
+
+pub const DELETE_TASK_ROWS: &str = r#"
+?[notebook_id, note_path, line] :=
+    *task{notebook_id, note_path, line},
+    notebook_id = $notebook_id,
+    note_path in $paths
+:rm task {notebook_id, note_path, line}
+"#;
+
+pub const DELETE_NOTEBOOK_TASKS: &str = r#"
+?[notebook_id, note_path, line] :=
+    *task{notebook_id, note_path, line},
+    notebook_id = $id
+:rm task {notebook_id, note_path, line}
+"#;
+
+pub const PUT_TASK_ROWS: &str = r#"
+?[notebook_id, note_path, line, text, status, updated_at] <- $rows
+:put task {notebook_id, note_path, line => text, status, updated_at}
 "#;
 
 // ---------------------------------------------------------------------------

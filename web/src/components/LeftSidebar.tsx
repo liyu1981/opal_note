@@ -5,7 +5,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import { formatJournalDate, ensureJournal } from "../lib/journal";
@@ -35,6 +35,7 @@ import {
   recentsAtom,
   refreshAtom,
   selectNotebookAtom,
+  sidebarSectionsAtom,
   type NoteRef,
 } from "../state/atoms";
 
@@ -410,13 +411,20 @@ function SidebarSection({
   action?: ReactNode;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const [sections, setSections] = useAtom(sidebarSectionsAtom);
+  const open = sections[title] ?? true;
   return (
     <section className="border-b border-line/60 py-2.5 last:border-0">
       <div className="flex items-center gap-1 px-1">
         <button
           type="button"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() =>
+            setSections((current) => ({
+              ...current,
+              [title]: !(current[title] ?? true),
+            }))
+          }
+          aria-expanded={open}
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left font-mono text-[1rem] font-semibold leading-tight tracking-[-0.025em] text-ink-soft transition hover:bg-white/50 hover:text-ink"
         >
           <IconChevron

@@ -169,6 +169,7 @@ All flags have environment-variable equivalents.
 | `--data-dir`               | `OPALNOTE_DATA_DIR`           | `./data`          | Root holding `notebooks/`, `index/` and `.trash/`        |
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
 | `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
+| `--plugin-timeout-secs`    | `OPALNOTE_PLUGIN_TIMEOUT_SECS`| `5`               | Per-run QuickJS journal plugin budget                    |
 | `--dev-cors`               | `OPALNOTE_DEV_CORS`           | `false`           | Permissive CORS for API calls from another origin        |
 
 Logging uses `tracing`: `RUST_LOG=opalnote=debug,tower_http=info`.
@@ -289,6 +290,10 @@ back/forward history controls, and a Home button on the right.
   using the same resolved-link data, filling the available workspace. Drag the
   canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,
   and reset the view. It participates in normal back/forward history.
+- **Journal tools** — journal view reserves a vertical plugin rail on the
+  right (desktop). Plugins run server-side in QuickJS, use read-only Datalog,
+  and return JSON items. The first plugin lists open todos across the notebook;
+  clicking one opens its page.
 
 ### Client routes
 
@@ -317,13 +322,15 @@ note     { notebook_id, path => title, content, summary,
                              mtime_ns, size, created_at, updated_at }
 note_tag { notebook_id, note_path, tag }
 link     { notebook_id, from_note, target => label }
+task     { notebook_id, note_path, line => text, status, updated_at }
 ```
 
 The index is keyed by relative path, so two notebooks may both contain
 `pages/index.md`. A secondary `note:by_notebook` index and a BM25 full-text
 index (`note:fts`) keep list and search queries fast.
 
-Writes touching a note plus its tags/links use MnesticDB's `multi_transaction`,
+Tasks are derived from markdown checkboxes and Logseq task keywords during sync.
+Writes touching a note plus its tags/links/tasks use MnesticDB's `multi_transaction`,
 and every filesystem mutation holds a store-wide lock so scans and sends do not
 interleave.
 
@@ -345,6 +352,7 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/pages`                      | Paged/filtered pages with backlink counts       |
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
+| GET    | `/notebooks/{id}/plugins`                    | Journal plugin results (QuickJS + Datalog)     |
 | POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
 | GET    | `/notebooks/{id}/journals`                   | `?before=<path>&limit=` date-desc feed          |
 | GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |
@@ -408,6 +416,7 @@ src/
   auth.rs            optional bearer-token middleware
   assets.rs          rust-embed asset + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
+  plugins.rs         sandboxed QuickJS journal plugin runner
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
     files.rs         folder layout, atomic writes, scanning, trash
@@ -425,6 +434,9 @@ web/
 
 ## Security notes
 
+- Journal plugins run in a fresh QuickJS runtime per request with memory, stack
+  and wall-clock limits. They get only a read-only Datalog host function; no
+  filesystem or network APIs are exposed.
 - Without `OPALNOTE_TOKEN`, anyone who can reach the port can read and write
   files under `data/notebooks`. Set a token before exposing the server.
 - There is no per-notebook access control — the token is a single-user gate.

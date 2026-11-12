@@ -2,6 +2,7 @@ import type {
   GraphData,
   Health,
   JournalPage,
+  JournalPluginResult,
   Note,
   NoteSummary,
   Notebook,
@@ -154,6 +155,11 @@ export const api = {
 
   graph: (notebookId: string) =>
     request<GraphData>(`/notebooks/${encode(notebookId)}/graph`),
+
+  journalPlugins: (notebookId: string) =>
+    request<JournalPluginResult[]>(
+      `/notebooks/${encode(notebookId)}/plugins`,
+    ),
 
   searchNotes: (notebookId: string, query: string, limit = 50) =>
     request<NoteSummary[]>(

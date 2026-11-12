@@ -11,6 +11,7 @@ import {
 } from "../lib/markdown";
 import { IconCalendar } from "./Icons";
 import { JournalCard } from "./JournalCard";
+import { JournalPluginsPanel } from "./JournalPluginsPanel";
 import {
   activeNotebookIdAtom,
   notesAtom,
@@ -137,8 +138,9 @@ export function JournalFeed() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
-      <div className="mx-auto w-full max-w-4xl px-6 py-6">
+    <main className="flex min-h-0 flex-1 bg-canvas">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-4xl px-6 py-6">
         <header className="flex items-end justify-between gap-4 border-b border-line pb-4">
           <div>
             <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.16em] text-faint">
@@ -209,7 +211,9 @@ export function JournalFeed() {
                 ? "Start of journal"
                 : ""}
         </div>
+        </div>
       </div>
+      <JournalPluginsPanel />
     </main>
   );
 }
