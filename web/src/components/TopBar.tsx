@@ -93,7 +93,7 @@ export function TopBar() {
         aria-pressed={leftOpen}
         className={`rounded-md border p-1.5 transition ${
           leftOpen
-            ? "border-line-strong bg-panel-strong text-ink"
+            ? "border-accent/30 bg-accent-soft text-accent-strong"
             : "border-transparent text-muted hover:bg-panel"
         }`}
         title={leftOpen ? "Collapse left sidebar" : "Expand left sidebar"}
@@ -108,7 +108,7 @@ export function TopBar() {
         aria-pressed={searchOpen}
         className={`rounded-md border p-1.5 transition ${
           searchOpen
-            ? "border-line-strong bg-panel-strong text-ink"
+            ? "border-accent/30 bg-accent-soft text-accent-strong"
             : "border-transparent text-muted hover:bg-panel hover:text-ink"
         }`}
         title="Search notes (⌘K)"
@@ -148,7 +148,7 @@ export function TopBar() {
             selectNotebook(event.target.value || null);
             navigate({ view: "journal" });
           }}
-          className="max-w-[8.5rem] rounded-md border border-line bg-white/70 px-2 py-1 text-xs outline-none sm:max-w-[11rem]"
+          className="max-w-[8.5rem] rounded-md border border-line bg-white/70 px-2 py-1 text-[14px] outline-none sm:max-w-[11rem]"
           aria-label="Notebook"
         >
           <option value="">No notebook</option>
@@ -162,13 +162,13 @@ export function TopBar() {
 
       <div className="hidden min-w-0 items-center gap-2 md:flex">
         <IconBook className="h-3.5 w-3.5 shrink-0 text-faint" />
-        <span className="truncate font-mono text-[12px] font-medium text-ink-soft">
+        <span className="truncate font-sans text-[14px] font-medium text-ink-soft">
           {notebook?.name ?? "No notebook selected"}
         </span>
         {notebook && (
           <>
             <span className="text-faint">·</span>
-            <span className="shrink-0 text-[10.5px] text-muted">
+            <span className="shrink-0 text-[14px] text-muted">
               {notebook.note_count} {notebook.note_count === 1 ? "note" : "notes"}
             </span>
           </>
@@ -182,7 +182,7 @@ export function TopBar() {
           aria-pressed={journalView}
           className={`rounded-md border p-1.5 transition ${
             journalView
-              ? "border-line-strong bg-panel-strong text-ink"
+              ? "border-accent/30 bg-accent-soft text-accent-strong"
               : "border-transparent text-muted hover:bg-panel"
           }`}
           title="Home — journal feed"
@@ -196,7 +196,7 @@ export function TopBar() {
           aria-pressed={rightOpen}
           className={`rounded-md border p-1.5 transition ${
             rightOpen
-              ? "border-line-strong bg-panel-strong text-ink"
+              ? "border-accent/30 bg-accent-soft text-accent-strong"
               : "border-transparent text-muted hover:bg-panel"
           }`}
           title={rightOpen ? "Collapse right sidebar" : "Expand right sidebar"}
@@ -216,7 +216,7 @@ export function TopBar() {
           </button>
         )}
         <span
-          className="hidden items-center gap-1.5 rounded-full border border-line bg-white/60 px-2.5 py-1 text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted sm:inline-flex"
+          className="hidden items-center gap-1.5 rounded-full border border-line bg-white/60 px-2.5 py-1 text-[14px] font-medium uppercase tracking-[0.1em] text-muted sm:inline-flex"
           title="Reads and writes go through the server's MnesticDB index"
         >
           <span className="h-1.5 w-1.5 rounded-full bg-mint" />

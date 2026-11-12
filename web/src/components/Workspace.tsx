@@ -8,6 +8,13 @@ import { SearchDialog } from "./SearchDialog";
 import { SettingsDialog } from "./SettingsDialog";
 import { TopBar } from "./TopBar";
 import {
+  applySettings,
+  bootstrapSettings,
+  settingsAtom,
+  settingsErrorAtom,
+  settingsStatusAtom,
+} from "../lib/settings";
+import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
   graphViewAtom,
@@ -29,6 +36,27 @@ export function Workspace() {
   const graphView = useAtomValue(graphViewAtom);
   const leftOpen = useAtomValue(leftPanelOpenAtom);
   const rightOpen = useAtomValue(rightPanelOpenAtom);
+  const settings = useAtomValue(settingsAtom);
+  const setSettings = useSetAtom(settingsAtom);
+  const setSettingsStatus = useSetAtom(settingsStatusAtom);
+  const setSettingsError = useSetAtom(settingsErrorAtom);
+
+  useEffect(() => {
+    let cancelled = false;
+    void bootstrapSettings().then(({ settings, warning }) => {
+      if (cancelled) return;
+      setSettings(settings);
+      setSettingsStatus(warning ? "error" : "saved");
+      setSettingsError(warning ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setSettings, setSettingsError, setSettingsStatus]);
+
+  useEffect(() => {
+    applySettings(settings);
+  }, [settings]);
 
   useEffect(() => {
     if (notebooks.length === 0) {

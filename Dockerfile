@@ -30,8 +30,11 @@ COPY --from=server /app/target/release/opalnote /usr/local/bin/opalnote
 
 USER opal
 WORKDIR /home/opal
+# The container has no certificates by default; mount certs and unset this
+# variable (or set OPALNOTE_NO_TLS=0) to serve HTTPS.
 ENV OPALNOTE_DATA_DIR=/data \
     OPALNOTE_BIND=0.0.0.0:7827 \
+    OPALNOTE_NO_TLS=true \
     RUST_LOG=opalnote=info,tower_http=warn
 
 VOLUME ["/data"]

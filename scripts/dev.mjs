@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   ROOT,
   buildWeb,
+  ensureDevCerts,
   ensureWebDependencies,
   flagValue,
   forwardedArgs,
@@ -35,7 +36,14 @@ if (flagValue(extra, "--data-dir") === null) args.push("--data-dir", dataDir);
 args.push(...extra);
 
 const effectiveBind = flagValue(extra, "--bind") ?? bind;
+const noTls =
+  extra.includes("--no-tls") ||
+  ["1", "true", "yes"].includes(
+    String(process.env.OPALNOTE_NO_TLS ?? "").toLowerCase(),
+  );
+const scheme = noTls ? "http" : "https";
 
+ensureDevCerts(extra);
 ensureWebDependencies();
 buildWeb();
 await syncServerAssets();
@@ -57,7 +65,7 @@ function startServer() {
 
   step("Starting Opal Note in dev mode");
   console.log(`  ${path.relative(ROOT, binary)} ${args.join(" ")}`);
-  console.log(`  → http://${effectiveBind.replace("0.0.0.0", "localhost")}\n`);
+  console.log(`  → ${scheme}://${effectiveBind.replace("0.0.0.0", "localhost")}\n`);
 
   const proc = spawn(binary, args, { cwd: ROOT, stdio: "inherit" });
   child = proc;

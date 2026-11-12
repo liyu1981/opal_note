@@ -136,14 +136,14 @@ export function JournalCard({
         <button
           type="button"
           onClick={() => void flushThen(() => onOpenPage(page))}
-          className="min-w-0 text-left font-mono text-[24px] font-semibold leading-tight tracking-tight text-ink transition hover:text-accent-strong"
+          className="min-w-0 text-left font-serif text-[16px] font-semibold leading-tight tracking-tight text-ink transition hover:text-accent-strong sm:text-[24px]"
           title="Open this journal page"
         >
           {formatJournalDate(page.title)}
         </button>
         <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap pt-1">
           <span
-            className={`font-mono text-[9px] ${
+            className={`font-mono text-[14px] ${
               status === "error" ? "text-danger" : "text-faint"
             }`}
           >
@@ -155,8 +155,8 @@ export function JournalCard({
               statusLabel
             )}
           </span>
-          <span className="font-mono text-[9px] text-faint">·</span>
-          <span className="font-mono text-[9px] text-faint">
+          <span className="font-mono text-[14px] text-faint">·</span>
+          <span className="font-mono text-[14px] text-faint">
             {relativeTime(updatedAt)}
           </span>
           <button
@@ -175,7 +175,7 @@ export function JournalCard({
         {tags.map((tag) => (
           <span
             key={tag}
-            className="rounded bg-panel px-1 py-0.5 font-mono text-[8.5px] text-muted"
+            className="rounded bg-panel px-1 py-0.5 font-mono text-[14px] text-muted"
           >
             #{tag}
           </span>
@@ -195,7 +195,7 @@ export function JournalCard({
       </div>
 
       {error && (
-        <p className="mt-1 rounded bg-danger/10 px-2 py-1 font-mono text-[10px] text-danger">
+        <p className="mt-1 rounded bg-danger/10 px-2 py-1 font-mono text-[14px] text-danger">
           {error}
         </p>
       )}

@@ -74,6 +74,7 @@ src/
   assets.rs        rust-embed static/SPA handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
   plugins.rs       sandboxed QuickJS journal plugin runner
+  settings.rs      sparse settings.json store
   store/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
     files.rs       folder layout, atomic writes, scanning, path safety, trash
@@ -87,7 +88,7 @@ web/
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
   src/components/  workspace shell, journal/plugin rails, pages, graph, panels
   src/components/editor/  CodeMirror live editor + link completion
-  src/lib/         app navigation, live preview, editor theme, graph layout
+  src/lib/         app navigation, settings, live preview, graph layout
 ```
 
 ## Conventions
@@ -259,6 +260,22 @@ web/
   action loads `GET /notebooks/{id}/orphans`, shows a custom confirmation
   dialog and deletes selected files through the normal note DELETE route (so
   they land in `data/.trash/`). Do not bypass the trash path.
+- The UI follows the Square design system (primary `#3B82F6`, secondary
+  `#8B5CF6`, success/warning/danger tokens, 4px controls and 8px surfaces).
+  Default role fonts are Google Fonts with system fallbacks: Inter for UI and
+  JetBrains Mono for page titles, note editor, labels and code. Google Sans and
+  Anonymous Pro remain selectable. Use the semantic tokens in
+  `web/src/index.css`; do not introduce one-off colors, radii or fonts.
+- Settings are sparse overrides in `<data-dir>/settings.json`, served by
+  `GET/PUT /api/settings`. System defaults live in `web/src/lib/settings.ts`;
+  never persist default values explicitly. The client applies cached IndexedDB
+  settings immediately and revalidates from the server on every page load.
+  Font roles are interface/display/editor/mono; arbitrary Google Fonts are
+  requested over HTTPS. The large SettingsDialog uses left-side tabs.
+- HTTPS is enabled by default (`--no-tls` / `OPALNOTE_NO_TLS` disables it).
+  `pnpm dev` ensures mkcert certs under `certs/` (gitignored); production can
+  pass `--tls-cert` / `--tls-key`. The Docker image defaults to HTTP because
+  it has no certificate mount.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (⌘K search dialog, ⌘S save).
 
@@ -286,6 +303,7 @@ GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
 GET /api/notebooks/{notebook}/graph
 GET /api/notebooks/{notebook}/plugins
+GET|PUT /api/settings
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.

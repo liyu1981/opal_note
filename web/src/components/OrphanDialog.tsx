@@ -127,11 +127,11 @@ export function OrphanDialog({
           <div className="min-w-0 flex-1">
             <h2
               id="orphans-title"
-              className="font-serif text-lg leading-tight text-ink"
+              className="font-serif text-lg font-semibold leading-tight text-ink"
             >
               Clean orphan pages
             </h2>
-            <p className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
+            <p className="mt-0.5 font-mono text-[14px] leading-relaxed text-muted">
               Empty pages with no backlinks. Deleted files move to the server
               trash.
             </p>
@@ -149,25 +149,25 @@ export function OrphanDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           {loading ? (
-            <p className="px-3 py-8 text-center font-mono text-[10.5px] text-faint">
+            <p className="px-3 py-8 text-center font-mono text-[14px] text-faint">
               Finding orphan pages…
             </p>
           ) : error ? (
-            <p className="mx-2 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[10.5px] text-danger">
+            <p className="mx-2 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
               {error}
             </p>
           ) : !pages || pages.length === 0 ? (
             <div className="px-4 py-10 text-center">
-              <p className="font-mono text-[11px] text-ink-soft">
+              <p className="font-mono text-[14px] text-ink-soft">
                 No orphan pages.
               </p>
-              <p className="mt-1 font-mono text-[9.5px] text-faint">
+              <p className="mt-1 font-mono text-[14px] text-faint">
                 Empty pages will appear here when nothing links to them.
               </p>
             </div>
           ) : (
             <>
-              <label className="mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+              <label className="mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 font-mono text-[14px] uppercase tracking-[0.1em] text-faint">
                 <input
                   type="checkbox"
                   checked={selected.size === pages.length}
@@ -198,12 +198,12 @@ export function OrphanDialog({
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[11px] text-ink">
+                      <span className="block truncate font-sans text-[14px] text-ink">
                         {journal
                           ? formatJournalDate(page.title)
                           : page.title}
                       </span>
-                      <span className="mt-0.5 block truncate font-mono text-[8.5px] text-faint">
+                      <span className="mt-0.5 block truncate font-mono text-[14px] text-faint">
                         {page.id}
                       </span>
                     </span>
@@ -215,7 +215,7 @@ export function OrphanDialog({
         </div>
 
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-line px-3 py-2.5">
-          <span className="font-mono text-[9px] text-faint">
+          <span className="font-mono text-[14px] text-faint">
             {chosen.length} selected
           </span>
           <div className="flex items-center gap-2">
@@ -223,7 +223,7 @@ export function OrphanDialog({
               type="button"
               onClick={onClose}
               disabled={deleting}
-              className="rounded-lg px-2.5 py-1.5 font-mono text-[10px] text-muted transition hover:bg-panel disabled:opacity-40"
+              className="rounded-lg px-2.5 py-1.5 font-mono text-[14px] text-muted transition hover:bg-panel disabled:opacity-40"
             >
               Cancel
             </button>
@@ -238,7 +238,7 @@ export function OrphanDialog({
                 pages.length === 0 ||
                 chosen.length === 0
               }
-              className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-1.5 font-mono text-[10px] text-white transition hover:bg-danger/85 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-danger px-3 py-1.5 font-mono text-[14px] text-white transition hover:bg-danger/85 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <IconTrash className="h-3 w-3" />
               {deleting

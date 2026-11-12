@@ -32,6 +32,26 @@ pub struct ServeArgs {
     #[arg(long, env = "OPALNOTE_PLUGIN_TIMEOUT_SECS", default_value_t = 5.0)]
     pub plugin_timeout_secs: f64,
 
+    /// Disable HTTPS and serve plain HTTP (development only).
+    #[arg(long = "no-tls", env = "OPALNOTE_NO_TLS", default_value_t = false)]
+    pub no_tls: bool,
+
+    /// PEM certificate chain used for HTTPS.
+    #[arg(
+        long = "tls-cert",
+        env = "OPALNOTE_TLS_CERT",
+        default_value = "certs/localhost.pem"
+    )]
+    pub tls_cert: PathBuf,
+
+    /// PEM private key used for HTTPS.
+    #[arg(
+        long = "tls-key",
+        env = "OPALNOTE_TLS_KEY",
+        default_value = "certs/localhost-key.pem"
+    )]
+    pub tls_key: PathBuf,
+
     /// Allow cross-origin API requests (useful when calling the API from
     /// another origin or a separate frontend host).
     #[arg(long, env = "OPALNOTE_DEV_CORS", default_value_t = false)]

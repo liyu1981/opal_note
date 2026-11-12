@@ -55,10 +55,10 @@ export function JournalPluginsPanel() {
     <aside className="hidden w-72 shrink-0 flex-col border-l border-line bg-panel/20 lg:flex">
       <div className="flex shrink-0 items-start justify-between gap-2 border-b border-line px-4 py-3">
         <div>
-          <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-faint">
+          <div className="font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
             Journal tools
           </div>
-          <p className="mt-1 font-mono text-[9px] leading-relaxed text-faint">
+          <p className="mt-1 font-mono text-[14px] leading-relaxed text-faint">
             Server-side plugins running Datalog.
           </p>
         </div>
@@ -76,13 +76,13 @@ export function JournalPluginsPanel() {
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {error && (
-          <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[10px] leading-relaxed text-danger">
+          <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] leading-relaxed text-danger">
             {error}
           </p>
         )}
 
         {!results && loading && (
-          <p className="px-2 py-8 text-center font-mono text-[10px] text-faint">
+          <p className="px-2 py-8 text-center font-mono text-[14px] text-faint">
             Running plugins…
           </p>
         )}
@@ -116,14 +116,14 @@ function PluginCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h3 className="font-mono text-[11px] font-semibold text-ink">
+            <h3 className="font-sans text-[14px] font-semibold text-ink">
               {plugin.title}
             </h3>
-            <span className="rounded-full bg-panel px-1.5 py-0.5 font-mono text-[8px] text-faint">
+            <span className="rounded-full bg-panel px-1.5 py-0.5 font-mono text-[14px] text-faint">
               {plugin.items.length}
             </span>
           </div>
-          <p className="mt-0.5 font-mono text-[8.5px] leading-relaxed text-faint">
+          <p className="mt-0.5 font-mono text-[14px] leading-relaxed text-faint">
             {plugin.description}
           </p>
         </div>
@@ -131,11 +131,11 @@ function PluginCard({
 
       <div className="p-1.5">
         {plugin.error ? (
-          <p className="mx-1 rounded bg-danger/10 px-2 py-1.5 font-mono text-[9px] leading-relaxed text-danger">
+          <p className="mx-1 rounded bg-danger/10 px-2 py-1.5 font-mono text-[14px] leading-relaxed text-danger">
             {plugin.error}
           </p>
         ) : plugin.items.length === 0 ? (
-          <p className="px-2 py-4 text-center font-mono text-[9.5px] text-faint">
+          <p className="px-2 py-4 text-center font-mono text-[14px] text-faint">
             All clear.
           </p>
         ) : (
@@ -153,17 +153,17 @@ function PluginCard({
                 title={`Open ${noteTitle}`}
               >
                 <span
-                  className={`mt-0.5 h-3 w-3 shrink-0 rounded-[3px] border ${
+                  className={`mt-0.5 h-3 w-3 shrink-0 rounded border ${
                     item.status === "doing"
                       ? "border-accent bg-accent-soft"
                       : "border-line-strong bg-white/60"
                   }`}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 font-mono text-[10px] leading-snug text-ink-soft">
+                  <span className="line-clamp-2 font-mono text-[14px] leading-snug text-ink-soft">
                     {item.title}
                   </span>
-                  <span className="mt-0.5 block truncate font-mono text-[8px] text-faint">
+                  <span className="mt-0.5 block truncate font-mono text-[14px] text-faint">
                     {noteTitle}
                     {item.status === "doing" ? " · doing" : ""}
                   </span>

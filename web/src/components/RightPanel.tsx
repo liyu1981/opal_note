@@ -45,7 +45,7 @@ export function RightPanel() {
             key={item.id}
             type="button"
             onClick={() => setTab(item.id)}
-            className={`relative flex items-center gap-1 px-2.5 pb-2 pt-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] transition ${
+            className={`relative flex items-center gap-1 px-2.5 pb-2 pt-1 font-sans text-[14px] font-semibold uppercase tracking-[0.12em] transition ${
               tab === item.id
                 ? "text-ink"
                 : "text-faint hover:text-ink-soft"
@@ -53,7 +53,7 @@ export function RightPanel() {
           >
             {item.label}
             {item.count !== undefined && item.count > 0 && (
-              <span className="rounded bg-panel px-1 font-mono text-[8px] font-normal text-faint">
+              <span className="rounded bg-panel px-1 font-sans text-[14px] font-normal text-faint">
                 {item.count}
               </span>
             )}
@@ -80,10 +80,10 @@ export function RightPanel() {
               <SectionLabel icon={<IconFile className="h-3 w-3" />}>
                 Notebook
               </SectionLabel>
-              <p className="mt-1 font-mono text-[11.5px] text-ink-soft">
+              <p className="mt-1 font-sans text-[14px] text-ink-soft">
                 {notebook?.name ?? notebookId}
               </p>
-              <p className="mt-1 font-mono text-[10px] leading-relaxed text-muted">
+              <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
                 {notebook?.description || "No description."}
               </p>
             </section>
@@ -93,12 +93,12 @@ export function RightPanel() {
                   <SectionLabel icon={<IconFile className="h-3 w-3" />}>
                     Page
                   </SectionLabel>
-                  <p className="mt-1 break-all font-mono text-[10px] text-muted">
+                  <p className="mt-1 break-all font-sans text-[14px] text-muted">
                     {note.id}
                   </p>
                 </section>
                 <section className="border-t border-line pt-3">
-                  <dl className="space-y-1 font-mono text-[10px] text-faint">
+                  <dl className="space-y-1 font-sans text-[14px] text-faint">
                     <InfoRow label="Words" value={String(wordCount(note.content))} />
                     <InfoRow label="Tags" value={String(note.tags.length)} />
                     <InfoRow label="Links" value={String(note.links.length)} />
@@ -109,7 +109,7 @@ export function RightPanel() {
                 </section>
               </>
             ) : (
-              <p className="font-mono text-[10.5px] leading-relaxed text-faint">
+              <p className="font-sans text-[14px] leading-relaxed text-faint">
                 Open a page to see its metadata.
               </p>
             )}
@@ -124,7 +124,7 @@ export function RightPanel() {
         )}
       </div>
 
-      <div className="border-t border-line px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
+      <div className="border-t border-line px-4 py-2.5 font-sans text-[14px] uppercase tracking-[0.12em] text-faint">
         {stats.notes} {stats.notes === 1 ? "note" : "notes"} · {stats.links}{" "}
         {stats.links === 1 ? "link" : "links"} · {stats.tags}{" "}
         {stats.tags === 1 ? "tag" : "tags"}
@@ -156,10 +156,10 @@ function ContextTab({
               {tags.map((tag) => (
                 <span
                   key={tag.tag}
-                  className="flex items-center gap-1 rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
+                  className="flex items-center gap-1 rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft"
                 >
                   #{tag.tag}
-                  <span className="text-[8.5px] text-faint">{tag.count}</span>
+                  <span className="text-[14px] text-faint">{tag.count}</span>
                 </span>
               ))}
             </div>
@@ -171,7 +171,7 @@ function ContextTab({
           <SectionLabel icon={<IconFile className="h-3 w-3" />}>
             Notebook
           </SectionLabel>
-          <p className="mt-1 font-mono text-[10.5px] leading-relaxed text-muted">
+          <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
             {notebookDescription || "Open a page to see its links and backlinks."}
           </p>
         </section>
@@ -188,7 +188,7 @@ function ContextTab({
             {note.tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
+                className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft"
               >
                 #{tag}
               </span>
@@ -211,18 +211,18 @@ function ContextTab({
                   <button
                     type="button"
                     onClick={() => onOpenNote(link.note_id ?? "")}
-                    className="w-full truncate rounded px-1.5 py-1 text-left font-mono text-[11px] text-ink-soft transition hover:bg-white/70"
+                    className="w-full truncate rounded px-1.5 py-1 text-left font-sans text-[14px] text-ink-soft transition hover:bg-white/70"
                     title={`Open ${link.title ?? link.label}`}
                   >
                     {link.label}
                   </button>
                 ) : (
                   <span
-                    className="flex items-center gap-1 px-1.5 py-1 font-mono text-[11px] text-faint"
+                    className="flex items-center gap-1 px-1.5 py-1 font-sans text-[14px] text-faint"
                     title="No note with this title in the notebook"
                   >
                     <span className="truncate">{link.label}</span>
-                    <span className="ml-auto shrink-0 rounded bg-panel px-1 font-mono text-[8.5px] uppercase tracking-wide">
+                    <span className="ml-auto shrink-0 rounded bg-panel px-1 font-sans text-[14px] uppercase tracking-wide">
                       new
                     </span>
                   </span>
@@ -238,7 +238,7 @@ function ContextTab({
       <section>
         <SectionLabel icon={<IconFile className="h-3 w-3" />}>
           Backlinks
-          <span className="ml-1 font-mono text-[9px] font-normal tracking-normal text-line-strong">
+          <span className="ml-1 font-sans text-[14px] font-normal tracking-normal text-line-strong">
             {note.backlinks.length}
           </span>
         </SectionLabel>
@@ -249,7 +249,7 @@ function ContextTab({
                 <button
                   type="button"
                   onClick={() => onOpenNote(backlink.id)}
-                  className="w-full truncate rounded px-1.5 py-1 text-left font-mono text-[11px] text-ink-soft transition hover:bg-white/70"
+                  className="w-full truncate rounded px-1.5 py-1 text-left font-sans text-[14px] text-ink-soft transition hover:bg-white/70"
                 >
                   {backlink.title}
                 </button>
@@ -272,7 +272,7 @@ function SectionLabel({
   icon: ReactNode;
 }) {
   return (
-    <h3 className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-faint">
+    <h3 className="flex items-center gap-1.5 text-[14px] font-semibold uppercase tracking-[0.16em] text-faint">
       {icon}
       {children}
     </h3>
@@ -290,7 +290,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function Hint({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-1.5 font-mono text-[10.5px] leading-relaxed text-faint">
+    <p className="mt-1.5 font-sans text-[14px] leading-relaxed text-faint">
       {children}
     </p>
   );

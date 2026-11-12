@@ -19,7 +19,7 @@ function BootScreen() {
     <div className="flex h-full items-center justify-center bg-canvas">
       <div className="text-center">
         <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent" />
-        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">
+        <p className="mt-3 font-mono text-[14px] uppercase tracking-[0.2em] text-faint">
           Querying MnesticDB
         </p>
       </div>

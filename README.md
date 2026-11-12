@@ -75,10 +75,21 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 > `mnestic` publishes its crate under that name but keeps the library target
 > `cozo` for drop-in compatibility, so the server imports `cozo::*`.
 
+## Design system
+
+The UI follows the **Square** design skill from
+`liyu1981/awesome-design-skills`: minimal white surfaces, primary blue and
+secondary violet, success/warning/danger tokens, 4px controls and 8px
+surfaces. Default role fonts are Google Fonts with system fallbacks:
+**Inter** for the interface and **JetBrains Mono** for page titles, the note
+editor, labels and code. Google Sans and Anonymous Pro remain selectable in
+Settings. Inter, JetBrains Mono, Google Sans and Anonymous Pro are self-hosted
+so the single binary remains offline-capable.
+
 ## Quick start
 
-Requirements: Rust (1.85+), Node 22.12+ / 24, pnpm, and a C compiler for
-bundled SQLite (normally part of the Rust build toolchain).
+Requirements: Rust (1.85+), Node 22.12+ / 24, pnpm, a C compiler for bundled
+SQLite, and **mkcert** for local HTTPS.
 
 ```bash
 # development: one command, one process
@@ -91,7 +102,7 @@ pnpm dev
 2. builds the client bundle;
 3. syncs the bundle into the location the server embeds;
 4. rebuilds the Rust server;
-5. starts it on **`0.0.0.0:7827`**;
+5. starts it on **`https://0.0.0.0:7827`**;
 6. watches client and server sources.
 
 Changes are debounced for 220 ms, then coalesced:
@@ -106,12 +117,19 @@ There is no Vite HMR; reload the browser tab after a client rebuild to load the
 new bundle. Override the listen address with `OPALNOTE_BIND`, or the data
 directory with `OPALNOTE_DATA_DIR`.
 
+HTTPS is on by default. `pnpm dev` creates `certs/localhost.pem` and
+`certs/localhost-key.pem` with mkcert if they are missing. Run
+`mkcert -install` once so the browser trusts the local CA, then open the
+printed `https://` URL. Use `pnpm certs` to regenerate certificates or
+`pnpm dev -- --no-tls` for plain HTTP.
+
 ```bash
 # production: one binary, assets embedded
 pnpm build
 pnpm start
-# or run the artifact directly:
-./target/release/opalnote --data-dir ./data --bind 0.0.0.0:7827
+# or run the artifact directly with certificates:
+./target/release/opalnote --data-dir ./data --bind 0.0.0.0:7827 \
+  --tls-cert certs/localhost.pem --tls-key certs/localhost-key.pem
 ```
 
 `pnpm build` runs the same web build + asset sync, then
@@ -159,6 +177,9 @@ docker build -t opal-note .
 docker run --rm -p 7827:7827 -v opal-data:/data opal-note
 ```
 
+The container defaults to HTTP because it has no certificate mount. Mount
+`certs/` and set `OPALNOTE_NO_TLS=false` to serve HTTPS.
+
 ## Configuration
 
 All flags have environment-variable equivalents.
@@ -170,6 +191,9 @@ All flags have environment-variable equivalents.
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
 | `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
 | `--plugin-timeout-secs`    | `OPALNOTE_PLUGIN_TIMEOUT_SECS`| `5`               | Per-run QuickJS journal plugin budget                    |
+| `--no-tls`                 | `OPALNOTE_NO_TLS`             | `false`           | Serve plain HTTP instead of HTTPS                        |
+| `--tls-cert`               | `OPALNOTE_TLS_CERT`           | `certs/localhost.pem` | PEM certificate chain for HTTPS                     |
+| `--tls-key`                | `OPALNOTE_TLS_KEY`            | `certs/localhost-key.pem` | PEM private key for HTTPS                      |
 | `--dev-cors`               | `OPALNOTE_DEV_CORS`           | `false`           | Permissive CORS for API calls from another origin        |
 
 Logging uses `tracing`: `RUST_LOG=opalnote=debug,tower_http=info`.
@@ -274,6 +298,10 @@ back/forward history controls, and a Home button on the right.
   dialog instead of filtering the left panel. Results come from the server's
   `note:fts` index, show match-centered excerpts with highlighted terms, and
   open the selected page directly.
+- **Settings** — a large left-tabbed dialog. Fonts are configured by role
+  (interface, titles, editor, labels/code); any Google Font can be named and
+  loaded over HTTPS. User overrides are stored as one sparse JSON object on
+  the server and cached in IndexedDB for fast startup.
 - **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
   `/graph`, and `/page?p=<page>`. Back/forward (⌘[ / ⌘] or Alt+← / Alt+→) use
   browser history, and page URLs can be reloaded or shared directly. Switching
@@ -354,6 +382,8 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
 | GET    | `/notebooks/{id}/plugins`                    | Journal plugin results (QuickJS + Datalog)     |
+| GET    | `/settings`                                  | Sparse user settings JSON                      |
+| PUT    | `/settings`                                  | Replace the sparse user settings JSON          |
 | POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
 | GET    | `/notebooks/{id}/journals`                   | `?before=<path>&limit=` date-desc feed          |
 | GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |
@@ -418,6 +448,7 @@ src/
   assets.rs          rust-embed asset + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
   plugins.rs         sandboxed QuickJS journal plugin runner
+  settings.rs        sparse settings.json store
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
     files.rs         folder layout, atomic writes, scanning, trash

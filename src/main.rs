@@ -4,16 +4,22 @@ mod config;
 mod error;
 mod plugins;
 mod routes;
+mod settings;
 mod state;
 mod store;
 
 use std::sync::Arc;
 
+use std::net::SocketAddr;
+use std::time::Duration;
+
+use axum_server::tls_rustls::RustlsConfig;
+use axum_server::Handle;
 use clap::Parser;
-use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Cli;
+use crate::settings::SettingsStore;
 use crate::state::AppState;
 use crate::store::Store;
 
@@ -25,6 +31,8 @@ async fn main() -> anyhow::Result<()> {
 
     let store = Arc::new(Store::open(&args.data_dir, args.query_timeout_secs)?);
     store.ping()?;
+    let settings = Arc::new(SettingsStore::new(&args.data_dir)?);
+    tracing::debug!(path = %settings.path().display(), "settings ready");
 
     let token = args.token();
     if token.is_none() {
@@ -36,26 +44,53 @@ async fn main() -> anyhow::Result<()> {
     tracing::debug!(data_dir = %store.data_dir().display(), "store ready");
     let state = AppState::new(
         store,
+        settings,
         token,
         args.query_timeout_secs,
         args.plugin_timeout_secs,
     );
     let app = routes::router(state, args.dev_cors);
 
-    let listener = TcpListener::bind(&args.bind)
-        .await
-        .map_err(|err| anyhow::anyhow!("binding {}: {err}", args.bind))?;
-    let address = listener.local_addr()?;
+    let address: SocketAddr = args
+        .bind
+        .parse()
+        .map_err(|err| anyhow::anyhow!("invalid bind address {}: {err}", args.bind))?;
+    let scheme = if args.no_tls { "http" } else { "https" };
     tracing::info!(
         address = %address,
+        scheme = scheme,
         data_dir = %args.data_dir.display(),
         auth = args.token().is_some(),
         "opalnote listening"
     );
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let handle = Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(10)));
+    });
+
+    if args.no_tls {
+        axum_server::bind(address)
+            .handle(handle)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        let tls = RustlsConfig::from_pem_file(&args.tls_cert, &args.tls_key)
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!(
+                    "loading TLS certificate {} / key {}: {err}; run `pnpm certs` to generate local certificates, or pass --no-tls",
+                    args.tls_cert.display(),
+                    args.tls_key.display()
+                )
+            })?;
+        axum_server::bind_rustls(address, tls)
+            .handle(handle)
+            .serve(app.into_make_service())
+            .await?;
+    }
     tracing::info!("opalnote stopped");
     Ok(())
 }

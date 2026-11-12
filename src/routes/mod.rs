@@ -3,6 +3,7 @@ pub mod notebooks;
 pub mod notes;
 pub mod plugins;
 pub mod query;
+pub mod settings;
 
 use anyhow::anyhow;
 use axum::routing::{get, post};
@@ -33,6 +34,7 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/stats", get(health::stats))
         .route("/reindex", post(health::reindex))
         .route("/query", post(query::run))
+        .route("/settings", get(settings::get).put(settings::put))
         .route("/notebooks", get(notebooks::list).post(notebooks::create))
         .route(
             "/notebooks/{id}",

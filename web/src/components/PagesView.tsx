@@ -150,7 +150,7 @@ export function PagesView() {
   if (!notebookId) {
     return (
       <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
-        <p className="max-w-sm text-center font-mono text-[11.5px] leading-relaxed text-muted">
+        <p className="max-w-sm text-center font-mono text-[14px] leading-relaxed text-muted">
           Select or create a notebook to browse its pages.
         </p>
       </main>
@@ -208,10 +208,10 @@ export function PagesView() {
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
           <div className="flex items-center gap-2">
             <IconTable className="h-4 w-4 text-muted" />
-            <h1 className="font-mono text-[13px] font-semibold tracking-tight text-ink">
+            <h1 className="font-serif text-[18px] font-semibold tracking-tight text-ink">
               All
             </h1>
-            <span className="rounded-full bg-panel px-1.5 py-0.5 font-mono text-[9px] text-faint">
+            <span className="rounded-full bg-panel px-1.5 py-0.5 font-mono text-[14px] text-faint">
               {total}
             </span>
             <button
@@ -231,7 +231,7 @@ export function PagesView() {
               type="button"
               onClick={() => setOrphansOpen(true)}
               disabled={locked}
-              className="inline-flex items-center gap-1 rounded-md border border-transparent px-1.5 py-1 font-mono text-[9px] text-muted transition hover:border-line hover:bg-white/60 hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+              className="inline-flex items-center gap-1 rounded-md border border-transparent px-1.5 py-1 font-mono text-[14px] text-muted transition hover:border-line hover:bg-white/60 hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
               title={locked ? "Read only" : "Clean orphan pages"}
               aria-label="Clean orphan pages"
             >
@@ -247,7 +247,7 @@ export function PagesView() {
                   direction === "asc" ? "desc" : "asc",
                 );
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-transparent px-1.5 py-1 font-mono text-[9px] text-muted transition hover:border-line hover:bg-white/60 hover:text-ink"
+              className="inline-flex items-center gap-1 rounded-md border border-transparent px-1.5 py-1 font-mono text-[14px] text-muted transition hover:border-line hover:bg-white/60 hover:text-ink"
               title={`Sort ${sortLabel(sortKey)} ${sortDir === "asc" ? "ascending" : "descending"}`}
               aria-label="Toggle sort direction"
             >
@@ -263,7 +263,7 @@ export function PagesView() {
               <select
                 value={tagFilter}
                 onChange={(event) => chooseTag(event.target.value)}
-                className="max-w-[9rem] appearance-none bg-transparent py-1 pl-7 pr-2 font-mono text-[9px] outline-none"
+                className="max-w-[9rem] appearance-none bg-transparent py-1 pl-7 pr-2 font-mono text-[14px] outline-none"
                 aria-label="Filter by tag"
               >
                 <option value="">All tags</option>
@@ -293,7 +293,7 @@ export function PagesView() {
                     }
                   }}
                   placeholder="Filter pages…"
-                  className="w-36 rounded-md border border-line bg-white/70 py-1 pl-7 pr-6 font-mono text-[9.5px] text-ink outline-none focus:border-accent/60"
+                  className="w-36 rounded-md border border-line bg-white/70 py-1 pl-7 pr-6 font-mono text-[14px] text-ink outline-none focus:border-accent/60"
                   aria-label="Filter pages"
                 />
                 {query && (
@@ -341,16 +341,16 @@ export function PagesView() {
         </header>
 
         {error ? (
-          <p className="mt-4 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[10.5px] text-danger">
+          <p className="mt-4 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
             {error}
           </p>
         ) : loading && !data ? (
-          <p className="mt-16 text-center font-mono text-[11px] text-faint">
+          <p className="mt-16 text-center font-mono text-[14px] text-faint">
             Loading pages…
           </p>
         ) : showEmpty ? (
           <div className="mt-16 text-center">
-            <p className="font-mono text-[12px] text-muted">
+            <p className="font-mono text-[14px] text-muted">
               {debouncedQuery || tagFilter
                 ? "No pages match this filter."
                 : "No pages yet. Create one with +."}
@@ -415,7 +415,7 @@ export function PagesView() {
                         <button
                           type="button"
                           onClick={() => openPage(item)}
-                          className="inline-flex max-w-full items-center gap-2 text-left font-mono text-[11px] text-ink-soft transition hover:text-accent-strong"
+                          className="inline-flex max-w-full items-center gap-2 text-left font-sans text-[14px] text-ink-soft transition hover:text-accent-strong"
                           title={item.id}
                         >
                           {journal ? (
@@ -430,7 +430,7 @@ export function PagesView() {
                           </span>
                         </button>
                       </td>
-                      <td className="py-2 pr-3 font-mono text-[10px] text-muted">
+                      <td className="py-2 pr-3 font-mono text-[14px] text-muted">
                         {item.backlink_count}
                       </td>
                       <td className="py-2 pr-3">
@@ -439,10 +439,10 @@ export function PagesView() {
                           onTagClick={chooseTag}
                         />
                       </td>
-                      <td className="py-2 pr-3 font-mono text-[9.5px] text-muted">
+                      <td className="py-2 pr-3 font-mono text-[14px] text-muted">
                         {compactTime(item.created_at)}
                       </td>
-                      <td className="py-2 pr-4 font-mono text-[9.5px] text-muted">
+                      <td className="py-2 pr-4 font-mono text-[14px] text-muted">
                         {compactTime(item.updated_at)}
                       </td>
                     </tr>
@@ -472,19 +472,19 @@ export function PagesView() {
                         <IconFile className="h-3.5 w-3.5" />
                       )}
                     </span>
-                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-ink">
+                    <span className="min-w-0 flex-1 truncate font-sans text-[14px] font-medium text-ink">
                       {journal
                         ? formatJournalDate(item.title)
                         : item.title}
                     </span>
-                    <span className="shrink-0 font-mono text-[9px] text-faint">
+                    <span className="shrink-0 font-mono text-[14px] text-faint">
                       {item.backlink_count} backlinks
                     </span>
                   </button>
                   <div className="mt-2 min-h-5">
                     <PageTags tags={item.tags} onTagClick={chooseTag} />
                   </div>
-                  <p className="mt-2 border-t border-line/50 pt-1.5 font-mono text-[8.5px] text-faint">
+                  <p className="mt-2 border-t border-line/50 pt-1.5 font-mono text-[14px] text-faint">
                     Updated {compactTime(item.updated_at)}
                   </p>
                 </article>
@@ -496,16 +496,16 @@ export function PagesView() {
         {total > 0 && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-2">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="font-mono text-[9px] text-faint">
+              <span className="font-mono text-[14px] text-faint">
                 {loading
                   ? "Loading…"
                   : `${offset + 1}–${Math.min(offset + pages.length, total)} of ${total}`}
               </span>
-              <label className="inline-flex items-center gap-1 font-mono text-[9px] text-faint">
+              <label className="inline-flex items-center gap-1 font-mono text-[14px] text-faint">
                 <select
                   value={pageSize}
                   onChange={(event) => choosePageSize(event.target.value)}
-                  className="rounded border border-line bg-white/50 px-1 py-0.5 font-mono text-[9px] text-muted outline-none focus:border-accent/60"
+                  className="rounded border border-line bg-white/50 px-1 py-0.5 font-mono text-[14px] text-muted outline-none focus:border-accent/60"
                   aria-label="Rows per page"
                 >
                   {PAGE_SIZE_OPTIONS.map((size) => (
@@ -527,7 +527,7 @@ export function PagesView() {
               >
                 <IconArrowLeft className="h-3.5 w-3.5" />
               </button>
-              <span className="min-w-20 text-center font-mono text-[9px] text-muted">
+              <span className="min-w-20 text-center font-mono text-[14px] text-muted">
                 Page {page + 1} / {pageCount}
               </span>
               <button
@@ -579,7 +579,7 @@ function SortHeader({
       aria-sort={
         selected ? (direction === "asc" ? "ascending" : "descending") : "none"
       }
-      className={`py-2 pr-3 font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-faint ${className}`}
+      className={`py-2 pr-3 font-mono text-[14px] font-semibold uppercase tracking-[0.1em] text-faint ${className}`}
     >
       <button
         type="button"
@@ -601,7 +601,7 @@ function PageTags({
   onTagClick: (tag: string) => void;
 }) {
   if (tags.length === 0) {
-    return <span className="font-mono text-[9.5px] text-faint">—</span>;
+    return <span className="font-mono text-[14px] text-faint">—</span>;
   }
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -610,7 +610,7 @@ function PageTags({
           key={tag}
           type="button"
           onClick={() => onTagClick(tag)}
-          className="rounded bg-panel px-1.5 py-0.5 font-mono text-[8.5px] text-muted transition hover:bg-accent-soft hover:text-accent-strong"
+          className="rounded bg-panel px-1.5 py-0.5 font-mono text-[14px] text-muted transition hover:bg-accent-soft hover:text-accent-strong"
           title={`Filter by #${tag}`}
         >
           #{tag}

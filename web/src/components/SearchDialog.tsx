@@ -176,7 +176,7 @@ export function SearchDialog() {
             }
             spellCheck={false}
             autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-ink outline-none placeholder:text-faint"
+            className="min-w-0 flex-1 bg-transparent font-sans text-[16px] text-ink outline-none placeholder:text-faint"
             aria-label="Search query"
           />
           {query && (
@@ -192,7 +192,7 @@ export function SearchDialog() {
               <IconX className="h-3.5 w-3.5" />
             </button>
           )}
-          <kbd className="rounded border border-line bg-panel px-1.5 py-0.5 font-mono text-[8.5px] text-faint">
+          <kbd className="rounded border border-line bg-panel px-1.5 py-0.5 font-mono text-[14px] text-faint">
             esc
           </kbd>
         </div>
@@ -203,10 +203,10 @@ export function SearchDialog() {
           ) : !trimmed ? (
             <div className="px-3 py-8 text-center">
               <IconSearch className="mx-auto h-6 w-6 text-accent/60" />
-              <p className="mt-2 font-mono text-[11px] text-ink-soft">
+              <p className="mt-2 font-sans text-[14px] text-ink-soft">
                 Search {notebook?.name ?? "this notebook"}
               </p>
-              <p className="mx-auto mt-1 max-w-xs font-mono text-[10px] leading-relaxed text-faint">
+              <p className="mx-auto mt-1 max-w-xs font-sans text-[14px] leading-relaxed text-faint">
                 Titles, body text, tags and wikilinks. Results open in the
                 page editor.
               </p>
@@ -214,14 +214,14 @@ export function SearchDialog() {
           ) : loading ? (
             <SearchHint>Searching…</SearchHint>
           ) : error ? (
-            <p className="mx-1 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[10.5px] text-danger">
+            <p className="mx-1 rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
               {error}
             </p>
           ) : results.length === 0 ? (
             <SearchHint>No notes match “{trimmed}”.</SearchHint>
           ) : (
             <>
-              <div className="flex items-center justify-between px-2 pb-1 pt-1 font-mono text-[8.5px] uppercase tracking-[0.12em] text-faint">
+              <div className="flex items-center justify-between px-2 pb-1 pt-1 font-mono text-[14px] uppercase tracking-[0.12em] text-faint">
                 <span>
                   {results.length} {results.length === 1 ? "result" : "results"}
                 </span>
@@ -254,20 +254,20 @@ export function SearchDialog() {
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[11.5px] font-medium text-ink">
+                      <span className="block truncate font-sans text-[14px] font-medium text-ink">
                         <Highlight
                           text={journal ? formatJournalDate(note.title) : note.title}
                           terms={terms}
                         />
                       </span>
-                      <span className="mt-0.5 line-clamp-2 font-mono text-[9.5px] leading-relaxed text-muted">
+                      <span className="mt-0.5 line-clamp-2 font-sans text-[14px] leading-relaxed text-muted">
                         <Highlight
                           text={note.excerpt || note.id}
                           terms={terms}
                         />
                       </span>
                     </span>
-                    <span className="max-w-[35%] shrink-0 truncate pt-0.5 font-mono text-[8.5px] text-faint">
+                    <span className="max-w-[35%] shrink-0 truncate pt-0.5 font-mono text-[14px] text-faint">
                       <Highlight text={note.id} terms={terms} />
                     </span>
                   </button>
@@ -277,7 +277,7 @@ export function SearchDialog() {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 border-t border-line px-3 py-2 font-mono text-[8.5px] text-faint">
+        <div className="flex shrink-0 items-center gap-3 border-t border-line px-3 py-2 font-mono text-[14px] text-faint">
           <span>↑↓ move</span>
           <span>↵ open</span>
           <span className="ml-auto inline-flex items-center gap-1">
@@ -335,7 +335,7 @@ function Highlight({ text, terms }: { text: string; terms: string[] }) {
 
 function SearchHint({ children }: { children: ReactNode }) {
   return (
-    <p className="px-3 py-6 text-center font-mono text-[10.5px] leading-relaxed text-faint">
+    <p className="px-3 py-6 text-center font-sans text-[14px] leading-relaxed text-faint">
       {children}
     </p>
   );

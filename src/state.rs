@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::settings::SettingsStore;
 use crate::store::Store;
 
 /// Shared, cheap-to-clone application state. The store itself is `Sync` and
@@ -8,6 +9,7 @@ use crate::store::Store;
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<Store>,
+    pub settings: Arc<SettingsStore>,
     pub token: Option<Arc<str>>,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
@@ -18,12 +20,14 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         store: Arc<Store>,
+        settings: Arc<SettingsStore>,
         token: Option<String>,
         query_timeout_secs: f64,
         plugin_timeout_secs: f64,
     ) -> Self {
         Self {
             store,
+            settings,
             token: token.map(Arc::from),
             query_timeout_secs,
             plugin_timeout_secs,

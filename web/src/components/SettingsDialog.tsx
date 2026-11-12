@@ -1,7 +1,16 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
+import {
+  FONT_PRESETS,
+  FONT_ROLES,
+  applySettings,
+  settingsAtom,
+  settingsStatusAtom,
+  type AppSettings,
+  type FontRole,
+} from "../lib/settings";
 import { IconCheck, IconSettings, IconX } from "./Icons";
 import {
   refreshAtom,
@@ -10,52 +19,145 @@ import {
   tokenAtom,
 } from "../state/atoms";
 
+type Tab = "fonts" | "connection" | "index";
 type TestStatus = "idle" | "testing" | "ok" | "error";
+
+const TABS: Array<{ id: Tab; label: string; description: string }> = [
+  {
+    id: "fonts",
+    label: "Fonts",
+    description: "Choose the typeface for each part of the workspace.",
+  },
+  {
+    id: "connection",
+    label: "Connection",
+    description: "Server access and authentication.",
+  },
+  {
+    id: "index",
+    label: "Index",
+    description: "Rebuild the disposable Datalog index.",
+  },
+];
 
 export function SettingsDialog() {
   const open = useAtomValue(settingsOpenAtom);
   const setOpen = useSetAtom(settingsOpenAtom);
+  const settings = useAtomValue(settingsAtom);
+  const setSettings = useSetAtom(settingsAtom);
+  const syncStatus = useAtomValue(settingsStatusAtom);
   const token = useAtomValue(tokenAtom);
   const saveToken = useSetAtom(saveTokenAtom);
   const refresh = useSetAtom(refreshAtom);
 
-  const [draft, setDraft] = useState(token);
-  const [status, setStatus] = useState<TestStatus>("idle");
+  const [tab, setTab] = useState<Tab>("fonts");
+  const [draft, setDraft] = useState<AppSettings>(settings);
+  const [fontStatus, setFontStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [fontError, setFontError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [tokenDraft, setTokenDraft] = useState(token);
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
+  const saveVersion = useRef(0);
 
   useEffect(() => {
     if (!open) return;
-    setDraft(token);
-    setStatus("idle");
+    setDraft(settings);
+    setTokenDraft(token);
+    setDirty(false);
+    setFontStatus("saved");
+    setFontError(null);
+    setTestStatus("idle");
     setMessage(null);
-  }, [open, token]);
+    // Only reset the draft when the dialog opens; font edits update `settings`
+    // while the dialog is open and must not be overwritten by this effect.
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, setOpen]);
 
-  if (!open) return null;
+  async function saveSettings(next: AppSettings) {
+    const version = ++saveVersion.current;
+    setFontStatus("saving");
+    setFontError(null);
+    try {
+      const { persistSettings } = await import("../lib/settings");
+      await persistSettings(next);
+      if (version === saveVersion.current) {
+        setFontStatus("saved");
+        setDirty(false);
+      }
+    } catch (cause) {
+      if (version === saveVersion.current) {
+        setFontStatus("error");
+        setFontError(
+          cause instanceof Error ? cause.message : "Could not save settings",
+        );
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!open || !dirty) return;
+    const timer = window.setTimeout(() => void saveSettings(draft), 450);
+    return () => window.clearTimeout(timer);
+  }, [dirty, draft, open]);
+
+  function updateFont(role: FontRole, patch: Partial<AppSettings["fonts"][FontRole]>) {
+    const next: AppSettings = {
+      ...draft,
+      fonts: {
+        ...draft.fonts,
+        [role]: { ...draft.fonts[role], ...patch },
+      },
+    };
+    setDraft(next);
+    setSettings(next);
+    applySettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
+  function resetFonts() {
+    const next: AppSettings = {
+      ...draft,
+      fonts: {
+        ui: { family: "Inter", google: false },
+        display: { family: "JetBrains Mono", google: false },
+        editor: { family: "JetBrains Mono", google: false },
+        mono: { family: "JetBrains Mono", google: false },
+      },
+    };
+    setDraft(next);
+    setSettings(next);
+    applySettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
 
   async function rebuildIndex() {
     if (rebuilding) return;
     setRebuilding(true);
-    setStatus("testing");
+    setTestStatus("testing");
     setMessage(null);
     try {
       const stats = await api.reindex();
-      setStatus("ok");
+      setTestStatus("ok");
       setMessage(
         `Index rebuilt from files: ${stats.notes} notes, ${stats.tags} tags, ${stats.links} links.`,
       );
       refresh();
     } catch (cause) {
-      setStatus("error");
+      setTestStatus("error");
       setMessage(
         cause instanceof Error ? cause.message : "Could not rebuild the index",
       );
@@ -66,24 +168,28 @@ export function SettingsDialog() {
 
   async function connect(event: FormEvent) {
     event.preventDefault();
-    saveToken(draft.trim());
-    setStatus("testing");
+    saveToken(tokenDraft.trim());
+    setTestStatus("testing");
     setMessage(null);
     try {
       const health = await api.health();
       await api.listNotebooks();
-      setStatus("ok");
+      setTestStatus("ok");
       setMessage(
         `Connected to Opal Note ${health.version} · engine ${health.status}`,
       );
       refresh();
     } catch (cause) {
-      setStatus("error");
+      setTestStatus("error");
       setMessage(
         cause instanceof Error ? cause.message : "Could not reach the server",
       );
     }
   }
+
+  if (!open) return null;
+
+  const activeTab = TABS.find((item) => item.id === tab) ?? TABS[0]!;
 
   return (
     <div
@@ -94,114 +200,332 @@ export function SettingsDialog() {
       }}
     >
       <div
-        className="animate-fade-up w-full max-w-md rounded-2xl border border-line bg-canvas p-5 shadow-panel"
+        className="animate-fade-up flex h-[min(46rem,88vh)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-line bg-canvas shadow-panel md:flex-row"
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-panel text-ink-soft">
-            <IconSettings className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2
-              id="settings-title"
-              className="font-serif text-xl leading-tight text-ink"
-            >
-              Connection
-            </h2>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-              The client is stateless: notes, links, tags and the search index
-              all live on the server. This browser only remembers which note is
-              open.
-            </p>
+        <aside className="flex shrink-0 flex-row gap-1 border-b border-line bg-panel/50 p-2 md:w-48 md:flex-col md:border-b-0 md:border-r md:p-3">
+          <div className="hidden items-center gap-2 px-2 pb-3 md:flex">
+            <span className="flex h-7 w-7 items-center justify-center rounded bg-accent-soft text-accent-strong">
+              <IconSettings className="h-4 w-4" />
+            </span>
+            <span className="font-sans text-[16px] font-semibold text-ink">
+              Settings
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="rounded-md p-1 text-faint transition hover:bg-panel hover:text-ink"
-            aria-label="Close"
-          >
-            <IconX className="h-4 w-4" />
-          </button>
-        </div>
-
-        <form onSubmit={connect} className="mt-4">
-          <label className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
-            API token
-          </label>
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Leave empty if OPALNOTE_TOKEN is not set"
-            autoComplete="off"
-            spellCheck={false}
-            className="mt-1.5 w-full rounded-lg border border-line bg-white/70 px-2.5 py-2 font-mono text-xs outline-none transition focus:border-accent"
-          />
-          <p className="mt-1.5 text-[10.5px] leading-relaxed text-muted">
-            Stored in this browser's localStorage and sent as{" "}
-            <code className="rounded bg-panel px-1 py-0.5 font-mono text-[10px]">
-              Authorization: Bearer …
-            </code>
-            {"."} The server reads it from{" "}
-            <code className="rounded bg-panel px-1 py-0.5 font-mono text-[10px]">
-              OPALNOTE_TOKEN
-            </code>
-            {"."}
-          </p>
-
-          <div className="mt-4 flex items-center gap-2">
+          {TABS.map((item) => (
             <button
-              type="submit"
-              disabled={status === "testing"}
-              className="rounded-lg bg-ink px-3.5 py-2 text-xs font-medium text-canvas transition hover:bg-ink-soft disabled:opacity-50"
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              className={`rounded px-3 py-2 text-left font-sans text-[14px] transition ${
+                tab === item.id
+                  ? "bg-accent-soft font-medium text-accent-strong"
+                  : "text-ink-soft hover:bg-white"
+              }`}
             >
-              {status === "testing" ? "Testing…" : "Save & test"}
+              {item.label}
             </button>
-            {token && (
-              <button
-                type="button"
-                onClick={() => {
-                  saveToken("");
-                  setDraft("");
-                  setStatus("idle");
-                  setMessage("Token cleared.");
-                }}
-                className="rounded-lg border border-line px-3 py-2 text-xs text-muted transition hover:bg-panel"
+          ))}
+          <span className="ml-auto self-center font-mono text-[14px] text-faint md:ml-0 md:mt-auto md:self-start md:px-2">
+            {syncStatus === "loading"
+              ? "Loading…"
+              : syncStatus === "error"
+                ? "Offline"
+                : "Square"}
+          </span>
+        </aside>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <header className="flex shrink-0 items-start gap-3 border-b border-line px-6 py-4">
+            <div className="min-w-0 flex-1">
+              <h2
+                id="settings-title"
+                className="font-serif text-[24px] font-semibold leading-tight text-ink"
               >
-                Clear token
-              </button>
+                {activeTab.label}
+              </h2>
+              <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
+                {activeTab.description}
+              </p>
+            </div>
+            {fontStatus !== "idle" && tab === "fonts" && (
+              <span
+                className={`mt-1 font-mono text-[14px] ${
+                  fontStatus === "error" ? "text-danger" : "text-faint"
+                }`}
+              >
+                {fontStatus === "saving"
+                  ? "Saving…"
+                  : fontStatus === "error"
+                    ? "Save failed"
+                    : "Saved"}
+              </span>
             )}
             <button
               type="button"
-              onClick={rebuildIndex}
-              disabled={rebuilding}
-              className="rounded-lg border border-line px-3 py-2 text-xs text-muted transition hover:bg-panel disabled:opacity-50"
-              title="Re-read every markdown file into the index"
+              onClick={() => {
+                if (dirty) void saveSettings(draft);
+                setOpen(false);
+              }}
+              className="rounded p-1 text-faint transition hover:bg-panel hover:text-ink"
+              aria-label="Close"
             >
-              {rebuilding ? "Reindexing…" : "Rebuild index"}
+              <IconX className="h-4 w-4" />
             </button>
-            <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
-              mnesticdb · rocksdb
-            </span>
-          </div>
+          </header>
 
-          {message && (
-            <p
-              className={`mt-3 flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-[11px] leading-relaxed ${
-                status === "ok"
-                  ? "bg-mint/10 text-mint"
-                  : "bg-danger/10 text-danger"
-              }`}
-            >
-              {status === "ok" && (
-                <IconCheck className="mt-0.5 h-3 w-3 shrink-0" />
-              )}
-              <span className="break-words">{message}</span>
-            </p>
-          )}
-        </form>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {tab === "fonts" && (
+              <FontsTab
+                settings={draft}
+                onChange={updateFont}
+                onReset={resetFonts}
+                error={fontError}
+              />
+            )}
+            {tab === "connection" && (
+              <ConnectionTab
+                token={tokenDraft}
+                setToken={setTokenDraft}
+                hasToken={Boolean(token)}
+                status={testStatus}
+                message={message}
+                onConnect={connect}
+                onClear={() => {
+                  saveToken("");
+                  setTokenDraft("");
+                  setTestStatus("idle");
+                  setMessage("Token cleared.");
+                }}
+              />
+            )}
+            {tab === "index" && (
+              <IndexTab
+                rebuilding={rebuilding}
+                status={testStatus}
+                message={message}
+                onRebuild={rebuildIndex}
+              />
+            )}
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function FontsTab({
+  settings,
+  onChange,
+  onReset,
+  error,
+}: {
+  settings: AppSettings;
+  onChange: (role: FontRole, patch: Partial<AppSettings["fonts"][FontRole]>) => void;
+  onReset: () => void;
+  error: string | null;
+}) {
+  return (
+    <div className="space-y-4">
+      <datalist id="font-presets">
+        {FONT_PRESETS.map((font) => (
+          <option key={font} value={font} />
+        ))}
+      </datalist>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {FONT_ROLES.map((role) => {
+          const value = settings.fonts[role.id];
+          return (
+            <section
+              key={role.id}
+              className="rounded-lg border border-line bg-white p-4"
+            >
+              <label
+                htmlFor={`font-${role.id}`}
+                className="font-sans text-[14px] font-semibold text-ink"
+              >
+                {role.label}
+              </label>
+              <p className="mt-0.5 font-sans text-[14px] leading-relaxed text-faint">
+                {role.description}
+              </p>
+              <input
+                id={`font-${role.id}`}
+                list="font-presets"
+                value={value.family}
+                onChange={(event) =>
+                  onChange(role.id, { family: event.target.value })
+                }
+                spellCheck={false}
+                autoComplete="off"
+                className="mt-3 w-full rounded border border-line bg-white px-2.5 py-2 font-sans text-[14px] text-ink outline-none transition focus:border-accent"
+              />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <label className="flex items-center gap-2 font-sans text-[14px] text-muted">
+                  <input
+                    type="checkbox"
+                    checked={value.google}
+                    onChange={(event) =>
+                      onChange(role.id, { google: event.target.checked })
+                    }
+                    className="accent-accent"
+                  />
+                  Load from Google Fonts
+                </label>
+                <span className="font-mono text-[14px] text-faint">Sample</span>
+              </div>
+              <p
+                className="mt-3 truncate font-sans text-[18px] leading-tight text-ink"
+                style={{
+                  fontFamily: value.family
+                    ? `"${value.family.replace(/["'\\]/gu, " ")}", ${role.fallback}`
+                    : role.fallback,
+                }}
+              >
+                The quick brown fox
+              </p>
+            </section>
+          );
+        })}
+      </div>
+
+      {error && (
+        <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center justify-between border-t border-line pt-4">
+        <p className="font-sans text-[14px] text-faint">
+          Google Fonts are requested over HTTPS and cached by the browser.
+        </p>
+        <button
+          type="button"
+          onClick={onReset}
+          className="rounded border border-line px-3 py-1.5 font-sans text-[14px] text-muted transition hover:bg-panel hover:text-ink"
+        >
+          Reset to Square fonts
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionTab({
+  token,
+  setToken,
+  hasToken,
+  status,
+  message,
+  onConnect,
+  onClear,
+}: {
+  token: string;
+  setToken: (value: string) => void;
+  hasToken: boolean;
+  status: TestStatus;
+  message: string | null;
+  onConnect: (event: FormEvent) => void;
+  onClear: () => void;
+}) {
+  return (
+    <form onSubmit={onConnect}>
+      <label className="block font-sans text-[14px] font-semibold text-ink">
+        API token
+      </label>
+      <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
+        The client is stateless. The token is stored in this browser and sent as
+        an <code className="rounded bg-panel px-1 font-mono text-[14px]">Authorization: Bearer</code> header.
+      </p>
+      <input
+        value={token}
+        onChange={(event) => setToken(event.target.value)}
+        placeholder="Leave empty if OPALNOTE_TOKEN is not set"
+        autoComplete="off"
+        spellCheck={false}
+        className="mt-3 w-full rounded border border-line bg-white px-3 py-2 font-sans text-[14px] outline-none transition focus:border-accent"
+      />
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="submit"
+          disabled={status === "testing"}
+          className="rounded-lg bg-accent-strong px-3.5 py-2 font-sans text-[14px] font-medium text-white transition hover:bg-accent disabled:opacity-50"
+        >
+          {status === "testing" ? "Testing…" : "Save & test"}
+        </button>
+        {hasToken && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="rounded border border-line px-3 py-2 font-sans text-[14px] text-muted transition hover:bg-panel"
+          >
+            Clear token
+          </button>
+        )}
+      </div>
+      {message && (
+        <StatusMessage status={status} message={message} />
+      )}
+    </form>
+  );
+}
+
+function IndexTab({
+  rebuilding,
+  status,
+  message,
+  onRebuild,
+}: {
+  rebuilding: boolean;
+  status: TestStatus;
+  message: string | null;
+  onRebuild: () => void;
+}) {
+  return (
+    <div>
+      <div className="rounded-lg border border-line bg-panel/50 p-4">
+        <h3 className="font-sans text-[16px] font-semibold text-ink">
+          Rebuild the Datalog index
+        </h3>
+        <p className="mt-1 max-w-xl font-sans text-[14px] leading-relaxed text-muted">
+          The index is disposable. Rebuilding re-reads every markdown file and
+          regenerates tags, tasks, links and the search index from disk.
+        </p>
+        <button
+          type="button"
+          onClick={onRebuild}
+          disabled={rebuilding}
+          className="mt-4 rounded-lg bg-accent-strong px-3.5 py-2 font-sans text-[14px] font-medium text-white transition hover:bg-accent disabled:opacity-50"
+        >
+          {rebuilding ? "Reindexing…" : "Rebuild index"}
+        </button>
+      </div>
+      <p className="mt-4 font-mono text-[14px] uppercase tracking-[0.12em] text-faint">
+        mnesticdb · sqlite
+      </p>
+      {message && <StatusMessage status={status} message={message} />}
+    </div>
+  );
+}
+
+function StatusMessage({
+  status,
+  message,
+}: {
+  status: TestStatus;
+  message: string;
+}) {
+  return (
+    <p
+      className={`mt-3 flex items-start gap-1.5 rounded px-3 py-2 font-sans text-[14px] leading-relaxed ${
+        status === "ok" ? "bg-mint/10 text-mint" : "bg-danger/10 text-danger"
+      }`}
+    >
+      {status === "ok" && <IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+      <span className="break-words">{message}</span>
+    </p>
   );
 }

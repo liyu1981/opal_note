@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "certs": "node scripts/certs.mjs",
     "build": "node scripts/build.mjs",
     "build:web": "pnpm --dir web build",
     "build:server": "cargo build --release --locked",

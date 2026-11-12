@@ -50,6 +50,23 @@ export function run(command, args) {
   if (!tryRun(command, args)) process.exit(1);
 }
 
+/** Create local mkcert certificates when TLS is enabled and files are missing. */
+export function ensureDevCerts(args) {
+  if (
+    args.includes("--no-tls") ||
+    ["1", "true", "yes"].includes(
+      String(process.env.OPALNOTE_NO_TLS ?? "").toLowerCase(),
+    )
+  ) {
+    return;
+  }
+  const cert = path.join(ROOT, "certs", "localhost.pem");
+  const key = path.join(ROOT, "certs", "localhost-key.pem");
+  if (existsSync(cert) && existsSync(key)) return;
+  step("Preparing local HTTPS certificates");
+  run("node", ["scripts/certs.mjs"]);
+}
+
 export function ensureWebDependencies() {
   if (existsSync(path.join(WEB_DIR, "node_modules"))) return;
   step("Installing web dependencies");

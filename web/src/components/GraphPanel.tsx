@@ -86,21 +86,21 @@ export function GraphPanel({
 
   if (loading && !graph) {
     return (
-      <p className="py-10 text-center font-mono text-[10.5px] text-faint">
+      <p className="py-10 text-center font-mono text-[14px] text-faint">
         Loading graph…
       </p>
     );
   }
   if (error) {
     return (
-      <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[10.5px] text-danger">
+      <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
         {error}
       </p>
     );
   }
   if (!shown || shown.nodes.length === 0) {
     return (
-      <p className="py-10 text-center font-mono text-[10.5px] text-faint">
+      <p className="py-10 text-center font-mono text-[14px] text-faint">
         No pages to graph.
       </p>
     );
@@ -114,7 +114,7 @@ export function GraphPanel({
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-line px-5 py-3">
           <div>
-            <div className="flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-faint">
+            <div className="flex items-center gap-1.5 font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
               <IconGraph className="h-3.5 w-3.5" />
               Notebook graph
             </div>
@@ -123,12 +123,12 @@ export function GraphPanel({
             </h1>
           </div>
           <div className="text-right">
-            <p className="font-mono text-[9px] text-faint">
+            <p className="font-mono text-[14px] text-faint">
               {shown.nodes.length} {shown.nodes.length === 1 ? "node" : "nodes"}{" "}
               · {shown.edges.length}{" "}
               {shown.edges.length === 1 ? "link" : "links"}
             </p>
-            <p className="mt-1 font-mono text-[9px] text-faint">
+            <p className="mt-1 font-mono text-[14px] text-faint">
               Click to select · double-click to open
             </p>
           </div>
@@ -151,7 +151,7 @@ export function GraphPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-faint">
+        <div className="flex items-center gap-1.5 font-mono text-[14px] font-semibold uppercase tracking-[0.12em] text-faint">
           <IconGraph className="h-3 w-3" />
           {local ? "Page graph" : "Notebook graph"}
         </div>
@@ -162,7 +162,7 @@ export function GraphPanel({
                 key={value}
                 type="button"
                 onClick={() => setScope(value)}
-                className={`rounded px-1.5 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.08em] transition ${
+                className={`rounded px-1.5 py-0.5 font-mono text-[14px] uppercase tracking-[0.08em] transition ${
                   scope === value
                     ? "bg-panel-strong text-ink"
                     : "text-faint hover:text-ink-soft"
@@ -175,7 +175,7 @@ export function GraphPanel({
         )}
       </div>
 
-      <p className="font-mono text-[9px] text-faint">
+      <p className="font-mono text-[14px] text-faint">
         {shown.nodes.length} {shown.nodes.length === 1 ? "node" : "nodes"} ·{" "}
         {shown.edges.length} {shown.edges.length === 1 ? "link" : "links"}
       </p>
@@ -189,7 +189,7 @@ export function GraphPanel({
         onOpenNote={(path) => navigate({ view: "note", noteId: path })}
       />
 
-      <p className="font-mono text-[9px] leading-relaxed text-faint">
+      <p className="font-mono text-[14px] leading-relaxed text-faint">
         {isolated
           ? "This page has no connections yet. Switch to Full to see the notebook."
           : "Click a node to highlight its links; double-click to open its page."}
@@ -651,7 +651,7 @@ function GraphCanvas({
                           ? "var(--color-ink)"
                           : "var(--color-graph-label)"
                       }
-                      fontSize={10}
+                      fontSize={12}
                       fontFamily="var(--font-mono)"
                     >
                       {truncate(node.title, 18)}
@@ -740,7 +740,7 @@ function selectLabelIds(
   });
   const boxes: Array<{ left: number; right: number; top: number; bottom: number }> = [];
   const ids = new Set<string>();
-  const fontSize = 10;
+  const fontSize = 12;
 
   for (const node of sorted) {
     if (node.degree === 0 && node.id !== focusId && nodeCount > 80) {

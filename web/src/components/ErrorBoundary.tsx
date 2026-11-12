@@ -42,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="flex h-full items-center justify-center bg-canvas p-6">
         <div className="w-full max-w-md rounded-2xl border border-line bg-white/70 p-6 shadow-panel">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-danger">
+          <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-danger">
             {needsConnection ? "Connection required" : "Something went wrong"}
           </p>
           <h1 className="mt-2 font-serif text-2xl text-ink">
@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
               ? "Sign in to this notebook"
               : "The notebook could not be loaded"}
           </h1>
-          <p className="mt-2 break-words rounded-lg bg-panel px-3 py-2 font-mono text-[11px] text-ink-soft">
+          <p className="mt-2 break-words rounded-lg bg-panel px-3 py-2 font-mono text-[14px] text-ink-soft">
             {error.message}
           </p>
 
@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="rounded-lg bg-ink px-3.5 py-2 text-sm font-medium text-canvas transition hover:bg-ink-soft"
+                className="rounded-lg bg-accent-strong px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent"
               >
                 Reload
               </button>
@@ -91,7 +91,7 @@ function ConnectionForm() {
 
   return (
     <form onSubmit={connect} className="mt-4">
-      <label className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
+      <label className="block text-[14px] font-semibold uppercase tracking-[0.16em] text-faint">
         API token
       </label>
       <input
@@ -100,18 +100,18 @@ function ConnectionForm() {
         placeholder="Value of OPALNOTE_TOKEN"
         autoComplete="off"
         spellCheck={false}
-        className="mt-1.5 w-full rounded-lg border border-line bg-canvas px-2.5 py-2 font-mono text-xs outline-none focus:border-accent"
+        className="mt-1.5 w-full rounded-lg border border-line bg-canvas px-2.5 py-2 font-mono text-[14px] outline-none focus:border-accent"
       />
-      <p className="mt-1.5 text-[10.5px] leading-relaxed text-muted">
+      <p className="mt-1.5 text-[14px] leading-relaxed text-muted">
         Stored in this browser only. The server compares it against{" "}
-        <code className="rounded bg-panel px-1 py-0.5 font-mono text-[10px]">
+        <code className="rounded bg-panel px-1 py-0.5 font-mono text-[14px]">
           OPALNOTE_TOKEN
         </code>
         {"."}
       </p>
       <button
         type="submit"
-        className="mt-3 rounded-lg bg-ink px-3.5 py-2 text-sm font-medium text-canvas transition hover:bg-ink-soft"
+        className="mt-3 rounded-lg bg-accent-strong px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent"
       >
         Connect
       </button>

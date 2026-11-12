@@ -141,7 +141,7 @@ export function JournalFeed() {
   if (!notebookId) {
     return (
       <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
-        <p className="max-w-sm text-center font-mono text-[11.5px] leading-relaxed text-muted">
+        <p className="max-w-sm text-center font-mono text-[14px] leading-relaxed text-muted">
           Create or select a notebook to open its journal.
         </p>
       </main>
@@ -154,7 +154,7 @@ export function JournalFeed() {
         <div className="mx-auto w-full max-w-4xl px-6 py-6">
         {pages.length === 0 && !loading && !error && (
           <div className="mt-16 text-center">
-            <p className="font-mono text-[12px] text-muted">
+            <p className="font-sans text-[14px] text-muted">
               No journal pages yet.
             </p>
           </div>
@@ -176,14 +176,14 @@ export function JournalFeed() {
         </div>
 
         {error && (
-          <p className="mt-4 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
+          <p className="mt-4 rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
             {error}
           </p>
         )}
 
         <div
           ref={sentinelRef}
-          className="py-8 text-center font-mono text-[9.5px] uppercase tracking-[0.12em] text-faint"
+          className="py-8 text-center font-mono text-[14px] uppercase tracking-[0.12em] text-faint"
         >
           {loading
             ? "Loading older entries…"

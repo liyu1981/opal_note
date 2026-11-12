@@ -207,6 +207,14 @@ export const api = {
   deleteNote: (notebookId: string, path: string) =>
     request<void>(notePath(notebookId, path), { method: "DELETE" }),
 
+  getSettings: () => request<Record<string, unknown>>("/settings"),
+
+  saveSettings: (settings: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
+
   query: (script: string, params: Record<string, unknown> = {}) =>
     request<QueryResult>("/query", {
       method: "POST",

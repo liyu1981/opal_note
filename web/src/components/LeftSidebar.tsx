@@ -190,7 +190,7 @@ export function LeftSidebar() {
           <span className="font-serif text-[16px] leading-none text-ink">
             Opal Note
           </span>
-          <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+          <span className="ml-auto font-mono text-[14px] uppercase tracking-[0.14em] text-faint">
             graph
           </span>
         </div>
@@ -199,7 +199,7 @@ export function LeftSidebar() {
           <select
             value={activeNotebookId ?? ""}
             onChange={(event) => switchNotebook(event.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-line bg-white/70 px-2 py-1 font-mono text-[11px] text-ink-soft outline-none focus:border-accent/60"
+            className="min-w-0 flex-1 rounded-md border border-line bg-white/70 px-2 py-1 font-mono text-[14px] text-ink-soft outline-none focus:border-accent/60"
             aria-label="Notebook"
           >
             <option value="">No notebook</option>
@@ -239,21 +239,21 @@ export function LeftSidebar() {
               onChange={(event) => setName(event.target.value)}
               placeholder="Notebook name"
               maxLength={120}
-              className="w-full rounded-md border border-line bg-white px-2 py-1 font-mono text-[11px] outline-none focus:border-accent"
+              className="w-full rounded-md border border-line bg-white px-2 py-1 font-mono text-[14px] outline-none focus:border-accent"
             />
-            {error && <p className="text-[10px] text-danger">{error}</p>}
+            {error && <p className="text-[14px] text-danger">{error}</p>}
             <div className="flex gap-1">
               <button
                 type="submit"
                 disabled={busy || !name.trim()}
-                className="rounded bg-ink px-2 py-1 text-[10px] font-medium text-canvas disabled:opacity-40"
+                className="rounded bg-accent-strong px-2 py-1 text-[14px] font-medium text-white transition hover:bg-accent disabled:opacity-40"
               >
                 {busy ? "Adding…" : "Add"}
               </button>
               <button
                 type="button"
                 onClick={() => setAdding(false)}
-                className="rounded px-2 py-1 text-[10px] text-muted hover:bg-panel-strong"
+                className="rounded px-2 py-1 text-[14px] text-muted hover:bg-panel-strong"
               >
                 Cancel
               </button>
@@ -264,7 +264,7 @@ export function LeftSidebar() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {!activeNotebookId ? (
-          <p className="mx-1 mt-3 rounded-lg border border-dashed border-line-strong px-3 py-4 text-center font-mono text-[10.5px] leading-relaxed text-muted">
+          <p className="mx-1 mt-3 rounded-lg border border-dashed border-line-strong px-3 py-4 text-center font-mono text-[14px] leading-relaxed text-muted">
             Create a notebook to start a journal or write pages.
           </p>
         ) : (
@@ -330,7 +330,7 @@ export function LeftSidebar() {
                   type="button"
                   onClick={openToday}
                   disabled={locked}
-                  className="rounded px-1.5 py-0.5 font-mono text-[9px] text-accent-strong transition hover:bg-accent-soft disabled:opacity-40"
+                  className="rounded px-1.5 py-0.5 font-mono text-[14px] text-accent-strong transition hover:bg-accent-soft disabled:opacity-40"
                   title={locked ? "Read only" : "Open today's journal"}
                 >
                   Today
@@ -354,7 +354,7 @@ export function LeftSidebar() {
                 <button
                   type="button"
                   onClick={openJournalFeed}
-                  className="mt-1 w-full rounded px-2 py-1 text-left font-mono text-[10px] text-faint transition hover:bg-panel-strong hover:text-ink"
+                  className="mt-1 w-full rounded px-2 py-1 text-left font-mono text-[14px] text-faint transition hover:bg-panel-strong hover:text-ink"
                 >
                   Open journal feed →
                 </button>
@@ -434,7 +434,7 @@ function SidebarSection({
           />
           <span className="truncate">{title}</span>
           {count !== undefined && (
-            <span className="ml-1 rounded-full bg-panel px-1.5 py-0.5 font-mono text-[9.5px] font-medium tracking-normal text-faint">
+            <span className="ml-1 rounded-full bg-panel px-1.5 py-0.5 font-mono text-[14px] font-medium tracking-normal text-faint">
               {count}
             </span>
           )}
@@ -468,7 +468,7 @@ function NoteRow({
       }`}
     >
       <span className="shrink-0 text-faint">{icon}</span>
-      <span className="truncate font-mono text-[11px]">{title}</span>
+      <span className="truncate font-sans text-[14px]">{title}</span>
     </button>
   );
 }
@@ -493,16 +493,16 @@ function NavItem({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[11.5px] transition ${
+      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] transition ${
         active
-          ? "bg-panel-strong text-ink"
+          ? "bg-accent-soft text-accent-strong"
           : "text-ink-soft hover:bg-white/60"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       <span className={active ? "text-accent" : "text-faint"}>{icon}</span>
       <span className="truncate">{label}</span>
       {soon && (
-        <span className="ml-auto rounded bg-panel px-1 py-0.5 font-mono text-[8px] uppercase tracking-wide text-faint">
+        <span className="ml-auto rounded bg-panel px-1 py-0.5 font-mono text-[14px] uppercase tracking-wide text-faint">
           soon
         </span>
       )}
@@ -512,7 +512,7 @@ function NavItem({
 
 function Hint({ children }: { children: ReactNode }) {
   return (
-    <p className="px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-faint">
+    <p className="px-2 py-1.5 font-mono text-[14px] leading-relaxed text-faint">
       {children}
     </p>
   );

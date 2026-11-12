@@ -1,41 +1,69 @@
 @import "tailwindcss";
+@import "@fontsource/inter/300.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/anonymous-pro/400.css";
+@import "@fontsource/anonymous-pro/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
 
+@font-face {
+  font-family: "Google Sans";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("/fonts/google-sans-latin.woff2") format("woff2");
+}
+
+/* Square design system tokens (typeui.sh/square). */
 @theme {
-  --color-canvas: #f8f6f1;
-  --color-panel: #f1ede5;
-  --color-panel-strong: #e9e3d8;
-  --color-line: #e0d9cc;
-  --color-line-strong: #cfc6b6;
-  --color-ink: #241f1b;
-  --color-ink-soft: #4a423a;
-  --color-muted: #7d7367;
-  --color-faint: #a79c8e;
-  --color-accent: #6656d9;
-  --color-accent-strong: #5142c4;
-  --color-accent-soft: #ece9ff;
-  --color-mint: #2f9c86;
-  --color-danger: #b4453c;
-  --color-mark: #f3dfa0;
+  --color-primary: #3b82f6;
+  --color-secondary: #8b5cf6;
+  --color-neutral: #ffffff;
+  --color-surface: #ffffff;
+  --color-text: #111827;
+  --color-canvas: #ffffff;
+  --color-panel: #f9fafb;
+  --color-panel-strong: #f3f4f6;
+  --color-line: #e5e7eb;
+  --color-line-strong: #d1d5db;
+  --color-ink: #111827;
+  --color-ink-soft: #374151;
+  --color-muted: #4b5563;
+  --color-faint: #6b7280;
+  --color-accent: #3b82f6;
+  --color-accent-strong: #2563eb;
+  --color-accent-soft: #eff6ff;
+  --color-mint: #16a34a;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-mark: #fef3c7;
 
-  /* Graph palette: deliberately darker than the paper surface so nodes,
-     links and labels remain legible at full-page scale. */
-  --color-graph-bg: #fbfaf7;
-  --color-graph-node: #776b5e;
-  --color-graph-node-journal: #9b7f5d;
-  --color-graph-edge: #b0a190;
-  --color-graph-label: #574d43;
+  /* Graph palette uses Square neutral + secondary accents. */
+  --color-graph-bg: #ffffff;
+  --color-graph-node: #6b7280;
+  --color-graph-node-journal: #8b5cf6;
+  --color-graph-edge: #d1d5db;
+  --color-graph-label: #374151;
 
   --font-sans:
     "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif;
   --font-serif:
-    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman",
-    serif;
+    "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
+    monospace;
   --font-mono:
-    "JetBrains Mono", "IBM Plex Mono", "Cascadia Code", "SFMono-Regular",
-    "Roboto Mono", Menlo, Consolas, monospace;
+    "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-editor:
+    "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono",
+    monospace;
 
-  --shadow-panel: 0 1px 0 rgb(36 31 27 / 0.04), 0 8px 24px -18px rgb(36 31 27 / 0.3);
+  --shadow-panel:
+    0 1px 2px rgb(17 24 39 / 0.05), 0 8px 24px -20px rgb(17 24 39 / 0.2);
 }
 
 html,
@@ -45,9 +73,9 @@ body,
 }
 
 :root {
-  /* One fixed-width cell at the 14.5px editor size, independent of the
+  /* One fixed-width cell at the 16px editor size, independent of the
      line's heading font size. */
-  --note-ch: 0.544rem;
+  --note-ch: 0.6rem;
 }
 
 body {
@@ -55,7 +83,31 @@ body {
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Square radii: 4px for controls, 8px for surfaces. */
+.rounded,
+.rounded-sm,
+.rounded-md {
+  border-radius: 4px;
+}
+
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl {
+  border-radius: 8px;
 }
 
 ::selection {
@@ -139,24 +191,24 @@ body {
 .cm-line.cm-live-h5,
 .cm-line.cm-live-h6 {
   color: var(--color-ink);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
 .cm-line.cm-live-h1 {
-  font-size: 1.55em;
+  font-size: 2em;
   letter-spacing: -0.015em;
   padding-top: 0.55em;
   padding-bottom: 0.28em;
 }
 
 .cm-line.cm-live-h2 {
-  font-size: 1.3em;
+  font-size: 1.5em;
   padding-top: 0.5em;
 }
 
 .cm-line.cm-live-h3 {
-  font-size: 1.12em;
+  font-size: 1.125em;
   padding-top: 0.4em;
 }
 
@@ -271,7 +323,7 @@ body {
 
 .cm-live-bold {
   color: var(--color-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cm-live-italic {
@@ -286,13 +338,14 @@ body {
 }
 
 .cm-live-highlight {
-  background: color-mix(in srgb, #f4d35e 42%, transparent);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-mark) 68%, transparent);
+  border-radius: 4px;
   padding: 0 2px;
 }
 
 .cm-live-inline-code {
   background: var(--color-panel);
+  font-family: var(--font-mono);
   border: 1px solid var(--color-line);
   border-radius: 4px;
   color: var(--color-ink);
@@ -302,7 +355,7 @@ body {
 
 .cm-live-tag {
   background: var(--color-accent-soft);
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--color-accent-strong);
   font-size: 0.92em;
   padding: 0 0.25em;
@@ -375,6 +428,7 @@ body {
 
 .cm-line.cm-live-code-line {
   background: var(--color-panel);
+  font-family: var(--font-mono);
   border-left: 1px solid var(--color-line);
   border-right: 1px solid var(--color-line);
   color: var(--color-ink-soft);
@@ -386,14 +440,14 @@ body {
 
 
 .cm-line.cm-live-code-start {
-  border-radius: 9px 9px 0 0;
+  border-radius: 8px 8px 0 0;
   border-top: 1px solid var(--color-line);
   padding-top: 0.45rem;
 }
 
 .cm-line.cm-live-code-end {
   border-bottom: 1px solid var(--color-line);
-  border-radius: 0 0 9px 9px;
+  border-radius: 0 0 8px 8px;
   padding-bottom: 0.45rem;
 }
 
@@ -452,7 +506,7 @@ body {
 
 /* Editable journal cards. */
 .journal-card-editor .cm-content {
-  font-size: 14.5px;
+  font-size: 16px;
   line-height: 1.75;
 }
 

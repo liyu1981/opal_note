@@ -454,12 +454,12 @@ function NoteEditor({ note }: { note: Note }) {
               autoFocus={
                 !locked && note.title === "Untitled" && note.content === ""
               }
-              className={`w-full bg-transparent font-mono text-[26px] font-semibold leading-tight tracking-tight text-ink outline-none placeholder:text-faint ${
+              className={`w-full bg-transparent font-serif text-[24px] font-semibold leading-tight tracking-tight text-ink outline-none placeholder:text-faint ${
                 locked ? "cursor-default" : ""
               }`}
               aria-label="Note title"
             />
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-faint">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[14px] text-faint">
               <span
                 className={`inline-flex items-center gap-1 ${
                   status === "error" ? "text-danger" : ""
@@ -516,7 +516,7 @@ function NoteEditor({ note }: { note: Note }) {
               type="button"
               onClick={() => void toggleLock()}
               aria-pressed={locked}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10.5px] font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[14px] font-medium transition ${
                 locked
                   ? "border-accent/30 bg-accent-soft text-accent-strong"
                   : "border-line bg-white/70 text-ink-soft hover:border-line-strong hover:bg-white"
@@ -535,7 +535,7 @@ function NoteEditor({ note }: { note: Note }) {
                 type="button"
                 onClick={() => void save()}
                 disabled={status === "saving"}
-                className="rounded-lg border border-line bg-white/70 px-2.5 py-1.5 text-[10.5px] font-medium text-ink-soft transition hover:border-line-strong hover:bg-white disabled:opacity-50"
+                className="rounded-lg border border-line bg-white/70 px-2.5 py-1.5 text-[14px] font-medium text-ink-soft transition hover:border-line-strong hover:bg-white disabled:opacity-50"
                 title="Save (⌘S)"
               >
                 Save
@@ -563,13 +563,13 @@ function NoteEditor({ note }: { note: Note }) {
               note.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
+                  className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[14px] text-ink-soft"
                 >
                   #{tag}
                 </span>
               ))
             ) : (
-              <span className="font-mono text-[10.5px] text-faint">
+              <span className="font-mono text-[14px] text-faint">
                 No tags
               </span>
             )}
@@ -584,11 +584,11 @@ function NoteEditor({ note }: { note: Note }) {
                 touch();
               }}
               placeholder="Tags, comma separated — inline #tags are indexed too"
-              className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-ink-soft outline-none placeholder:text-faint"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[14px] text-ink-soft outline-none placeholder:text-faint"
               aria-label="Tags"
             />
             {tagsInput.trim() && (
-              <span className="shrink-0 font-mono text-[9px] text-faint">
+              <span className="shrink-0 font-mono text-[14px] text-faint">
                 {parseTags(tagsInput).length}{" "}
                 {parseTags(tagsInput).length === 1 ? "tag" : "tags"}
               </span>
@@ -610,7 +610,7 @@ function NoteEditor({ note }: { note: Note }) {
             readOnly={locked}
             autoHeight
           />
-          <div className="flex items-center justify-between border-t border-line bg-panel/30 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.13em] text-faint">
+          <div className="flex items-center justify-between border-t border-line bg-panel/30 px-3 py-1.5 font-mono text-[14px] uppercase tracking-[0.13em] text-faint">
             <span>{locked ? "Read only" : "Live blocks"}</span>
             <span className="normal-case tracking-normal">
               {locked
@@ -621,7 +621,7 @@ function NoteEditor({ note }: { note: Note }) {
         </div>
 
         {message && (
-          <p className="mt-2 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
+          <p className="mt-2 rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
             {message}
           </p>
         )}
@@ -638,7 +638,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
           <IconFile className="h-5 w-5" />
         </span>
         <h2 className="mt-3 font-serif text-2xl text-ink">{title}</h2>
-        <p className="mt-2 font-mono text-[11.5px] leading-relaxed text-muted">
+        <p className="mt-2 font-mono text-[14px] leading-relaxed text-muted">
           {body}
         </p>
       </div>
