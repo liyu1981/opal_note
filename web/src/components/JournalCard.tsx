@@ -141,7 +141,7 @@ export function JournalCard({
         >
           {formatJournalDate(page.title)}
         </button>
-        <div className="ml-auto flex shrink-0 items-center gap-2 pt-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap pt-1">
           <span
             className={`font-mono text-[9px] ${
               status === "error" ? "text-danger" : "text-faint"
@@ -154,6 +154,10 @@ export function JournalCard({
             ) : (
               statusLabel
             )}
+          </span>
+          <span className="font-mono text-[9px] text-faint">·</span>
+          <span className="font-mono text-[9px] text-faint">
+            {relativeTime(updatedAt)}
           </span>
           <button
             type="button"
@@ -176,9 +180,6 @@ export function JournalCard({
             #{tag}
           </span>
         ))}
-        <span className="ml-auto font-mono text-[9px] text-faint">
-          {relativeTime(updatedAt)}
-        </span>
       </div>
 
       <div className="journal-card-editor mt-1.5 border-t border-line/40">

@@ -197,7 +197,8 @@ web/
   (7 at a time) and appends older pages on scroll. Journal entries are editable
   `JournalCard`s built on `LiveMarkdownEditor` with per-card debounced
   autosave; keep them editable rather than reverting to a read-only renderer.
-  `Today` opens or creates `journals/YYYY-MM-DD.md`.
+  Opening the feed ensures today's `journals/YYYY-MM-DD.md` exists (unless the
+  presentation lock is active); the sidebar `Today` action opens that page.
 - `Pages` opens the All-pages directory (`pagesViewAtom`, `PagesView`), not a
   scroll target. It covers both `pages/` and `journals/` and paginates through
   `GET /notebooks/{id}/pages` (default 20/page, user-selectable 10/20/50/100/200)

@@ -3,20 +3,19 @@ import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { JournalPage } from "../api/types";
-import { ensureJournal } from "../lib/journal";
+import { ensureJournalPage } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import {
   noteLinkKeys,
   normalizeLinkTarget,
 } from "../lib/markdown";
-import { IconCalendar } from "./Icons";
 import { JournalCard } from "./JournalCard";
 import { JournalPluginsPanel } from "./JournalPluginsPanel";
 import {
   activeNotebookIdAtom,
   notesAtom,
   readOnlyAtom,
-  refreshAtom,
+  refreshNotesAtom,
 } from "../state/atoms";
 
 const PAGE_SIZE = 7;
@@ -26,7 +25,7 @@ export function JournalFeed() {
   const notes = useAtomValue(notesAtom);
   const locked = useAtomValue(readOnlyAtom);
   const navigate = useAppNavigate();
-  const refresh = useSetAtom(refreshAtom);
+  const refreshNotes = useSetAtom(refreshNotesAtom);
 
   const [pages, setPages] = useState<JournalPage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,13 +76,38 @@ export function JournalFeed() {
   );
 
   useEffect(() => {
-    generationRef.current += 1;
+    const generation = ++generationRef.current;
     loadingRef.current = false;
     setPages([]);
     setHasMore(true);
     setError(null);
-    if (notebookId) void load(undefined, true);
-  }, [notebookId, load]);
+    setLoading(true);
+
+    if (!notebookId) {
+      setLoading(false);
+      return;
+    }
+
+    void (async () => {
+      if (!locked) {
+        try {
+          const { created } = await ensureJournalPage(notebookId);
+          if (created) refreshNotes();
+        } catch (cause) {
+          if (generation === generationRef.current) {
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : "Could not create today's journal",
+            );
+          }
+        }
+      }
+      if (generation === generationRef.current) {
+        await load(undefined, true);
+      }
+    })();
+  }, [load, locked, notebookId, refreshNotes]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -114,19 +138,6 @@ export function JournalFeed() {
     }
   }
 
-  async function openToday() {
-    if (!notebookId || locked) return;
-    try {
-      const note = await ensureJournal(notebookId);
-      navigate({ view: "note", noteId: note.id });
-      refresh();
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Could not open today's journal",
-      );
-    }
-  }
-
   if (!notebookId) {
     return (
       <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
@@ -141,40 +152,11 @@ export function JournalFeed() {
     <main className="flex min-h-0 flex-1 bg-canvas">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-4xl px-6 py-6">
-        <header className="flex items-end justify-between gap-4 border-b border-line pb-4">
-          <div>
-            <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.16em] text-faint">
-              Journal
-            </div>
-            <h1 className="mt-1 font-mono text-[26px] font-semibold tracking-tight text-ink">
-              Daily pages
-            </h1>
-          </div>
-          <button
-            type="button"
-            onClick={openToday}
-            disabled={locked}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white/70 px-2.5 py-1.5 font-mono text-[10px] text-ink-soft transition hover:border-line-strong hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
-            title={locked ? "Read only" : "Open today's journal"}
-          >
-            <IconCalendar className="h-3.5 w-3.5" />
-            Today
-          </button>
-        </header>
-
         {pages.length === 0 && !loading && !error && (
           <div className="mt-16 text-center">
             <p className="font-mono text-[12px] text-muted">
               No journal pages yet.
             </p>
-            <button
-              type="button"
-              onClick={openToday}
-              disabled={locked}
-              className="mt-3 rounded-lg bg-ink px-3 py-1.5 font-mono text-[10.5px] text-canvas disabled:opacity-40"
-            >
-              Start today's journal
-            </button>
           </div>
         )}
 

@@ -49,19 +49,29 @@ export function formatJournalDate(title: string): string {
 }
 
 /** Open today's journal page, creating it if the file does not exist yet. */
+export async function ensureJournalPage(
+  notebookId: string,
+  date = todayKey(),
+): Promise<{ note: Note; created: boolean }> {
+  const path = `journals/${date}.md`;
+  try {
+    return { note: await api.getNote(notebookId, path), created: false };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error;
+  }
+  return {
+    note: await api.createNote(notebookId, {
+      title: date,
+      content: "",
+      section: "journals",
+    }),
+    created: true,
+  };
+}
+
 export async function ensureJournal(
   notebookId: string,
   date = todayKey(),
 ): Promise<Note> {
-  const path = `journals/${date}.md`;
-  try {
-    return await api.getNote(notebookId, path);
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 404) throw error;
-  }
-  return api.createNote(notebookId, {
-    title: date,
-    content: "",
-    section: "journals",
-  });
+  return (await ensureJournalPage(notebookId, date)).note;
 }
