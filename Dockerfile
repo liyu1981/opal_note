@@ -11,9 +11,6 @@ RUN pnpm run build
 
 # ---- server ---------------------------------------------------------------
 FROM rust:1.99-bookworm AS server
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends clang cmake libclang-dev \
-    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY src ./src
@@ -23,7 +20,7 @@ RUN cargo build --release --locked
 # ---- runtime --------------------------------------------------------------
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 \
+    && apt-get install -y --no-install-recommends ca-certificates libgcc-s1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home --home-dir /home/opal opal \
     && mkdir -p /data \

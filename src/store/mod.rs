@@ -88,11 +88,7 @@ struct PageRecord {
 }
 
 impl Store {
-    pub fn open(
-        data_dir: &Path,
-        memory_mb: usize,
-        default_query_timeout_secs: f64,
-    ) -> Result<Self> {
+    pub fn open(data_dir: &Path, default_query_timeout_secs: f64) -> Result<Self> {
         let notebooks_dir = data_dir.join("notebooks");
         let index_dir = data_dir.join("index");
         fs::create_dir_all(&notebooks_dir)
@@ -100,17 +96,16 @@ impl Store {
         fs::create_dir_all(&index_dir)
             .with_context(|| format!("creating index dir {}", index_dir.display()))?;
 
-        let path = index_dir.join("db");
-        let options = if memory_mb > 0 {
-            format!(
-                r#"{{"shared_memory":{{"total_bytes":{}}}}}"#,
-                memory_mb.saturating_mul(1024 * 1024)
-            )
-        } else {
-            "{}".to_string()
-        };
+        let path = index_dir.join("opalnote.sqlite3");
+        let legacy_index = index_dir.join("db");
+        if legacy_index.exists() {
+            tracing::warn!(
+                path = %legacy_index.display(),
+                "legacy RocksDB index found; SQLite uses index/opalnote.sqlite3 and the old directory can be deleted"
+            );
+        }
 
-        let db = DbInstance::new("rocksdb", &path, &options)
+        let db = DbInstance::new("sqlite", &path, "")
             .map_err(|err| anyhow!("opening MnesticDB at {}: {err}", path.display()))?;
 
         let store = Self {
@@ -1117,7 +1112,7 @@ mod tests {
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = Store::open(dir.path(), 0, 5.0).expect("open store");
+        let store = Store::open(dir.path(), 5.0).expect("open store");
         (dir, store)
     }
 

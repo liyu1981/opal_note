@@ -29,7 +29,7 @@ Production is a **single binary** with the built web client embedded via
 
 - Server: Rust 2021, Axum 0.8, Tokio
 - Database: `mnestic` crate (MnesticDB, a maintained CozoDB fork); the library
-  target is still imported as `cozo`. RocksDB backend.
+  target is still imported as `cozo`. SQLite backend (bundled SQLite).
 - Client: React 19, CodeMirror 6, TypeScript 7 (`tsc` native), Vite 8,
   Tailwind CSS 4, Jotai 3
 - Package manager: pnpm

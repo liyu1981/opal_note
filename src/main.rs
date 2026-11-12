@@ -22,11 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let args = cli.serve;
 
-    let store = Arc::new(Store::open(
-        &args.data_dir,
-        args.db_memory_mb,
-        args.query_timeout_secs,
-    )?);
+    let store = Arc::new(Store::open(&args.data_dir, args.query_timeout_secs)?);
     store.ping()?;
 
     let token = args.token();

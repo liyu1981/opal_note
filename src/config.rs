@@ -24,10 +24,6 @@ pub struct ServeArgs {
     #[arg(long, env = "OPALNOTE_TOKEN")]
     pub token: Option<String>,
 
-    /// Total RocksDB memory envelope (block cache + write buffers), in MiB. 0 disables.
-    #[arg(long, env = "OPALNOTE_DB_MEMORY_MB", default_value_t = 256)]
-    pub db_memory_mb: usize,
-
     /// Default wall-clock budget for the ad-hoc `/api/query` endpoint, in seconds.
     #[arg(long, env = "OPALNOTE_QUERY_TIMEOUT_SECS", default_value_t = 5.0)]
     pub query_timeout_secs: f64,

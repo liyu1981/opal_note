@@ -12,8 +12,8 @@ fork. The browser is a query UI; it never owns the notes.
 
 - **Notebooks are folders** under `data/notebooks/<notebook name>/`.
 - **Pages are markdown files** under `pages/` and `journals/`.
-- **The index is disposable** under `data/index/` and can be deleted at any
-  time; it is rebuilt from files.
+- **The index is disposable** under `data/index/opalnote.sqlite3` and can be
+  deleted at any time; it is rebuilt from files.
 - **Tags are file data**: explicit tags live in YAML frontmatter, inline
   `#tags` live in the body.
 - **Links are file data**: `[[wikilinks]]` resolve against note titles or paths
@@ -31,7 +31,7 @@ data/
         2026-11-12.md
       assets/
   index/
-    db/                       # MnesticDB / RocksDB (rebuildable)
+    opalnote.sqlite3          # MnesticDB / SQLite (rebuildable)
   .trash/
     notes/…
     notebooks/…
@@ -53,6 +53,10 @@ The index follows the filesystem:
 
 Deleting `data/index/` is always safe — the next start rebuilds it.
 
+> Switching from the RocksDB build? The old `data/index/db/` directory is
+> ignored; notes are unchanged. You can delete `data/index/db/` after the
+> SQLite index has been rebuilt.
+
 > Upgrading from the earlier index-only scaffold? Notes lived in `data/db`
 > with UUID ids; this file-first layout does not migrate them. Export or copy
 > what you need into `data/notebooks/<name>/pages/` and remove the old
@@ -63,7 +67,7 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 | Layer    | Choice                                                        |
 | -------- | ------------------------------------------------------------- |
 | Server   | Rust 2021, Axum 0.8, Tokio                                     |
-| Database | [`mnestic`](https://www.mnesticdb.com/) 0.19 (Datalog, RocksDB) |
+| Database | [`mnestic`](https://www.mnesticdb.com/) 0.19 (Datalog, SQLite)  |
 | Client   | React 19, CodeMirror 6, TypeScript 7, Jotai 3                 |
 | Styling  | Tailwind CSS 4                                                 |
 | Build    | Vite 8, pnpm, root `package.json` scripts                      |
@@ -73,8 +77,8 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 
 ## Quick start
 
-Requirements: Rust (1.85+), Node 22.12+ / 24, pnpm, and a C++ toolchain
-(`clang`, `cmake`) for RocksDB.
+Requirements: Rust (1.85+), Node 22.12+ / 24, pnpm, and a C compiler for
+bundled SQLite (normally part of the Rust build toolchain).
 
 ```bash
 # development: one command, one process
@@ -164,7 +168,6 @@ All flags have environment-variable equivalents.
 | `--bind`                   | `OPALNOTE_BIND`               | `127.0.0.1:7827`  | Listen address (`pnpm dev` forces `0.0.0.0:7827`)        |
 | `--data-dir`               | `OPALNOTE_DATA_DIR`           | `./data`          | Root holding `notebooks/`, `index/` and `.trash/`        |
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
-| `--db-memory-mb`           | `OPALNOTE_DB_MEMORY_MB`       | `256`             | Shared RocksDB block-cache/write-buffer envelope         |
 | `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
 | `--dev-cors`               | `OPALNOTE_DEV_CORS`           | `false`           | Permissive CORS for API calls from another origin        |
 
@@ -376,5 +379,5 @@ web/
 
 Server and client code: MIT.
 
-MnesticDB (`mnestic`) is MPL-2.0; it is linked as a library. RocksDB is
-Apache-2.0/GPL-2.0 dual-licensed.
+MnesticDB (`mnestic`) is MPL-2.0; it is linked as a library. SQLite is in the
+public domain.
