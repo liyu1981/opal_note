@@ -28,6 +28,17 @@ use self::model::{
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 const SUMMARY_CHARS: usize = 220;
 
+/// User search text is not FTS syntax. Split it into alphanumeric words and
+/// quote each one so punctuation and operator words cannot break the parser.
+fn normalize_fts_query(query: &str) -> String {
+    query
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|token| !token.is_empty())
+        .map(|token| format!("\"{token}\""))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
 /// Result of renaming/updating a notebook.
 pub enum NotebookUpdate {
     Updated(Notebook),
@@ -643,11 +654,15 @@ impl Store {
         limit: usize,
     ) -> Result<Vec<NoteSummary>> {
         self.ensure_synced()?;
+        let query = normalize_fts_query(query);
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
         let rows = self.run(
             queries::SEARCH_NOTES,
             params([
                 ("notebook_id", DataValue::from(notebook_id)),
-                ("query", DataValue::from(query)),
+                ("query", DataValue::from(query.as_str())),
                 // The FTS index is notebook-agnostic; over-fetch candidates
                 // before filtering so one busy notebook cannot starve another.
                 (
@@ -1379,6 +1394,18 @@ mod tests {
             store.search_notes(&notebook.id, "hello", 10).unwrap().len(),
             1
         );
+        // Punctuation must be treated as a token separator, not FTS syntax.
+        assert_eq!(
+            store
+                .search_notes(&notebook.id, "hello-world", 10)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(store
+            .search_notes(&notebook.id, "zzzz-no-hit", 10)
+            .unwrap()
+            .is_empty());
 
         let updated = match store
             .update_note(&notebook.id, &note.id, "Alpha", "only replaced", &[])

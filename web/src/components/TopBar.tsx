@@ -1,21 +1,32 @@
+import { useEffect } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import {
+  IconArrowLeft,
+  IconArrowRight,
   IconBook,
+  IconHome,
   IconLock,
   IconPanelLeft,
   IconPanelRight,
+  IconSearch,
   IconSettings,
 } from "./Icons";
 import {
-  activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
+  canGoBackAtom,
+  canGoForwardAtom,
+  goBackAtom,
+  goForwardAtom,
+  journalViewAtom,
   leftPanelOpenAtom,
+  navigateAtom,
   notebooksAtom,
   readOnlyAtom,
   rightPanelOpenAtom,
-  searchQueryAtom,
+  searchOpenAtom,
+  selectNotebookAtom,
   settingsOpenAtom,
 } from "../state/atoms";
 
@@ -23,10 +34,16 @@ export function TopBar() {
   const notebooks = useAtomValue(notebooksAtom);
   const notebook = useAtomValue(activeNotebookAtom);
   const activeId = useAtomValue(activeNotebookIdAtom);
-  const setActiveId = useSetAtom(activeNotebookIdAtom);
-  const setActiveNote = useSetAtom(activeNoteIdAtom);
-  const setSearch = useSetAtom(searchQueryAtom);
+  const selectNotebook = useSetAtom(selectNotebookAtom);
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
+  const setSearchOpen = useSetAtom(searchOpenAtom);
+  const searchOpen = useAtomValue(searchOpenAtom);
+  const navigate = useSetAtom(navigateAtom);
+  const goBack = useSetAtom(goBackAtom);
+  const goForward = useSetAtom(goForwardAtom);
+  const canGoBack = useAtomValue(canGoBackAtom);
+  const canGoForward = useAtomValue(canGoForwardAtom);
+  const journalView = useAtomValue(journalViewAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
   const leftOpen = useAtomValue(leftPanelOpenAtom);
@@ -34,8 +51,28 @@ export function TopBar() {
   const setLeftOpen = useSetAtom(leftPanelOpenAtom);
   const setRightOpen = useSetAtom(rightPanelOpenAtom);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const back =
+        (event.altKey && event.key === "ArrowLeft") ||
+        ((event.metaKey || event.ctrlKey) && event.key === "[");
+      const forward =
+        (event.altKey && event.key === "ArrowRight") ||
+        ((event.metaKey || event.ctrlKey) && event.key === "]");
+      if (back) {
+        event.preventDefault();
+        goBack();
+      } else if (forward) {
+        event.preventDefault();
+        goForward();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goBack, goForward]);
+
   return (
-    <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-canvas/80 px-3 backdrop-blur">
+    <header className="flex h-13 shrink-0 items-center gap-1.5 border-b border-line bg-canvas/80 px-2 backdrop-blur sm:gap-2 sm:px-3">
       <button
         type="button"
         onClick={() => setLeftOpen(!leftOpen)}
@@ -51,15 +88,52 @@ export function TopBar() {
         <IconPanelLeft className="h-4 w-4" />
       </button>
 
+      <button
+        type="button"
+        onClick={() => setSearchOpen(true)}
+        aria-pressed={searchOpen}
+        className={`rounded-md border p-1.5 transition ${
+          searchOpen
+            ? "border-line-strong bg-panel-strong text-ink"
+            : "border-transparent text-muted hover:bg-panel hover:text-ink"
+        }`}
+        title="Search notes (⌘K)"
+        aria-label="Search notes"
+        aria-haspopup="dialog"
+      >
+        <IconSearch className="h-4 w-4" />
+      </button>
+
+      <div className="ml-0.5 flex items-center gap-0.5 border-l border-line pl-1 sm:ml-1 sm:pl-1.5">
+        <button
+          type="button"
+          onClick={() => goBack()}
+          disabled={!canGoBack}
+          className="rounded-md border border-transparent p-1.5 text-muted transition hover:bg-panel hover:text-ink disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-muted"
+          title="Back (⌘[ or Alt+←)"
+          aria-label="Go back"
+        >
+          <IconArrowLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => goForward()}
+          disabled={!canGoForward}
+          className="rounded-md border border-transparent p-1.5 text-muted transition hover:bg-panel hover:text-ink disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-muted"
+          title="Forward (⌘] or Alt+→)"
+          aria-label="Go forward"
+        >
+          <IconArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+
       <div className="md:hidden">
         <select
           value={activeId ?? ""}
           onChange={(event) => {
-            setActiveId(event.target.value || null);
-            setActiveNote(null);
-            setSearch("");
+            selectNotebook(event.target.value || null);
           }}
-          className="max-w-[11rem] rounded-md border border-line bg-white/70 px-2 py-1 text-xs outline-none"
+          className="max-w-[8.5rem] rounded-md border border-line bg-white/70 px-2 py-1 text-xs outline-none sm:max-w-[11rem]"
           aria-label="Notebook"
         >
           <option value="">No notebook</option>
@@ -86,7 +160,21 @@ export function TopBar() {
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          onClick={() => navigate({ view: "journal" })}
+          aria-pressed={journalView}
+          className={`rounded-md border p-1.5 transition ${
+            journalView
+              ? "border-line-strong bg-panel-strong text-ink"
+              : "border-transparent text-muted hover:bg-panel"
+          }`}
+          title="Home — journal feed"
+          aria-label="Home"
+        >
+          <IconHome className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => setRightOpen(!rightOpen)}

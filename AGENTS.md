@@ -147,11 +147,20 @@ web/
   the editor grows with its content. Do not put the editor back in a fixed
   height container with an internal `.cm-scroller` scrollbar. Journal cards
   use the same auto-height renderer and the same `--note-ch` hanging indent.
+- The workspace opens on the journal feed, which is **Home**. The top bar has
+  a search button next to the left-sidebar toggle, back/forward history
+  controls, and a Home button on the right. Search is a centered in-page
+  dialog (`SearchDialog`, `searchOpenAtom`), not a left-sidebar filter; do not
+  put search back into `LeftSidebar` or make `notesAtom` query-dependent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
   Pages, Favorites, Recent and a Graph placeholder. The right panel is wider
   and tabbed Context / Info / Graph. Keep it that way rather than adding new
   permanent side panels.
+- All in-app location changes go through `navigateAtom` so back/forward
+  (`goBackAtom`, `goForwardAtom`) stay correct. Notebook switches use
+  `selectNotebookAtom` (fresh history); a filename rename uses
+  `replaceNoteIdAtom` so it does not create a history entry.
 - `JournalFeed` pages through `GET /notebooks/{id}/journals` newest-first
   (7 at a time) and appends older pages on scroll. Journal entries are editable
   `JournalCard`s built on `LiveMarkdownEditor` with per-card debounced
@@ -160,8 +169,9 @@ web/
 - `Pages` opens a dedicated placeholder view (`pagesViewAtom`, `PagesView`),
   not just a scroll target. Journal/Pages/note views are mutually exclusive.
   Use `api.createNote(..., { section: "journals" })` for journal pages.
+  Search calls `GET /notebooks/{id}/search` and opens results via `navigateAtom`.
 - New user-visible strings should be plain English; keep the UI quiet and
-  keyboard-friendly (⌘K search, ⌘S save).
+  keyboard-friendly (⌘K search dialog, ⌘S save).
 
 ### Tests
 

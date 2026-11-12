@@ -6,9 +6,9 @@ import { fullTime, wordCount } from "../lib/format";
 import { IconFile, IconGraph, IconLink, IconTag } from "./Icons";
 import {
   activeNoteAtom,
-  activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
+  navigateAtom,
   statsAtom,
   tagsAtom,
 } from "../state/atoms";
@@ -21,7 +21,7 @@ export function RightPanel() {
   const note = useAtomValue(activeNoteAtom);
   const tags = useAtomValue(tagsAtom);
   const stats = useAtomValue(statsAtom);
-  const setActiveNote = useSetAtom(activeNoteIdAtom);
+  const navigate = useSetAtom(navigateAtom);
   const [tab, setTab] = useState<Tab>("context");
 
   if (!notebookId) return null;
@@ -69,7 +69,7 @@ export function RightPanel() {
             note={note}
             notebookDescription={notebook?.description ?? ""}
             tags={tags}
-            onOpenNote={(path) => setActiveNote(path)}
+            onOpenNote={(path) => navigate({ view: "note", noteId: path })}
           />
         )}
 

@@ -7,6 +7,7 @@ import { JournalFeed } from "./components/JournalFeed";
 import { LeftSidebar } from "./components/LeftSidebar";
 import { PagesView } from "./components/PagesView";
 import { RightPanel } from "./components/RightPanel";
+import { SearchDialog } from "./components/SearchDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { TopBar } from "./components/TopBar";
 import {
@@ -17,6 +18,7 @@ import {
   notebooksAtom,
   pagesViewAtom,
   rightPanelOpenAtom,
+  selectNotebookAtom,
 } from "./state/atoms";
 
 export default function App() {
@@ -32,7 +34,7 @@ export default function App() {
 function Workspace() {
   const notebooks = useAtomValue(notebooksAtom);
   const activeNotebookId = useAtomValue(activeNotebookIdAtom);
-  const setActiveNotebook = useSetAtom(activeNotebookIdAtom);
+  const selectNotebook = useSetAtom(selectNotebookAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
@@ -41,22 +43,19 @@ function Workspace() {
 
   useEffect(() => {
     if (notebooks.length === 0) {
-      if (activeNotebookId !== null) {
-        setActiveNotebook(null);
-        setActiveNote(null);
-      }
+      if (activeNotebookId !== null) selectNotebook(null);
       return;
     }
     if (!activeNotebookId || !notebooks.some((n) => n.id === activeNotebookId)) {
-      setActiveNotebook(notebooks[0]?.id ?? null);
-      setActiveNote(null);
+      selectNotebook(notebooks[0]?.id ?? null);
     }
-  }, [
-    notebooks,
-    activeNotebookId,
-    setActiveNotebook,
-    setActiveNote,
-  ]);
+  }, [notebooks, activeNotebookId, selectNotebook]);
+
+  // Home and the page directory are notebook-level views; do not keep a stale
+  // note open in the right panel when one of them is showing.
+  useEffect(() => {
+    if (journalView || pagesView) setActiveNote(null);
+  }, [journalView, pagesView, setActiveNote]);
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -84,6 +83,7 @@ function Workspace() {
           )}
         </div>
       </div>
+      <SearchDialog />
       <SettingsDialog />
     </div>
   );

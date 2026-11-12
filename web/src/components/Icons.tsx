@@ -34,6 +34,31 @@ export function IconSearch(props: IconProps) {
   );
 }
 
+export function IconHome(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m3.5 10.5 8.5-7 8.5 7" />
+      <path d="M5.5 9v11h5v-6h3v6h5V9" />
+    </svg>
+  );
+}
+
+export function IconArrowLeft(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M19 12H5M11 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+export function IconArrowRight(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 export function IconTrash(props: IconProps) {
   return (
     <svg {...base(props)}>

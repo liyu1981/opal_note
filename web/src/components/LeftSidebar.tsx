@@ -1,7 +1,6 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -18,10 +17,8 @@ import {
   IconGraph,
   IconOpal,
   IconPlus,
-  IconSearch,
   IconStar,
   IconTrash,
-  IconX,
 } from "./Icons";
 import {
   activeNoteIdAtom,
@@ -29,13 +26,14 @@ import {
   activeNotebookIdAtom,
   favoritesAtom,
   journalViewAtom,
+  navigateAtom,
   notesAtom,
   notebooksAtom,
   pagesViewAtom,
   readOnlyAtom,
   recentsAtom,
   refreshAtom,
-  searchQueryAtom,
+  selectNotebookAtom,
   type NoteRef,
 } from "../state/atoms";
 
@@ -45,71 +43,24 @@ export function LeftSidebar() {
   const activeNotebookId = useAtomValue(activeNotebookIdAtom);
   const notes = useAtomValue(notesAtom);
   const activeNoteId = useAtomValue(activeNoteIdAtom);
-  const search = useAtomValue(searchQueryAtom);
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
   const favorites = useAtomValue(favoritesAtom);
   const recents = useAtomValue(recentsAtom);
   const locked = useAtomValue(readOnlyAtom);
 
-  const setActiveNotebook = useSetAtom(activeNotebookIdAtom);
-  const setActiveNote = useSetAtom(activeNoteIdAtom);
-  const setSearch = useSetAtom(searchQueryAtom);
-  const setJournalView = useSetAtom(journalViewAtom);
-  const setPagesView = useSetAtom(pagesViewAtom);
+  const navigate = useSetAtom(navigateAtom);
+  const selectNotebook = useSetAtom(selectNotebookAtom);
   const refresh = useSetAtom(refreshAtom);
 
-  const [query, setQuery] = useState(search);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(query.trim()), 250);
-    return () => window.clearTimeout(timer);
-  }, [query, setSearch]);
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  useEffect(() => {
-    setQuery("");
-    setSearch("");
-    setJournalView(false);
-    setPagesView(false);
     setAdding(false);
-  }, [activeNotebookId, setSearch, setJournalView, setPagesView]);
-
-  // Select a sensible page, but never interrupt the journal feed or a search.
-  useEffect(() => {
-    if (!activeNotebookId || journalView || pagesView) return;
-    if (notes.length === 0) {
-      if (activeNoteId) setActiveNote(null);
-      return;
-    }
-    if (activeNoteId && notes.some((note) => note.id === activeNoteId)) return;
-    if (search.trim() && activeNoteId) return;
-    setActiveNote(notes[0]?.id ?? null);
-  }, [
-    notes,
-    activeNoteId,
-    activeNotebookId,
-    search,
-    journalView,
-    pagesView,
-    setActiveNote,
-  ]);
+  }, [activeNotebookId]);
 
   const noteByPath = useMemo(
     () => new Map(notes.map((note) => [note.id, note])),
@@ -127,32 +78,17 @@ export function LeftSidebar() {
     [notes],
   );
   const pageNotes = notes.filter((note) => note.id.startsWith("pages/"));
-  const searching = search.trim().length > 0;
-
-  function resetSearch() {
-    setQuery("");
-    setSearch("");
-  }
 
   function openNote(path: string) {
-    setActiveNote(path);
-    setJournalView(false);
-    setPagesView(false);
-    resetSearch();
+    navigate({ view: "note", noteId: path });
   }
 
   function openJournalFeed() {
-    setJournalView(true);
-    setPagesView(false);
-    setActiveNote(null);
-    resetSearch();
+    navigate({ view: "journal" });
   }
 
   function openPagesView() {
-    setJournalView(false);
-    setPagesView(true);
-    setActiveNote(null);
-    resetSearch();
+    navigate({ view: "pages" });
   }
 
   async function openToday() {
@@ -188,11 +124,7 @@ export function LeftSidebar() {
   }
 
   function switchNotebook(id: string) {
-    setActiveNotebook(id || null);
-    setActiveNote(null);
-    setJournalView(false);
-    setPagesView(false);
-    resetSearch();
+    selectNotebook(id || null);
   }
 
   async function createNotebook(event: FormEvent) {
@@ -322,50 +254,11 @@ export function LeftSidebar() {
         )}
       </div>
 
-      <div className="px-3 py-2">
-        <div className="relative">
-          <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search"
-            className="w-full rounded-md border border-line bg-white/60 py-1.5 pl-7 pr-7 font-mono text-[11.5px] outline-none transition placeholder:text-faint focus:border-accent/60 focus:bg-white"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                setSearch("");
-              }}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-faint hover:text-ink"
-              aria-label="Clear search"
-            >
-              <IconX className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {!activeNotebookId ? (
           <p className="mx-1 mt-3 rounded-lg border border-dashed border-line-strong px-3 py-4 text-center font-mono text-[10.5px] leading-relaxed text-muted">
             Create a notebook to start a journal or write pages.
           </p>
-        ) : searching ? (
-          <SidebarSection title="Search results" count={notes.length}>
-            {notes.length === 0 && <Hint>No matching pages.</Hint>}
-            {notes.map((note) => (
-              <NoteRow
-                key={note.id}
-                title={note.title}
-                active={note.id === activeNoteId}
-                icon={<IconFile className="h-3 w-3" />}
-                onClick={() => openNote(note.id)}
-              />
-            ))}
-          </SidebarSection>
         ) : (
           <>
             <div className="space-y-0.5 border-b border-line pb-2">

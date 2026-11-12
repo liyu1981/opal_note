@@ -31,10 +31,12 @@ import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
   favoritesAtom,
+  navigateAtom,
   readOnlyAtom,
   recordRecentAtom,
   refreshAtom,
   renameNoteRefsAtom,
+  replaceNoteIdAtom,
   revisionAtom,
   toggleFavoriteAtom,
 } from "../state/atoms";
@@ -85,7 +87,8 @@ function ActiveNote() {
 
 function NoteEditor({ note }: { note: Note }) {
   const refresh = useSetAtom(refreshAtom);
-  const setActiveNote = useSetAtom(activeNoteIdAtom);
+  const replaceNoteId = useSetAtom(replaceNoteIdAtom);
+  const navigate = useSetAtom(navigateAtom);
   const revision = useAtomValue(revisionAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
@@ -198,7 +201,7 @@ function NoteEditor({ note }: { note: Note }) {
         tags: parseTags(draft.tagsInput),
       });
       if (updated.id !== note.id) {
-        setActiveNote(updated.id);
+        replaceNoteId(updated.id);
       }
       renameNoteRefs({
         notebookId: note.notebook_id,
@@ -227,7 +230,7 @@ function NoteEditor({ note }: { note: Note }) {
     note.notebook_id,
     refresh,
     renameNoteRefs,
-    setActiveNote,
+    replaceNoteId,
   ]);
 
   // Debounced autosave. The tick dependency restarts the timer on every
@@ -300,7 +303,7 @@ function NoteEditor({ note }: { note: Note }) {
         noteLinkKeys(candidate.title, candidate.path).includes(needle),
       );
       if (hit) {
-        setActiveNote(hit.path);
+        navigate({ view: "note", noteId: hit.path });
         return;
       }
 
@@ -315,7 +318,7 @@ function NoteEditor({ note }: { note: Note }) {
           title: target,
           content: "",
         });
-        setActiveNote(created.id);
+        navigate({ view: "note", noteId: created.id });
         refresh();
       } catch (cause) {
         setMessage(
@@ -330,7 +333,7 @@ function NoteEditor({ note }: { note: Note }) {
       note.notebook_id,
       refresh,
       save,
-      setActiveNote,
+      navigate,
     ],
   );
 
@@ -347,7 +350,7 @@ function NoteEditor({ note }: { note: Note }) {
     deletedRef.current = true;
     try {
       await api.deleteNote(note.notebook_id, note.id);
-      setActiveNote(null);
+      navigate({ view: "journal" });
       refresh();
     } catch (cause) {
       deletedRef.current = false;

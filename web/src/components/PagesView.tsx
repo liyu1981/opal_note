@@ -48,12 +48,12 @@ export function PagesView() {
           <p className="mx-auto mt-2 max-w-md font-mono text-[10.5px] leading-relaxed text-muted">
             This view will become the full page browser with filters, sort and
             a page-level map. For now, use the Pages section in the left sidebar
-            to open a page.
+            or the search dialog to open a page.
           </p>
           <div className="mx-auto mt-5 flex max-w-sm items-center gap-2 rounded-lg border border-line bg-white/60 px-3 py-2 text-left">
             <IconSearch className="h-3.5 w-3.5 shrink-0 text-faint" />
             <span className="font-mono text-[10px] text-faint">
-              Search pages from the sidebar to jump directly to one.
+              Press ⌘K in the top bar to search and jump directly to a page.
             </span>
           </div>
         </div>

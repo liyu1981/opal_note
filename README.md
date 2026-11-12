@@ -239,7 +239,9 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 
 ### Workspace layout
 
-The shell follows a Logseq-like split:
+The shell follows a Logseq-like split. It opens on the journal feed, which is
+the workspace **Home**. The top bar carries search (⌘K opens an in-page dialog),
+back/forward history controls, and a Home button on the right.
 
 - **Left sidebar** — notebook switcher, Favorites, Recent, Journal and Pages.
   Journals open a dedicated feed of **editable journal cards** rather than a
@@ -251,6 +253,12 @@ The shell follows a Logseq-like split:
   and can be toggled from the top bar, leaving the writing surface to fill the
   window. The single-page editor grows with its content and scrolls the page,
   not an inner editor box; journal cards use the same renderer.
+- **Search** — the search button beside the sidebar toggle opens a centered
+  dialog instead of filtering the left panel. Results come from the server's
+  `note:fts` index and open the selected page directly.
+- **Navigation** — back/forward (⌘[ / ⌘] or Alt+← / Alt+→) walk a session
+  history of notes, journal feeds and directory views. Switching notebooks
+  starts a fresh history at that notebook's journal.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab is a
   placeholder for the notebook connection graph; the extra width leaves room

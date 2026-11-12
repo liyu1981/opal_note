@@ -21,13 +21,158 @@ export const activeNoteIdAtom = atomWithStorage<string | null>(
   null,
 );
 
-export const searchQueryAtom = atom("");
-
 /** When true the main pane is the journal feed rather than a single note. */
-export const journalViewAtom = atom(false);
+export const journalViewAtom = atom(true);
 
 /** Dedicated page-directory view (placeholder for now). */
 export const pagesViewAtom = atom(false);
+
+export const searchOpenAtom = atom(false);
+
+export type WorkspaceView = "journal" | "pages" | "note";
+
+export type WorkspaceLocation = {
+  notebookId: string | null;
+  view: WorkspaceView;
+  noteId: string | null;
+};
+
+export type NavigationTarget =
+  | { view: "journal"; notebookId?: string | null }
+  | { view: "pages"; notebookId?: string | null }
+  | { view: "note"; notebookId?: string | null; noteId: string };
+
+/** The location currently shown by the workspace. */
+export const currentLocationAtom = atom<WorkspaceLocation>((get) => {
+  const journal = get(journalViewAtom);
+  const pages = get(pagesViewAtom);
+  const view: WorkspaceView = journal ? "journal" : pages ? "pages" : "note";
+  return {
+    notebookId: get(activeNotebookIdAtom),
+    view,
+    noteId: view === "note" ? get(activeNoteIdAtom) : null,
+  };
+});
+
+type NavigationHistory = {
+  entries: WorkspaceLocation[];
+  index: number;
+};
+
+/** Browser-style in-memory history for note, journal and page views. */
+export const navigationHistoryAtom = atom<NavigationHistory>({
+  entries: [],
+  index: -1,
+});
+
+export const canGoBackAtom = atom(
+  (get) => get(navigationHistoryAtom).index > 0,
+);
+
+export const canGoForwardAtom = atom((get) => {
+  const history = get(navigationHistoryAtom);
+  return history.index >= 0 && history.index < history.entries.length - 1;
+});
+
+function sameLocation(a: WorkspaceLocation, b: WorkspaceLocation): boolean {
+  return (
+    a.notebookId === b.notebookId &&
+    a.view === b.view &&
+    a.noteId === b.noteId
+  );
+}
+
+const applyWorkspaceLocationAtom = atom(
+  null,
+  (_get, set, location: WorkspaceLocation) => {
+    set(activeNotebookIdAtom, location.notebookId);
+    set(journalViewAtom, location.view === "journal");
+    set(pagesViewAtom, location.view === "pages");
+    set(activeNoteIdAtom, location.view === "note" ? location.noteId : null);
+  },
+);
+
+/** Push a destination onto history and show it. */
+export const navigateAtom = atom(
+  null,
+  (get, set, target: NavigationTarget) => {
+    const current = get(currentLocationAtom);
+    const notebookId = target.notebookId ?? current.notebookId;
+    if (!notebookId) return;
+
+    const next: WorkspaceLocation = {
+      notebookId,
+      view: target.view,
+      noteId: target.view === "note" ? target.noteId : null,
+    };
+    if (sameLocation(current, next)) return;
+
+    const history = get(navigationHistoryAtom);
+    let entries = history.entries.slice(0, history.index + 1);
+    if (entries.length === 0) {
+      entries = [current];
+    } else {
+      const tail = entries[entries.length - 1];
+      if (!tail || !sameLocation(tail, current)) entries.push(current);
+    }
+    entries.push(next);
+    set(navigationHistoryAtom, {
+      entries,
+      index: entries.length - 1,
+    });
+    set(applyWorkspaceLocationAtom, next);
+  },
+);
+
+export const goBackAtom = atom(null, (get, set) => {
+  const history = get(navigationHistoryAtom);
+  if (history.index <= 0) return;
+  const index = history.index - 1;
+  const location = history.entries[index];
+  if (!location) return;
+  set(navigationHistoryAtom, { ...history, index });
+  set(applyWorkspaceLocationAtom, location);
+});
+
+export const goForwardAtom = atom(null, (get, set) => {
+  const history = get(navigationHistoryAtom);
+  if (history.index < 0 || history.index >= history.entries.length - 1) return;
+  const index = history.index + 1;
+  const location = history.entries[index];
+  if (!location) return;
+  set(navigationHistoryAtom, { ...history, index });
+  set(applyWorkspaceLocationAtom, location);
+});
+
+/** A rename changes the current note path without creating a history entry. */
+export const replaceNoteIdAtom = atom(null, (get, set, noteId: string) => {
+  const current = get(currentLocationAtom);
+  const next: WorkspaceLocation = { ...current, view: "note", noteId };
+  if (sameLocation(current, next)) return;
+  set(applyWorkspaceLocationAtom, next);
+
+  const history = get(navigationHistoryAtom);
+  const entry = history.entries[history.index];
+  if (history.index >= 0 && entry && sameLocation(entry, current)) {
+    const entries = [...history.entries];
+    entries[history.index] = next;
+    set(navigationHistoryAtom, { ...history, entries });
+  }
+});
+
+/** Switching notebooks starts a fresh history at that notebook's journal. */
+export const selectNotebookAtom = atom(
+  null,
+  (get, set, notebookId: string | null) => {
+    if (get(activeNotebookIdAtom) === notebookId) return;
+    set(activeNotebookIdAtom, notebookId);
+    set(activeNoteIdAtom, null);
+    set(journalViewAtom, true);
+    set(pagesViewAtom, false);
+    set(navigationHistoryAtom, { entries: [], index: -1 });
+    set(searchOpenAtom, false);
+  },
+);
 
 export type NoteRef = {
   notebookId: string;
@@ -143,11 +288,8 @@ export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
   const notebookId = get(activeNotebookIdAtom);
   if (!notebookId) return [];
 
-  const query = get(searchQueryAtom).trim();
   try {
-    return query
-      ? await api.searchNotes(notebookId, query, 50)
-      : await api.listNotes(notebookId, 200);
+    return await api.listNotes(notebookId, 200);
   } catch (error) {
     // A notebook deleted in another tab must not take down the workspace;
     // the selection effect will pick a valid one on the next render.

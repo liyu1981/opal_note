@@ -11,9 +11,8 @@ import {
 import { IconCalendar } from "./Icons";
 import { JournalCard } from "./JournalCard";
 import {
-  activeNoteIdAtom,
   activeNotebookIdAtom,
-  journalViewAtom,
+  navigateAtom,
   notesAtom,
   readOnlyAtom,
   refreshAtom,
@@ -25,8 +24,7 @@ export function JournalFeed() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notes = useAtomValue(notesAtom);
   const locked = useAtomValue(readOnlyAtom);
-  const setActiveNote = useSetAtom(activeNoteIdAtom);
-  const setJournalView = useSetAtom(journalViewAtom);
+  const navigate = useSetAtom(navigateAtom);
   const refresh = useSetAtom(refreshAtom);
 
   const [pages, setPages] = useState<JournalPage[]>([]);
@@ -102,8 +100,7 @@ export function JournalFeed() {
   }, [hasMore, loading, pages, load]);
 
   function openPage(page: JournalPage) {
-    setActiveNote(page.id);
-    setJournalView(false);
+    navigate({ view: "note", noteId: page.id });
   }
 
   function openWiki(target: string) {
@@ -112,8 +109,7 @@ export function JournalFeed() {
       noteLinkKeys(note.title, note.id).includes(needle),
     );
     if (hit) {
-      setActiveNote(hit.id);
-      setJournalView(false);
+      navigate({ view: "note", noteId: hit.id });
     }
   }
 
@@ -121,8 +117,7 @@ export function JournalFeed() {
     if (!notebookId || locked) return;
     try {
       const note = await ensureJournal(notebookId);
-      setActiveNote(note.id);
-      setJournalView(false);
+      navigate({ view: "note", noteId: note.id });
       refresh();
     } catch (cause) {
       setError(
