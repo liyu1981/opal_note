@@ -8,6 +8,7 @@ import type {
   Notebook,
   PageList,
   PageOverview,
+  PluginList,
   QueryResult,
   Stats,
   TagCount,
@@ -160,6 +161,11 @@ export const api = {
     request<JournalPluginResult[]>(
       `/notebooks/${encode(notebookId)}/plugins`,
     ),
+
+  listPlugins: () => request<PluginList>("/plugins"),
+
+  reloadPlugins: () =>
+    request<PluginList>("/plugins/reload", { method: "POST" }),
 
   searchNotes: (notebookId: string, query: string, limit = 50) =>
     request<NoteSummary[]>(

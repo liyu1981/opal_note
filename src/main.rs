@@ -19,6 +19,7 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Cli;
+use crate::plugins::PluginRegistry;
 use crate::settings::SettingsStore;
 use crate::state::AppState;
 use crate::store::Store;
@@ -33,6 +34,8 @@ async fn main() -> anyhow::Result<()> {
     store.ping()?;
     let settings = Arc::new(SettingsStore::new(&args.data_dir)?);
     tracing::debug!(path = %settings.path().display(), "settings ready");
+    let plugins = Arc::new(PluginRegistry::new(&args.data_dir)?);
+    tracing::debug!(path = %plugins.directory().display(), "plugins ready");
 
     let token = args.token();
     if token.is_none() {
@@ -45,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(
         store,
         settings,
+        plugins,
         token,
         args.query_timeout_secs,
         args.plugin_timeout_secs,

@@ -73,7 +73,7 @@ src/
   auth.rs          optional bearer-token middleware
   assets.rs        rust-embed static/SPA handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
-  plugins.rs       sandboxed QuickJS journal plugin runner
+  plugins.rs       embedded/data plugin registry + QuickJS runner
   settings.rs      sparse settings.json store
   store/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
@@ -81,6 +81,7 @@ src/
     queries.rs     CozoScript statements (single source of truth)
     markdown.rs    wikilinks, tags, frontmatter, summaries + unit tests
     model.rs       API-facing serde models
+plugins/builtin/ native plugin folders embedded with rust-embed
 web/
   package.json     build + typecheck only (no dev server)
   src/api/         typed fetch client + shared types
@@ -228,7 +229,14 @@ web/
   a read-only `__queryHost` bridge backed by `Store::run_query`, and a
   per-plugin deadline that interrupts JS and bounds Datalog queries. Plugins
   return a generic `{items: [...]}` JSON payload. Do not add filesystem or
-  network host APIs. The endpoint is `GET /notebooks/{id}/plugins` and uses
+  network host APIs.
+- Native plugins live in `plugins/builtin/<id>/` and are embedded with
+  `rust-embed`; data plugins live in `<data-dir>/plugins/<id>/`. Each folder
+  needs `plugin.json` (`id`, `title`, `description`) and `plugin.js`. Built-in
+  ids win over data plugins; conflicting data folders are reported as load
+  errors. The registry loads at startup and can rescan via
+  `POST /api/plugins/reload`; `GET /api/plugins` lists metadata. The journal
+  endpoint is `GET /notebooks/{id}/plugins` and uses
   `OPALNOTE_PLUGIN_TIMEOUT_SECS`.
 - Tasks are derived during filesystem sync into the `task` relation from
   markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
@@ -309,6 +317,8 @@ GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
 GET /api/notebooks/{notebook}/graph
 GET /api/notebooks/{notebook}/plugins
+GET /api/plugins
+POST /api/plugins/reload
 GET|PUT /api/settings
 ```
 

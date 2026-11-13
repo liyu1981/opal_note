@@ -57,6 +57,27 @@ export interface JournalPluginResult {
   error?: string;
 }
 
+export type PluginSource = "builtin" | "data";
+
+export interface PluginInfo {
+  id: string;
+  title: string;
+  description: string;
+  source: PluginSource;
+  path?: string;
+}
+
+export interface PluginLoadError {
+  folder: string;
+  message: string;
+}
+
+export interface PluginList {
+  directory: string;
+  plugins: PluginInfo[];
+  errors: PluginLoadError[];
+}
+
 export interface GraphNode {
   id: string;
   title: string;

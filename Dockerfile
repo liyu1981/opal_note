@@ -14,6 +14,7 @@ FROM rust:1.99-bookworm AS server
 WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY src ./src
+COPY plugins ./plugins
 COPY --from=web /app/web/dist ./web/dist
 RUN cargo build --release --locked
 

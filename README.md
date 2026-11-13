@@ -333,8 +333,26 @@ dialog), back/forward history controls, and a Home button on the right.
   and reset the view. It participates in normal back/forward history.
 - **Journal tools** — journal view reserves a vertical plugin rail on the
   right (desktop). Plugins run server-side in QuickJS, use read-only Datalog,
-  and return JSON items. The first plugin lists open todos across the notebook;
-  clicking one opens its page.
+  and return JSON items. The built-in todos plugin lists open tasks across the
+  notebook; clicking one opens its page. Settings → Plugins shows installed
+  plugins and reloads the data plugin folder.
+
+### Plugins
+
+Plugins are small JavaScript widgets with a JSON manifest:
+
+```
+plugins/builtin/todos/plugin.json   # embedded in the binary
+plugins/builtin/todos/plugin.js
+<data-dir>/plugins/<id>/plugin.json # loaded at startup / on reload
+<data-dir>/plugins/<id>/plugin.js
+```
+
+`plugin.json` contains `id`, `title`, and `description`. `plugin.js` is an IIFE
+that returns `JSON.stringify({ items: [...] })`; it can call the read-only
+`__query(script, params)` bridge and read `__notebook_id`. Built-in ids take
+precedence: a data plugin with the same id is rejected and reported in Settings
+→ Plugins. Reloading does not require a server restart.
 
 ### Client routes
 
@@ -394,6 +412,8 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
 | GET    | `/notebooks/{id}/plugins`                    | Journal plugin results (QuickJS + Datalog)     |
+| GET    | `/plugins`                                   | Installed plugin metadata + load errors        |
+| POST   | `/plugins/reload`                            | Rescan the data plugin folder                  |
 | GET    | `/settings`                                  | Sparse user settings JSON                      |
 | PUT    | `/settings`                                  | Replace the sparse user settings JSON          |
 | POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
@@ -459,7 +479,7 @@ src/
   auth.rs            optional bearer-token middleware
   assets.rs          rust-embed asset + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
-  plugins.rs         sandboxed QuickJS journal plugin runner
+  plugins.rs         embedded/data plugin registry + QuickJS runner
   settings.rs        sparse settings.json store
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
@@ -467,6 +487,7 @@ src/
     markdown.rs      wikilinks, tags, frontmatter, summaries
     queries.rs       every CozoScript statement
     model.rs         API models
+plugins/builtin/     native plugin folders embedded into the binary
 web/
   src/api/           typed client + types
   src/router.tsx     TanStack route tree + URL/view synchronization
@@ -480,7 +501,8 @@ web/
 
 - Journal plugins run in a fresh QuickJS runtime per request with memory, stack
   and wall-clock limits. They get only a read-only Datalog host function; no
-  filesystem or network APIs are exposed.
+  filesystem or network APIs are exposed. Data plugin files are read only at
+  startup/reload; the plugin script itself cannot touch the filesystem.
 - Without `OPALNOTE_TOKEN`, anyone who can reach the port can read and write
   files under `data/notebooks`. Set a token before exposing the server.
 - There is no per-notebook access control — the token is a single-user gate.

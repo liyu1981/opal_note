@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
+import type { PluginList } from "../api/types";
 import {
   FONT_PRESETS,
   FONT_ROLES,
@@ -24,11 +31,13 @@ import {
   IconArrowUpRight,
   IconCheck,
   IconGithub,
+  IconRefresh,
   IconSettings,
   IconX,
 } from "./Icons";
 import { OpalLogo } from "./OpalLogo";
 import {
+  journalPluginsRevisionAtom,
   refreshAtom,
   saveTokenAtom,
   settingsOpenAtom,
@@ -36,7 +45,13 @@ import {
   tokenAtom,
 } from "../state/atoms";
 
-type Tab = "fonts" | "shortcuts" | "connection" | "index" | "about";
+type Tab =
+  | "fonts"
+  | "shortcuts"
+  | "connection"
+  | "index"
+  | "plugins"
+  | "about";
 type TestStatus = "idle" | "testing" | "ok" | "error";
 
 const TABS: Array<{ id: Tab; label: string; description: string }> = [
@@ -59,6 +74,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "index",
     label: "Index",
     description: "Rebuild the disposable Datalog index.",
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    description: "Inspect installed journal plugins and reload the data folder.",
   },
   {
     id: "about",
@@ -368,6 +388,7 @@ export function SettingsDialog() {
                 onRebuild={rebuildIndex}
               />
             )}
+            {tab === "plugins" && <PluginsTab />}
             {tab === "about" && <AboutTab />}
           </div>
         </div>
@@ -794,6 +815,161 @@ function ShortcutRow({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function PluginsTab() {
+  const bumpPlugins = useSetAtom(journalPluginsRevisionAtom);
+  const [data, setData] = useState<PluginList | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [reloading, setReloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const next = await api.listPlugins();
+      setData(next);
+      setError(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not load plugins",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function reload() {
+    setReloading(true);
+    setError(null);
+    try {
+      const next = await api.reloadPlugins();
+      setData(next);
+      bumpPlugins((revision) => revision + 1);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not reload plugins",
+      );
+    } finally {
+      setReloading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="max-w-xl font-sans text-[14px] leading-relaxed text-muted">
+            Built-in plugins ship inside the binary. Add one folder per plugin
+            under the data directory, with a{" "}
+            <code className="rounded bg-panel px-1 font-mono text-[14px]">
+              plugin.json
+            </code>{" "}
+            manifest and a{" "}
+            <code className="rounded bg-panel px-1 font-mono text-[14px]">
+              plugin.js
+            </code>{" "}
+            source file, then reload.
+          </p>
+          {data && (
+            <p className="mt-2 break-all rounded border border-line bg-panel/40 px-2.5 py-1.5 font-mono text-[14px] text-ink-soft">
+              {data.directory}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void reload()}
+          disabled={loading || reloading}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent-strong px-3.5 py-2 font-sans text-[14px] font-medium text-white transition hover:bg-accent disabled:opacity-50"
+        >
+          <IconRefresh
+            className={`h-3.5 w-3.5 ${reloading ? "animate-spin" : ""}`}
+          />
+          {reloading ? "Reloading…" : "Reload plugins"}
+        </button>
+      </div>
+
+      {error && (
+        <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+
+      {loading && !data ? (
+        <p className="px-2 py-8 text-center font-sans text-[14px] text-faint">
+          Loading plugins…
+        </p>
+      ) : data?.plugins.length === 0 ? (
+        <p className="rounded-lg border border-line bg-white px-4 py-8 text-center font-sans text-[14px] text-faint">
+          No plugins loaded.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {data?.plugins.map((plugin) => (
+            <section
+              key={plugin.id}
+              className="rounded-lg border border-line bg-white p-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-sans text-[14px] font-semibold text-ink">
+                      {plugin.title}
+                    </h3>
+                    <span
+                      className={`rounded px-1.5 py-0.5 font-mono text-[12px] uppercase tracking-[0.08em] ${
+                        plugin.source === "builtin"
+                          ? "bg-accent-soft text-accent-strong"
+                          : "bg-mint/10 text-mint"
+                      }`}
+                    >
+                      {plugin.source === "builtin" ? "Built-in" : "Data"}
+                    </span>
+                    <span className="font-mono text-[12px] text-faint">
+                      {plugin.id}
+                    </span>
+                  </div>
+                  <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
+                    {plugin.description}
+                  </p>
+                  {plugin.path && (
+                    <p className="mt-1 break-all font-mono text-[12px] text-faint">
+                      {plugin.path}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {data && data.errors.length > 0 && (
+        <section className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+          <h3 className="font-sans text-[14px] font-semibold text-danger">
+            Load errors
+          </h3>
+          <div className="mt-2 space-y-2">
+            {data.errors.map((item) => (
+              <div key={`${item.folder}-${item.message}`}>
+                <p className="font-mono text-[12px] text-danger">
+                  {item.folder}
+                </p>
+                <p className="break-words font-sans text-[14px] leading-relaxed text-muted">
+                  {item.message}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
