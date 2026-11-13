@@ -11,15 +11,25 @@ import {
   type AppSettings,
   type FontRole,
 } from "../lib/settings";
+import {
+  SHORTCUT_COMMANDS,
+  SHORTCUT_GROUPS,
+  chordFromEvent,
+  defaultBindingText,
+  formatBinding,
+  resolveBindings,
+  type ShortcutCommand,
+} from "../lib/shortcuts";
 import { IconCheck, IconSettings, IconX } from "./Icons";
 import {
   refreshAtom,
   saveTokenAtom,
   settingsOpenAtom,
+  shortcutRecordingAtom,
   tokenAtom,
 } from "../state/atoms";
 
-type Tab = "fonts" | "connection" | "index";
+type Tab = "fonts" | "shortcuts" | "connection" | "index";
 type TestStatus = "idle" | "testing" | "ok" | "error";
 
 const TABS: Array<{ id: Tab; label: string; description: string }> = [
@@ -27,6 +37,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "fonts",
     label: "Fonts",
     description: "Choose the typeface for each part of the workspace.",
+  },
+  {
+    id: "shortcuts",
+    label: "Keyboard",
+    description: "Review and customize workspace keybindings.",
   },
   {
     id: "connection",
@@ -46,6 +61,7 @@ export function SettingsDialog() {
   const settings = useAtomValue(settingsAtom);
   const setSettings = useSetAtom(settingsAtom);
   const syncStatus = useAtomValue(settingsStatusAtom);
+  const recording = useAtomValue(shortcutRecordingAtom);
   const token = useAtomValue(tokenAtom);
   const saveToken = useSetAtom(saveTokenAtom);
   const refresh = useSetAtom(refreshAtom);
@@ -77,13 +93,14 @@ export function SettingsDialog() {
   useEffect(() => {
     if (!open) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !recording) {
+        if (dirty) void saveSettings(draft);
         setOpen(false);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, setOpen]);
+  }, [dirty, draft, open, recording, setOpen]);
 
   async function saveSettings(next: AppSettings) {
     const version = ++saveVersion.current;
@@ -144,6 +161,25 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateKeybinding(id: string, binding: string | null) {
+    const keybindings = { ...draft.keybindings };
+    if (binding) keybindings[id] = binding;
+    else delete keybindings[id];
+    const next: AppSettings = { ...draft, keybindings };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
+  function resetKeybindings() {
+    const next: AppSettings = { ...draft, keybindings: {} };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   async function rebuildIndex() {
     if (rebuilding) return;
     setRebuilding(true);
@@ -196,7 +232,10 @@ export function SettingsDialog() {
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 p-4 backdrop-blur-sm"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setOpen(false);
+        if (event.target === event.currentTarget) {
+          if (dirty) void saveSettings(draft);
+          setOpen(false);
+        }
       }}
     >
       <div
@@ -250,7 +289,7 @@ export function SettingsDialog() {
                 {activeTab.description}
               </p>
             </div>
-            {fontStatus !== "idle" && tab === "fonts" && (
+            {fontStatus !== "idle" && (tab === "fonts" || tab === "shortcuts") && (
               <span
                 className={`mt-1 font-mono text-[14px] ${
                   fontStatus === "error" ? "text-danger" : "text-faint"
@@ -282,6 +321,14 @@ export function SettingsDialog() {
                 settings={draft}
                 onChange={updateFont}
                 onReset={resetFonts}
+                error={fontError}
+              />
+            )}
+            {tab === "shortcuts" && (
+              <ShortcutsTab
+                settings={draft}
+                onChange={updateKeybinding}
+                onReset={resetKeybindings}
                 error={fontError}
               />
             )}
@@ -507,6 +554,233 @@ function IndexTab({
         mnesticdb · sqlite
       </p>
       {message && <StatusMessage status={status} message={message} />}
+    </div>
+  );
+}
+
+function ShortcutsTab({
+  settings,
+  onChange,
+  onReset,
+  error,
+}: {
+  settings: AppSettings;
+  onChange: (id: string, binding: string | null) => void;
+  onReset: () => void;
+  error: string | null;
+}) {
+  const setRecording = useSetAtom(shortcutRecordingAtom);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [capture, setCapture] = useState("");
+
+  useEffect(() => {
+    if (!recordingId) return;
+    const targetId = recordingId;
+    function onKeyDown(event: KeyboardEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setRecordingId(null);
+        setCapture("");
+        setRecording(false);
+        return;
+      }
+      if (event.key === "Enter") {
+        if (capture.trim()) onChange(targetId, capture.trim());
+        setRecordingId(null);
+        setCapture("");
+        setRecording(false);
+        return;
+      }
+      if (event.key === "Backspace") {
+        setCapture((current) =>
+          current.split(/\s+/u).filter(Boolean).slice(0, -1).join(" "),
+        );
+        return;
+      }
+      const chord = chordFromEvent(event);
+      if (!chord) return;
+      setCapture((current) => (current ? `${current} ${chord}` : chord));
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [capture, onChange, recordingId, setRecording]);
+
+  useEffect(() => {
+    return () => setRecording(false);
+  }, [setRecording]);
+
+  function startRecording(id: string) {
+    setCapture("");
+    setRecordingId(id);
+    setRecording(true);
+  }
+
+  const bindings = new Map<string, string[]>();
+  for (const command of SHORTCUT_COMMANDS) {
+    for (const binding of resolveBindings(command, settings.keybindings)) {
+      bindings.set(binding, [...(bindings.get(binding) ?? []), command.id]);
+    }
+  }
+  const conflicts = new Set(
+    [...bindings.values()]
+      .filter((ids) => ids.length > 1)
+      .flat(),
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="max-w-lg font-sans text-[14px] leading-relaxed text-muted">
+          Click a binding to record a new chord sequence. Press Enter to save,
+          Backspace to remove the last key, or Escape to cancel.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setRecordingId(null);
+            setCapture("");
+            setRecording(false);
+            onReset();
+          }}
+          className="rounded border border-line px-3 py-1.5 font-sans text-[14px] text-muted transition hover:bg-panel hover:text-ink"
+        >
+          Reset all shortcuts
+        </button>
+      </div>
+
+      {conflicts.size > 0 && (
+        <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+          Some bindings are assigned more than once. The first matching command
+          wins until the conflict is resolved.
+        </p>
+      )}
+
+      {SHORTCUT_GROUPS.map((group) => (
+        <section key={group}>
+          <h3 className="mb-2 font-mono text-[14px] font-semibold uppercase tracking-[0.12em] text-faint">
+            {group}
+          </h3>
+          <div className="overflow-hidden rounded-lg border border-line bg-white">
+            {SHORTCUT_COMMANDS.filter((command) => command.group === group).map(
+              (command) => (
+                <ShortcutRow
+                  key={command.id}
+                  command={command}
+                  custom={settings.keybindings[command.id]}
+                  effective={resolveBindings(command, settings.keybindings)}
+                  conflict={conflicts.has(command.id)}
+                  recording={recordingId === command.id}
+                  capture={capture}
+                  onRecord={() => startRecording(command.id)}
+                  onReset={() => onChange(command.id, null)}
+                  onCancel={() => {
+                    setRecordingId(null);
+                    setCapture("");
+                    setRecording(false);
+                  }}
+                />
+              ),
+            )}
+          </div>
+        </section>
+      ))}
+
+      {error && (
+        <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ShortcutRow({
+  command,
+  custom,
+  effective,
+  conflict,
+  recording,
+  capture,
+  onRecord,
+  onReset,
+  onCancel,
+}: {
+  command: ShortcutCommand;
+  custom: string | undefined;
+  effective: string[];
+  conflict: boolean;
+  recording: boolean;
+  capture: string;
+  onRecord: () => void;
+  onReset: () => void;
+  onCancel: () => void;
+}) {
+  const label = capture
+    ? capture
+        .split(/\s+/u)
+        .filter(Boolean)
+        .map((chord) => formatBinding(chord))
+        .join(" ")
+    : recording
+      ? "Press keys…"
+      : custom
+        ? formatBinding(custom)
+        : effective.map(formatBinding).join(" / ");
+
+  return (
+    <div className="flex items-center gap-3 border-b border-line/60 px-3 py-2.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="font-sans text-[14px] font-medium text-ink">
+            {command.label}
+          </span>
+          {conflict && (
+            <span className="rounded bg-danger/10 px-1.5 py-0.5 font-mono text-[14px] text-danger">
+              conflict
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 font-sans text-[14px] leading-relaxed text-faint">
+          {command.description}
+        </p>
+        <p className="mt-0.5 font-mono text-[14px] text-faint">
+          Default: {defaultBindingText(command)}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onRecord}
+          className={`min-w-40 whitespace-nowrap rounded border px-2 py-1.5 font-mono text-[14px] transition ${
+            recording
+              ? "border-accent bg-accent-soft text-accent-strong"
+              : "border-line bg-panel/40 text-ink-soft hover:bg-panel"
+          }`}
+        >
+          {label}
+        </button>
+        {recording && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded border border-line px-2 py-1 font-mono text-[14px] text-faint transition hover:bg-panel hover:text-ink"
+            title="Cancel recording"
+          >
+            Esc
+          </button>
+        )}
+        {custom && !recording && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded px-2 py-1 font-sans text-[14px] text-faint transition hover:bg-panel hover:text-ink"
+            title={`Reset ${command.label}`}
+          >
+            Reset
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { api } from "../api/client";
 import type { NoteSummary } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
+import { bindingLabel } from "../lib/shortcuts";
+import { settingsAtom } from "../lib/settings";
 import { useAppNavigate } from "../lib/appNavigation";
 import { IconCalendar, IconFile, IconSearch, IconX } from "./Icons";
 import {
@@ -24,6 +26,7 @@ export function SearchDialog() {
   const setOpen = useSetAtom(searchOpenAtom);
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notebook = useAtomValue(activeNotebookAtom);
+  const settings = useAtomValue(settingsAtom);
   const navigate = useAppNavigate();
 
   const [query, setQuery] = useState("");
@@ -36,21 +39,6 @@ export function SearchDialog() {
   const listRef = useRef<HTMLDivElement>(null);
   const trimmed = query.trim();
   const terms = useMemo(() => searchTerms(trimmed), [trimmed]);
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setOpen(true);
-        window.setTimeout(() => {
-          inputRef.current?.focus();
-          inputRef.current?.select();
-        }, 0);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -282,7 +270,7 @@ export function SearchDialog() {
           <span>↵ open</span>
           <span className="ml-auto inline-flex items-center gap-1">
             <kbd className="rounded border border-line bg-panel px-1 py-0.5">
-              ⌘K
+              {bindingLabel("nav.search", settings.keybindings)}
             </kbd>
             search
           </span>

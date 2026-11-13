@@ -5,8 +5,10 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { LeftSidebar } from "./LeftSidebar";
 import { RightPanel } from "./RightPanel";
 import { SearchDialog } from "./SearchDialog";
+import { ShortcutHud } from "./ShortcutHud";
 import { SettingsDialog } from "./SettingsDialog";
 import { TopBar } from "./TopBar";
+import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
 import {
   applySettings,
   bootstrapSettings,
@@ -40,6 +42,8 @@ export function Workspace() {
   const setSettings = useSetAtom(settingsAtom);
   const setSettingsStatus = useSetAtom(settingsStatusAtom);
   const setSettingsError = useSetAtom(settingsErrorAtom);
+
+  useKeyboardShortcuts();
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +100,7 @@ export function Workspace() {
       </div>
       <SearchDialog />
       <SettingsDialog />
+      <ShortcutHud />
     </div>
   );
 }

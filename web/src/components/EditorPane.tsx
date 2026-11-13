@@ -13,6 +13,8 @@ import type { Note, NoteSummary } from "../api/types";
 import { parseTags, relativeTime, tagList, wordCount } from "../lib/format";
 import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
+import { bindingLabel } from "../lib/shortcuts";
+import { settingsAtom } from "../lib/settings";
 import {
   IconCheck,
   IconFile,
@@ -33,6 +35,7 @@ import {
   favoritesAtom,
   readOnlyAtom,
   recordRecentAtom,
+  saveRequestAtom,
   notesRevisionAtom,
   refreshAtom,
   refreshNotesAtom,
@@ -150,9 +153,12 @@ function NoteEditor({ note }: { note: Note }) {
   const refresh = useSetAtom(refreshAtom);
   const refreshNotes = useSetAtom(refreshNotesAtom);
   const revision = useAtomValue(revisionAtom);
+  const saveRequest = useAtomValue(saveRequestAtom);
+  const lastSaveRequest = useRef(saveRequest);
   const navigate = useAppNavigate();
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
+  const settings = useAtomValue(settingsAtom);
   const favorites = useAtomValue(favoritesAtom);
   const toggleFavorite = useSetAtom(toggleFavoriteAtom);
   const recordRecent = useSetAtom(recordRecentAtom);
@@ -312,16 +318,11 @@ function NoteEditor({ note }: { note: Note }) {
   }, [note.title, note.explicit_tags, dirty, status]);
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (locked) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void save();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [locked, save]);
+    if (saveRequest === lastSaveRequest.current) return;
+    lastSaveRequest.current = saveRequest;
+    if (locked) return;
+    void save();
+  }, [locked, save, saveRequest]);
 
   // A close during the autosave window should at least warn, not silently drop
   // the last paragraph.
@@ -536,7 +537,7 @@ function NoteEditor({ note }: { note: Note }) {
                 onClick={() => void save()}
                 disabled={status === "saving"}
                 className="rounded-lg border border-line bg-white/70 px-2.5 py-1.5 text-[14px] font-medium text-ink-soft transition hover:border-line-strong hover:bg-white disabled:opacity-50"
-                title="Save (⌘S)"
+                title={`Save (${bindingLabel("editor.save", settings.keybindings)})`}
               >
                 Save
               </button>

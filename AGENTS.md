@@ -276,8 +276,14 @@ web/
   `pnpm dev` ensures mkcert certs under `certs/` (gitignored); production can
   pass `--tls-cert` / `--tls-key`. The Docker image defaults to HTTP because
   it has no certificate mount.
+- Keyboard shortcuts are declared in `web/src/lib/shortcuts.ts` and dispatched
+  by `useKeyboardShortcuts`; do not add ad-hoc global key listeners in
+  components. User overrides live under `keybindings` in the sparse settings
+  object and are recorded from Settings → Keyboard.
 - New user-visible strings should be plain English; keep the UI quiet and
-  keyboard-friendly (⌘K search dialog, ⌘S save).
+  keyboard-friendly (customizable shortcuts; the default leader is
+  `Cmd+Shift+Space` on macOS and `Ctrl+Shift+Space` elsewhere, then `F` for
+  search and `Cmd+S` / `Ctrl+S` to save).
 
 ### Tests
 

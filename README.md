@@ -276,8 +276,10 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 ### Workspace layout
 
 The shell follows a Logseq-like split. It opens on the journal feed, which is
-the workspace **Home**. The top bar carries search (⌘K opens an in-page dialog),
-back/forward history controls, and a Home button on the right.
+the workspace **Home**. The top bar carries search (by default the leader
+sequence `Cmd+Shift+Space` on macOS, `Ctrl+Shift+Space` elsewhere, then `F`
+opens an in-page dialog), back/forward history controls, and a Home button on
+the right.
 
 - **Left sidebar** — notebook switcher, Favorites, Recent, Journal and Pages.
   Journals open a dedicated feed of **editable journal cards** rather than a
@@ -300,12 +302,18 @@ back/forward history controls, and a Home button on the right.
   open the selected page directly.
 - **Settings** — a large left-tabbed dialog. Fonts are configured by role
   (interface, titles, editor, labels/code); any Google Font can be named and
-  loaded over HTTPS. User overrides are stored as one sparse JSON object on
-  the server and cached in IndexedDB for fast startup.
+  loaded over HTTPS. **Keyboard** lists every workspace shortcut and lets you
+  record a replacement chord sequence. Workspace and navigation commands share
+  a leader chord (`Cmd+Shift+Space` on macOS, `Ctrl+Shift+Space` elsewhere),
+  followed by `F` search, `H` home, `A` all pages, `G` graph, `L`/`R` sidebars,
+  `S` settings, `N` new page, or `J` today. User overrides are stored as one
+  sparse JSON object on the server and cached in IndexedDB for fast startup.
 - **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
-  `/graph`, and `/page?p=<page>`. Back/forward (⌘[ / ⌘] or Alt+← / Alt+→) use
-  browser history, and page URLs can be reloaded or shared directly. Switching
-  notebooks opens that notebook's journal.
+  `/graph`, and `/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
+  `Alt+Left` / `Alt+Right`, rebindable in Settings → Keyboard) use browser
+  history, and page URLs
+  can be reloaded or shared directly. Switching notebooks opens that notebook's
+  journal.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
   renders an interactive local/full notebook graph: click a node to highlight

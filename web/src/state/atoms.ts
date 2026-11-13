@@ -170,6 +170,15 @@ export const readOnlyAtom = atom(false);
 
 export const settingsOpenAtom = atom(false);
 
+/** Incremented by the Save shortcut; the active note editor consumes it. */
+export const saveRequestAtom = atom(0);
+
+/** Pending multi-key shortcut sequence, shown in the shortcut HUD. */
+export const shortcutSequenceAtom = atom("");
+
+/** While recording a shortcut in Settings, global shortcuts are suspended. */
+export const shortcutRecordingAtom = atom(false);
+
 export const tokenAtom = atom(getStoredToken());
 
 export const saveTokenAtom = atom(null, (_get, set, token: string) => {

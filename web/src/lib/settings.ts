@@ -42,6 +42,7 @@ export type FontChoice = {
 
 export type AppSettings = {
   fonts: Record<FontRole, FontChoice>;
+  keybindings: Record<string, string>;
   [key: string]: unknown;
 };
 
@@ -52,6 +53,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     editor: { family: "JetBrains Mono", google: false },
     mono: { family: "JetBrains Mono", google: false },
   },
+  keybindings: {},
 };
 
 export const FONT_PRESETS = [
@@ -85,6 +87,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function mergeSettings(value: unknown): AppSettings {
   const root = isRecord(value) ? value : {};
   const rawFonts = isRecord(root.fonts) ? root.fonts : {};
+  const rawKeybindings = isRecord(root.keybindings) ? root.keybindings : {};
   const fonts = {} as Record<FontRole, FontChoice>;
 
   for (const role of FONT_ROLES) {
@@ -105,7 +108,14 @@ export function mergeSettings(value: unknown): AppSettings {
     };
   }
 
-  return { ...DEFAULT_SETTINGS, ...root, fonts };
+  const keybindings: Record<string, string> = {};
+  for (const [id, binding] of Object.entries(rawKeybindings)) {
+    if (typeof binding === "string" && binding.trim()) {
+      keybindings[id] = binding.trim();
+    }
+  }
+
+  return { ...DEFAULT_SETTINGS, ...root, fonts, keybindings };
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -116,7 +126,7 @@ function same(a: unknown, b: unknown): boolean {
 export function compactSettings(settings: AppSettings): Record<string, unknown> {
   const output: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings)) {
-    if (key === "fonts") continue;
+    if (key === "fonts" || key === "keybindings") continue;
     if (!same(value, DEFAULT_SETTINGS[key])) output[key] = value;
   }
 
@@ -128,6 +138,9 @@ export function compactSettings(settings: AppSettings): Record<string, unknown> 
     }
   }
   if (Object.keys(fonts).length > 0) output.fonts = fonts;
+  if (Object.keys(settings.keybindings).length > 0) {
+    output.keybindings = settings.keybindings;
+  }
   return output;
 }
 

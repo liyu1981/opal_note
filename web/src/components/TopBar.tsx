@@ -26,6 +26,8 @@ import {
   settingsOpenAtom,
 } from "../state/atoms";
 import { useAppNavigate } from "../lib/appNavigation";
+import { bindingLabel } from "../lib/shortcuts";
+import { settingsAtom } from "../lib/settings";
 
 export function TopBar() {
   const notebooks = useAtomValue(notebooksAtom);
@@ -35,6 +37,7 @@ export function TopBar() {
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
   const setSearchOpen = useSetAtom(searchOpenAtom);
   const searchOpen = useAtomValue(searchOpenAtom);
+  const settings = useAtomValue(settingsAtom);
   const navigate = useAppNavigate();
   const router = useRouter();
   const canGoBack = useCanGoBack();
@@ -65,26 +68,6 @@ export function TopBar() {
     return unsubscribe;
   }, [router]);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      const back =
-        (event.altKey && event.key === "ArrowLeft") ||
-        ((event.metaKey || event.ctrlKey) && event.key === "[");
-      const forward =
-        (event.altKey && event.key === "ArrowRight") ||
-        ((event.metaKey || event.ctrlKey) && event.key === "]");
-      if (back) {
-        event.preventDefault();
-        router.history.back();
-      } else if (forward) {
-        event.preventDefault();
-        router.history.forward();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
-
   return (
     <header className="flex h-13 shrink-0 items-center gap-1.5 border-b border-line bg-canvas/80 px-2 backdrop-blur sm:gap-2 sm:px-3">
       <button
@@ -111,7 +94,7 @@ export function TopBar() {
             ? "border-accent/30 bg-accent-soft text-accent-strong"
             : "border-transparent text-muted hover:bg-panel hover:text-ink"
         }`}
-        title="Search notes (⌘K)"
+        title={`Search notes (${bindingLabel("nav.search", settings.keybindings)})`}
         aria-label="Search notes"
         aria-haspopup="dialog"
       >
@@ -124,7 +107,7 @@ export function TopBar() {
           onClick={() => router.history.back()}
           disabled={!canGoBack}
           className="rounded-md border border-transparent p-1.5 text-muted transition hover:bg-panel hover:text-ink disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-muted"
-          title="Back (⌘[ or Alt+←)"
+          title={`Back (${bindingLabel("nav.back", settings.keybindings)})`}
           aria-label="Go back"
         >
           <IconArrowLeft className="h-4 w-4" />
@@ -134,7 +117,7 @@ export function TopBar() {
           onClick={() => router.history.forward()}
           disabled={!canGoForward}
           className="rounded-md border border-transparent p-1.5 text-muted transition hover:bg-panel hover:text-ink disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-muted"
-          title="Forward (⌘] or Alt+→)"
+          title={`Forward (${bindingLabel("nav.forward", settings.keybindings)})`}
           aria-label="Go forward"
         >
           <IconArrowRight className="h-4 w-4" />
@@ -216,12 +199,11 @@ export function TopBar() {
           </button>
         )}
         <span
-          className="hidden items-center gap-1.5 rounded-full border border-line bg-white/60 px-2.5 py-1 text-[14px] font-medium uppercase tracking-[0.1em] text-muted sm:inline-flex"
-          title="Reads and writes go through the server's MnesticDB index"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-mint" />
-          Datalog index
-        </span>
+          className="mx-1 h-2 w-2 shrink-0 rounded-full bg-mint"
+          title="Datalog index online"
+          role="status"
+          aria-label="Datalog index online"
+        />
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
