@@ -350,6 +350,17 @@ function NoteEditor({ note }: { note: Note }) {
     editorRef.current?.blur();
   }
 
+  const navigateTag = useCallback(
+    async (tag: string) => {
+      if (dirty) {
+        const saved = await save();
+        if (!saved) return;
+      }
+      navigate({ view: "tag", tag });
+    },
+    [dirty, navigate, save],
+  );
+
   const navigateWiki = useCallback(
     async (target: string) => {
       const needle = normalizeLinkTarget(target);
@@ -562,12 +573,15 @@ function NoteEditor({ note }: { note: Note }) {
             <IconTag className="h-3.5 w-3.5 shrink-0 text-faint" />
             {note.tags.length > 0 ? (
               note.tags.map((tag) => (
-                <span
+                <button
                   key={tag}
-                  className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[14px] text-ink-soft"
+                  type="button"
+                  onClick={() => navigateTag(tag)}
+                  className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-mono text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
+                  title={`Open #${tag}`}
                 >
                   #{tag}
-                </span>
+                </button>
               ))
             ) : (
               <span className="font-mono text-[14px] text-faint">
@@ -606,6 +620,7 @@ function NoteEditor({ note }: { note: Note }) {
               touch();
             }}
             onWikiLink={navigateWiki}
+            onTag={(tag) => void navigateTag(tag)}
             linkKeys={linkKeys}
             linkTargets={linkTargets}
             readOnly={locked}

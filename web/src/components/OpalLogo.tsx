@@ -9,7 +9,7 @@ export function OpalLogo(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 64 64"
       role="img"
-      aria-label="Opal Note"
+      aria-label="OpalNote"
       {...props}
     >
       <rect width="64" height="64" rx="16" fill="#F8F5EC" />

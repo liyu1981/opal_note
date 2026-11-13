@@ -171,6 +171,7 @@ export function JournalFeed() {
               readOnly={locked}
               onOpenPage={openPage}
               onWikiLink={openWiki}
+              onTag={(tag) => navigate({ view: "tag", tag })}
             />
           ))}
         </div>

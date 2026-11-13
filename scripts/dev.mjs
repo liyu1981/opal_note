@@ -63,7 +63,7 @@ const watchers = [];
 function startServer() {
   if (shuttingDown) return;
 
-  step("Starting Opal Note in dev mode");
+  step("Starting OpalNote in dev mode");
   console.log(`  ${path.relative(ROOT, binary)} ${args.join(" ")}`);
   console.log(`  → ${scheme}://${effectiveBind.replace("0.0.0.0", "localhost")}\n`);
 

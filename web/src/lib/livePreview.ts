@@ -21,6 +21,7 @@ export type LivePreviewOptions = {
   linkKeys: Set<string>;
   onWikiLink: (target: string) => void;
   onOpenLink: (url: string) => void;
+  onTag: (tag: string) => void;
   readOnly: boolean;
 };
 
@@ -96,9 +97,24 @@ export function livePreview(optionsRef: OptionsRef): Extension {
     }
   }
 
-  return ViewPlugin.fromClass(LivePreviewPlugin, {
-    decorations: (plugin) => plugin.decorations,
-  });
+  return [
+    ViewPlugin.fromClass(LivePreviewPlugin, {
+      decorations: (plugin) => plugin.decorations,
+    }),
+    EditorView.domEventHandlers({
+      click(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return false;
+        const tagElement = target.closest(".cm-live-tag");
+        if (!tagElement) return false;
+        const tag = tagElement.textContent?.replace(/^#/u, "").trim();
+        if (!tag) return false;
+        event.preventDefault();
+        optionsRef.current.onTag(tag);
+        return true;
+      },
+    }),
+  ];
 }
 
 function buildDecorations(

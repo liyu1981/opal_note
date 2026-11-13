@@ -83,7 +83,7 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
   {
     id: "about",
     label: "About",
-    description: "About Opal Note and this self-hosted build.",
+    description: "About OpalNote and this self-hosted build.",
   },
 ];
 
@@ -244,7 +244,7 @@ export function SettingsDialog() {
       await api.listNotebooks();
       setTestStatus("ok");
       setMessage(
-        `Connected to Opal Note ${health.version} · engine ${health.status}`,
+        `Connected to OpalNote ${health.version} · engine ${health.status}`,
       );
       refresh();
     } catch (cause) {
@@ -978,7 +978,7 @@ function AboutTab() {
   const features = [
     {
       title: "Markdown first",
-      body: "Every page is a plain .md file you can read, edit, sync, and back up without Opal Note.",
+      body: "Every page is a plain .md file you can read, edit, sync, and back up without OpalNote.",
     },
     {
       title: "Self-hosted",
@@ -1000,7 +1000,7 @@ function AboutTab() {
               Local-first knowledge vault
             </p>
             <h3 className="mt-1 font-serif text-[24px] font-semibold leading-none text-ink">
-              Opal Note
+              OpalNote
             </h3>
             <p className="mt-3 max-w-xl font-sans text-[14px] leading-relaxed text-muted">
               A local markdown knowledge vault, built to be self-hosted. Files
@@ -1047,7 +1047,7 @@ function AboutTab() {
               Source code
             </h4>
             <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
-              Opal Note is open source. Follow development, report issues, or
+              OpalNote is open source. Follow development, report issues, or
               build and run your own copy.
             </p>
             <a

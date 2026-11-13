@@ -1,4 +1,4 @@
-# Opal Note
+# OpalNote
 
 A server-first, self-hosted notebook with **markdown files as the source of
 truth** and a disposable Datalog index that stays in sync.
@@ -295,10 +295,11 @@ dialog), back/forward history controls, and a Home button on the right.
   be toggled from the top bar, leaving the writing surface to fill the window.
   The single-page editor grows with its content and scrolls the page, not an
   inner editor box; journal cards use the same renderer.
-- **Search** — the search button beside the sidebar toggle opens a centered
-  dialog instead of filtering the left panel. Results come from the server's
-  `note:fts` index, show match-centered excerpts with highlighted terms, and
-  open the selected page directly.
+- **Omni bar** — the global header hosts one input for both note search and
+  tag navigation. Type normally to search the server's `note:fts` index and
+  open a result from the dropdown; type `#` to browse available tags and jump
+  to a tag view. Tag pages prefill `#tag` in the bar. The old centered search
+  dialog is gone.
 - **Command palette** — leader → `P` opens a VS Code-style command search.
   Type to filter every workspace command, use ↑/↓ and Enter to run it, or click
   a row. Each row shows the current, rebindable shortcut.
@@ -306,18 +307,18 @@ dialog), back/forward history controls, and a Home button on the right.
   (interface, titles, editor, labels/code); any Google Font can be named and
   loaded over HTTPS. **Keyboard** lists every workspace shortcut and lets you
   record a replacement chord sequence. Workspace and navigation commands share
-  a leader chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F`
-  search, `H` home, `A` all pages, `G` graph, `L`/`R` sidebars, `O` settings,
-  `P` command palette, `N` new page, or `J` today. Save is `Cmd+S` / `Ctrl+S`,
-  or leader → `S`. User overrides are stored as one sparse JSON object on the
-  server and cached in IndexedDB for fast startup. An **About** tab shows the
+  a leader chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or
+  `S` to focus the omni bar, `H` home, `A` all pages, `G` graph, `L`/`R`
+  sidebars, `O` settings, `P` command palette, `N` new page, or `J` today.
+  Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
+  object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.
-- **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
-  `/graph`, and `/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
+- **Navigation** — TanStack Router browser routes are scoped by notebook name:
+  `/<notebook>/journal`, `/<notebook>/pages`, `/<notebook>/graph`,
+  `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
   `Alt+Left` / `Alt+Right`, rebindable in Settings → Keyboard) use browser
-  history, and page URLs
-  can be reloaded or shared directly. Switching notebooks opens that notebook's
-  journal.
+  history, and page URLs can be reloaded or shared directly. Switching notebooks
+  updates the URL and opens that notebook's journal.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
   renders an interactive local/full notebook graph: click a node to highlight
@@ -336,6 +337,10 @@ dialog), back/forward history controls, and a Home button on the right.
   and return JSON items. The built-in todos plugin lists open tasks across the
   notebook; clicking one opens its page. Settings → Plugins shows installed
   plugins and reloads the data plugin folder.
+- **Tag view** — `/<notebook>/tag/<tag>` shows every page carrying `#tag` as
+  read-only content cards, with a page-title list for fast jumping. Clicking a
+  tag in a journal card, page, pages table, right panel, or inline in a note
+  opens the corresponding tag view.
 
 ### Plugins
 
@@ -358,11 +363,16 @@ precedence: a data plugin with the same id is rejected and reported in Settings
 
 | Route | View |
 | --- | --- |
-| `/` | Redirects to `/journal` |
-| `/journal` | Journal feed / Home |
-| `/pages` | All-pages table |
-| `/graph` | Full-page notebook graph |
-| `/page?p=pages/foo.md` | A page by relative path |
+| `/` | Redirects to the selected notebook's journal |
+| `/<notebook>/journal` | Journal feed / Home |
+| `/<notebook>/pages` | All-pages table |
+| `/<notebook>/graph` | Full-page notebook graph |
+| `/<notebook>/tag/<tag>` | Pages carrying `#tag` |
+| `/<notebook>/page?p=pages/foo.md` | A page by relative path or title |
+
+`<notebook>` is the notebook name, URL-encoded when it contains spaces or
+unicode. The old unprefixed routes redirect to the selected notebook and remain
+available as a no-notebook fallback.
 | `/page?p=Some%20Page` | A page resolved by title |
 
 Routes use clean browser paths plus search params; no hash routing. They are

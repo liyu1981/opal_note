@@ -5,7 +5,6 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { CommandPalette } from "./CommandPalette";
 import { LeftSidebar } from "./LeftSidebar";
 import { RightPanel } from "./RightPanel";
-import { SearchDialog } from "./SearchDialog";
 import { ShortcutHud } from "./ShortcutHud";
 import { SettingsDialog } from "./SettingsDialog";
 import { TopBar } from "./TopBar";
@@ -18,33 +17,33 @@ import {
   settingsStatusAtom,
 } from "../lib/settings";
 import {
-  activeNoteIdAtom,
   activeNotebookIdAtom,
-  graphViewAtom,
-  journalViewAtom,
   leftPanelOpenAtom,
   notebooksAtom,
-  pagesViewAtom,
   rightPanelOpenAtom,
-  selectNotebookAtom,
 } from "../state/atoms";
 
 export function Workspace() {
   const notebooks = useAtomValue(notebooksAtom);
   const activeNotebookId = useAtomValue(activeNotebookIdAtom);
-  const selectNotebook = useSetAtom(selectNotebookAtom);
-  const setActiveNote = useSetAtom(activeNoteIdAtom);
-  const journalView = useAtomValue(journalViewAtom);
-  const pagesView = useAtomValue(pagesViewAtom);
-  const graphView = useAtomValue(graphViewAtom);
+  const setActiveNotebook = useSetAtom(activeNotebookIdAtom);
   const leftOpen = useAtomValue(leftPanelOpenAtom);
   const rightOpen = useAtomValue(rightPanelOpenAtom);
   const settings = useAtomValue(settingsAtom);
   const setSettings = useSetAtom(settingsAtom);
   const setSettingsStatus = useSetAtom(settingsStatusAtom);
   const setSettingsError = useSetAtom(settingsErrorAtom);
+  const activeNotebook = notebooks.find(
+    (notebook) => notebook.id === activeNotebookId,
+  );
 
   useKeyboardShortcuts();
+
+  useEffect(() => {
+    document.title = activeNotebook
+      ? `OpalNote : ${activeNotebook.name}`
+      : "OpalNote";
+  }, [activeNotebook?.name]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,19 +64,15 @@ export function Workspace() {
 
   useEffect(() => {
     if (notebooks.length === 0) {
-      if (activeNotebookId !== null) selectNotebook(null);
+      if (activeNotebookId !== null) setActiveNotebook(null);
       return;
     }
     if (!activeNotebookId || !notebooks.some((n) => n.id === activeNotebookId)) {
-      selectNotebook(notebooks[0]?.id ?? null);
+      // The route owns the notebook URL. Only fill in a missing selection;
+      // clearing the note/view atoms here would race a deep link's route effect.
+      setActiveNotebook(notebooks[0]?.id ?? null);
     }
-  }, [notebooks, activeNotebookId, selectNotebook]);
-
-  // Home, directory and graph are notebook-level views; do not keep a stale
-  // note selected while one of them is showing.
-  useEffect(() => {
-    if (journalView || pagesView || graphView) setActiveNote(null);
-  }, [journalView, pagesView, graphView, setActiveNote]);
+  }, [notebooks, activeNotebookId, setActiveNotebook]);
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -99,7 +94,6 @@ export function Workspace() {
           )}
         </div>
       </div>
-      <SearchDialog />
       <CommandPalette />
       <SettingsDialog />
       <ShortcutHud />

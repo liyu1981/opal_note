@@ -167,9 +167,8 @@ export function PagesView() {
     setSortDir(key === "title" || key === "tags" ? "asc" : "desc");
   }
 
-  function chooseTag(tag: string) {
-    setTagFilter(tag);
-    setPage(0);
+  function openTag(tag: string) {
+    navigate({ view: "tag", tag });
   }
 
   function openPage(item: PageOverview) {
@@ -262,7 +261,10 @@ export function PagesView() {
               <IconFilter className="pointer-events-none absolute left-1.5 h-3.5 w-3.5" />
               <select
                 value={tagFilter}
-                onChange={(event) => chooseTag(event.target.value)}
+                onChange={(event) => {
+                  setTagFilter(event.target.value);
+                  setPage(0);
+                }}
                 className="max-w-[9rem] appearance-none bg-transparent py-1 pl-7 pr-2 font-mono text-[14px] outline-none"
                 aria-label="Filter by tag"
               >
@@ -436,7 +438,7 @@ export function PagesView() {
                       <td className="py-2 pr-3">
                         <PageTags
                           tags={item.tags}
-                          onTagClick={chooseTag}
+                          onTagClick={openTag}
                         />
                       </td>
                       <td className="py-2 pr-3 font-mono text-[14px] text-muted">
@@ -482,7 +484,7 @@ export function PagesView() {
                     </span>
                   </button>
                   <div className="mt-2 min-h-5">
-                    <PageTags tags={item.tags} onTagClick={chooseTag} />
+                    <PageTags tags={item.tags} onTagClick={openTag} />
                   </div>
                   <p className="mt-2 border-t border-line/50 pt-1.5 font-mono text-[14px] text-faint">
                     Updated {compactTime(item.updated_at)}
@@ -611,7 +613,7 @@ function PageTags({
           type="button"
           onClick={() => onTagClick(tag)}
           className="rounded bg-panel px-1.5 py-0.5 font-mono text-[14px] text-muted transition hover:bg-accent-soft hover:text-accent-strong"
-          title={`Filter by #${tag}`}
+          title={`Open #${tag}`}
         >
           #{tag}
         </button>

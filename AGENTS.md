@@ -14,7 +14,7 @@ Guidance for coding agents working in this repository.
 
 ## What this project is
 
-Opal Note is a **server-first, file-first** note app.
+OpalNote is a **server-first, file-first** note app.
 
 - Markdown files under `data/notebooks/<notebook>/pages|journals/` are
   canonical.
@@ -178,22 +178,25 @@ web/
   the editor grows with its content. Do not put the editor back in a fixed
   height container with an internal `.cm-scroller` scrollbar. Journal cards
   use the same auto-height renderer and the same `--note-ch` hanging indent.
-- The workspace opens on the journal feed, which is **Home**. The top bar has
-  a search button next to the left-sidebar toggle, back/forward history
-  controls, and a Home button on the right. Search is a centered in-page
-  dialog (`SearchDialog`, `searchOpenAtom`), not a left-sidebar filter; do not
-  put search back into `LeftSidebar` or make `notesAtom` query-dependent.
+- The workspace opens on the journal feed, which is **Home**. The global top
+  bar hosts the **OmniBar**: normal text searches notes, while a leading `#`
+  lists available tags and navigates to tag views. Tag views prefill `#tag` in
+  the bar. Do not reintroduce the old centered search dialog, and do not put
+  search back into `LeftSidebar` or make `notesAtom` query-dependent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
   Pages, Favorites, Recent and Graph view. The right panel is wider and tabbed
   Context / Info / Graph. Keep it that way rather than adding new permanent
   side panels.
 - Client routing is TanStack Router with browser history, not hashes. Canonical
-  paths are `/journal`, `/pages`, `/graph` and `/page?p=<note-path-or-title>`.
-  All in-app destinations go through `useAppNavigate`; notes set the `p` search
-  param and journal/pages/graph are path segments. A title-only `p` resolves to
-  an existing note and replaces the URL with the canonical path. A filename
-  rename uses `navigate(..., { replace: true })`, not a second history entry.
+  paths are `/<notebook>/journal`, `/<notebook>/pages`, `/<notebook>/graph`,
+  `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=<note-path-or-title>`, where
+  `<notebook>` is the URL-encoded notebook name. Unprefixed legacy paths redirect to the selected
+  notebook (and remain the no-notebook fallback). All in-app destinations go
+  through `useAppNavigate`; notes set the `p` search param and
+  journal/pages/graph are path segments. A title-only `p` resolves to an
+  existing note and replaces the URL with the canonical path. A filename rename
+  uses `navigate(..., { replace: true })`, not a second history entry.
   Back/forward controls use TanStack history, not a custom atom history.
 - `JournalFeed` pages through `GET /notebooks/{id}/journals` newest-first
   (7 at a time) and appends older pages on scroll. Journal entries are editable
@@ -210,7 +213,7 @@ web/
   Journal/Pages/Graph/note views are mutually exclusive. Use
   `api.createNote(..., { section: "journals" })` for journal pages. Search
   calls `GET /notebooks/{id}/search` and opens results with `useAppNavigate`.
-  Search returns match-centered plain-text excerpts; `SearchDialog` highlights
+  Search returns match-centered plain-text excerpts; `OmniBar` highlights
   query terms in titles, excerpts and paths with the `--color-mark` token.
 - Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
   `GET /notebooks/{id}/graph`. Nodes are all notes; edges only resolved
@@ -245,6 +248,10 @@ web/
   the plugin endpoint, renders generic items, and opens item pages through
   `useAppNavigate`. Journal card saves refresh `notesRevisionAtom` so task
   widgets update after checkbox edits.
+- `TagView` is the `/<notebook>/tag/<tag>` page: read-only content cards plus a
+  page-title jump list. Tag clicks everywhere (journal cards, inline editor
+  tags, page tags, right panel, pages table) go through `useAppNavigate`. Keep
+  the tag route as a splat so tags containing `/` remain one logical tag.
 - Sidebar section expansion is persisted in `sidebarSectionsAtom`
   (`opalnote.sidebar-sections.v1`), keyed by section title. Panel
   expand/collapse is persisted separately by `leftPanelOpenAtom` and
@@ -290,8 +297,8 @@ web/
   object and are recorded from Settings → Keyboard.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (customizable shortcuts; the default leader is `Cmd+/`
-  on macOS and `Ctrl+/` elsewhere, then `F` for search, `P` for the command
-  palette and `O` for settings. Save is `Cmd+S` / `Ctrl+S` or leader → `S`).
+  on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `P` for
+  the command palette and `O` for settings. Save is `Cmd+S` / `Ctrl+S`).
 
 ### Tests
 

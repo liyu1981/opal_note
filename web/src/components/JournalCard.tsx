@@ -20,6 +20,7 @@ export function JournalCard({
   readOnly,
   onOpenPage,
   onWikiLink,
+  onTag,
 }: {
   page: JournalPage;
   notebookId: string;
@@ -28,6 +29,7 @@ export function JournalCard({
   readOnly: boolean;
   onOpenPage: (page: JournalPage) => void;
   onWikiLink: (target: string) => void;
+  onTag: (tag: string) => void;
 }) {
   const [content, setContent] = useState(page.content);
   const [tags, setTags] = useState(page.tags);
@@ -173,12 +175,15 @@ export function JournalCard({
 
       <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
         {tags.map((tag) => (
-          <span
+          <button
             key={tag}
-            className="rounded bg-panel px-1 py-0.5 font-mono text-[14px] text-muted"
+            type="button"
+            onClick={() => void flushThen(() => onTag(tag))}
+            className="rounded bg-panel px-1 py-0.5 font-mono text-[14px] text-muted transition hover:bg-accent-soft hover:text-accent-strong"
+            title={`Open #${tag}`}
           >
             #{tag}
-          </span>
+          </button>
         ))}
       </div>
 
@@ -187,6 +192,7 @@ export function JournalCard({
           value={content}
           onChange={change}
           onWikiLink={(target) => void handleWikiLink(target)}
+          onTag={(tag) => void flushThen(() => onTag(tag))}
           linkKeys={linkKeys}
           linkTargets={linkTargets}
           readOnly={readOnly}

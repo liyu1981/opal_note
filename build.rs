@@ -12,9 +12,9 @@ use std::time::SystemTime;
 
 const PLACEHOLDER: &str = r#"<!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8" /><title>Opal Note</title></head>
+  <head><meta charset="utf-8" /><title>OpalNote</title></head>
   <body style="font-family: system-ui; padding: 2rem">
-    <h1>Opal Note</h1>
+    <h1>OpalNote</h1>
     <p>The web client was not built. Run <code>pnpm --dir web build</code> (or
     <code>pnpm build</code>) and rebuild the server.</p>
   </body>

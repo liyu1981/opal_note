@@ -9,11 +9,11 @@ import {
   activeNotebookIdAtom,
   commandPaletteOpenAtom,
   leftPanelOpenAtom,
+  omniFocusRequestAtom,
   readOnlyAtom,
   refreshAtom,
   rightPanelOpenAtom,
   saveRequestAtom,
-  searchOpenAtom,
   settingsOpenAtom,
 } from "../state/atoms";
 
@@ -26,7 +26,7 @@ export function useShortcutRunner() {
   const navigate = useAppNavigate();
   const locked = useAtomValue(readOnlyAtom);
   const notebookId = useAtomValue(activeNotebookIdAtom);
-  const setSearchOpen = useSetAtom(searchOpenAtom);
+  const setOmniFocus = useSetAtom(omniFocusRequestAtom);
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
   const setCommandPaletteOpen = useSetAtom(commandPaletteOpenAtom);
   const setLeftOpen = useSetAtom(leftPanelOpenAtom);
@@ -39,24 +39,20 @@ export function useShortcutRunner() {
       switch (id) {
         case "nav.search":
           setCommandPaletteOpen(false);
-          setSearchOpen(true);
+          setOmniFocus((request) => request + 1);
           break;
         case "command.palette":
-          setSearchOpen(false);
           setCommandPaletteOpen(true);
           break;
         case "nav.home":
-          setSearchOpen(false);
           setCommandPaletteOpen(false);
           navigate({ view: "journal" });
           break;
         case "nav.pages":
-          setSearchOpen(false);
           setCommandPaletteOpen(false);
           navigate({ view: "pages" });
           break;
         case "nav.graph":
-          setSearchOpen(false);
           setCommandPaletteOpen(false);
           navigate({ view: "graph" });
           break;
@@ -73,13 +69,11 @@ export function useShortcutRunner() {
           setRightOpen((open) => !open);
           break;
         case "ui.settings":
-          setSearchOpen(false);
           setCommandPaletteOpen(false);
           setSettingsOpen(true);
           break;
         case "page.new":
           if (notebookId && !locked) {
-            setSearchOpen(false);
             setCommandPaletteOpen(false);
             void api
               .createNote(notebookId, { title: "Untitled", content: "" })
@@ -98,7 +92,6 @@ export function useShortcutRunner() {
           break;
         case "journal.today":
           if (notebookId && !locked) {
-            setSearchOpen(false);
             setCommandPaletteOpen(false);
             void ensureJournal(notebookId)
               .then((note) => {
@@ -129,8 +122,8 @@ export function useShortcutRunner() {
       setLeftOpen,
       setRightOpen,
       setSaveRequest,
-      setSearchOpen,
       setSettingsOpen,
+      setOmniFocus,
     ],
   );
 }

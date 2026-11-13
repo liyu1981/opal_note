@@ -55,7 +55,11 @@ export const pagesViewAtom = atom(false);
 /** Full-page notebook graph view. */
 export const graphViewAtom = atom(false);
 
-export const searchOpenAtom = atom(false);
+/** Current omni-bar query, including the optional `#tag` prefix. */
+export const omniQueryAtom = atom("");
+
+/** Incremented by the search shortcut to focus the omni bar. */
+export const omniFocusRequestAtom = atom(0);
 
 /** Rows per page in the pages directory; persisted per browser. */
 export const pagesPageSizeAtom = atomWithStorage<number>(
@@ -79,7 +83,6 @@ export const selectNotebookAtom = atom(
     set(journalViewAtom, true);
     set(pagesViewAtom, false);
     set(graphViewAtom, false);
-    set(searchOpenAtom, false);
   },
 );
 

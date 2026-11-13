@@ -131,8 +131,9 @@ export function LeftSidebar() {
   }
 
   function switchNotebook(id: string) {
-    selectNotebook(id || null);
-    navigate({ view: "journal" });
+    const notebookId = id || null;
+    selectNotebook(notebookId);
+    navigate({ view: "journal" }, { notebookId });
   }
 
   async function createNotebook(event: FormEvent) {
@@ -186,10 +187,7 @@ export function LeftSidebar() {
         <div className="flex items-center gap-2">
           <OpalLogo className="h-7 w-7 shrink-0 drop-shadow-sm" />
           <span className="font-serif text-[16px] leading-none text-ink">
-            Opal Note
-          </span>
-          <span className="ml-auto font-mono text-[14px] uppercase tracking-[0.14em] text-faint">
-            graph
+            OpalNote
           </span>
         </div>
 

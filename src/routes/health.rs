@@ -43,7 +43,7 @@ pub struct MetaResponse {
 
 pub async fn meta(State(state): State<AppState>) -> Json<MetaResponse> {
     Json(MetaResponse {
-        name: "Opal Note",
+        name: "OpalNote",
         version: state.version,
         api_version: 1,
         auth_required: state.token.is_some(),

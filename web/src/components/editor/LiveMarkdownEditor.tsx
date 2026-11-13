@@ -41,6 +41,7 @@ type Props = {
   value: string;
   onChange: (value: string) => void;
   onWikiLink: (target: string) => void;
+  onTag: (tag: string) => void;
   linkKeys: Set<string>;
   linkTargets: LinkTarget[];
   readOnly: boolean;
@@ -68,6 +69,7 @@ export const LiveMarkdownEditor = forwardRef<
     value,
     onChange,
     onWikiLink,
+    onTag,
     linkKeys,
     linkTargets,
     readOnly,
@@ -82,6 +84,7 @@ export const LiveMarkdownEditor = forwardRef<
 
   const onChangeRef = useRef(onChange);
   const onWikiLinkRef = useRef(onWikiLink);
+  const onTagRef = useRef(onTag);
   const linkTargetsRef = useRef<LinkTarget[]>(linkTargets);
   const initialValueRef = useRef(value);
   const initialReadOnlyRef = useRef(readOnly);
@@ -89,6 +92,7 @@ export const LiveMarkdownEditor = forwardRef<
 
   onChangeRef.current = onChange;
   onWikiLinkRef.current = onWikiLink;
+  onTagRef.current = onTag;
   linkTargetsRef.current = linkTargets;
 
   const optionsRef = useRef<LivePreviewOptions>({
@@ -97,6 +101,7 @@ export const LiveMarkdownEditor = forwardRef<
     onOpenLink: (url) => {
       window.open(url, "_blank", "noopener,noreferrer");
     },
+    onTag: (tag) => onTagRef.current(tag),
     readOnly,
   });
   optionsRef.current = { ...optionsRef.current, linkKeys, readOnly };

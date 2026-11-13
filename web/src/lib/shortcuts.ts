@@ -11,10 +11,10 @@ export type ShortcutCommand = {
 export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   {
     id: "nav.search",
-    label: "Search",
-    description: "Open the global search dialog",
+    label: "Search / omni bar",
+    description: "Focus the omni bar to search notes or tags",
     group: "Navigation",
-    defaultBindings: ["mod+/ f"],
+    defaultBindings: ["mod+/ f", "mod+/ s"],
   },
   {
     id: "nav.home",
@@ -98,7 +98,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     label: "Save page",
     description: "Save the current note immediately",
     group: "Editor",
-    defaultBindings: ["mod+s", "mod+/ s"],
+    defaultBindings: ["mod+s"],
   },
 ];
 

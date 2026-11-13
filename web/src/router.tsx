@@ -1,20 +1,23 @@
 import { useEffect, useLayoutEffect } from "react";
 import {
   Navigate,
+  Outlet,
   createRootRoute,
   createRoute,
   createRouter,
   redirect,
   useNavigate,
+  useParams,
   useSearch,
 } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom } from "jotai";
+import { getDefaultStore, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "./api/client";
 import { EditorPane } from "./components/EditorPane";
 import { GraphView } from "./components/GraphView";
 import { JournalFeed } from "./components/JournalFeed";
 import { PagesView } from "./components/PagesView";
+import { TagView } from "./components/TagView";
 import { Workspace } from "./components/Workspace";
 import {
   activeNoteIdAtom,
@@ -53,8 +56,18 @@ function GraphRoute() {
   return <GraphView />;
 }
 
+function NotebookLayout() {
+  return <Outlet />;
+}
+
+function TagRoute() {
+  const { _splat } = useParams({ from: "/$notebook/tag/$" });
+  return <TagView tag={_splat ?? ""} />;
+}
+
 function PageRoute() {
-  const { p } = useSearch({ from: "/page" });
+  const { p } = useSearch({ from: "/$notebook/page" });
+  const { notebook } = useParams({ from: "/$notebook/page" });
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
@@ -62,8 +75,7 @@ function PageRoute() {
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const navigate = useNavigate();
   const param = p?.trim() ?? "";
-  const isPath =
-    param.includes("/") || param.endsWith(".md");
+  const isPath = param.includes("/") || param.endsWith(".md");
 
   useLayoutEffect(() => {
     setJournal(false);
@@ -86,7 +98,11 @@ function PageRoute() {
 
   useEffect(() => {
     if (!param) {
-      void navigate({ to: "/journal", replace: true });
+      void navigate({
+        to: "/$notebook/journal",
+        params: { notebook },
+        replace: true,
+      });
       return;
     }
     if (isPath || !notebookId) {
@@ -109,7 +125,8 @@ function PageRoute() {
         }
         setActiveNote(hit.id);
         void navigate({
-          to: "/page",
+          to: "/$notebook/page",
+          params: { notebook },
           search: { p: hit.id },
           replace: true,
         });
@@ -121,13 +138,19 @@ function PageRoute() {
     return () => {
       cancelled = true;
     };
-  }, [isPath, navigate, notebookId, param, setActiveNote]);
+  }, [isPath, navigate, notebook, notebookId, param, setActiveNote]);
 
   return <EditorPane />;
 }
 
 function NotFound() {
-  return <Navigate to="/journal" replace />;
+  return <Navigate to="/" replace />;
+}
+
+async function pickNotebook() {
+  const notebooks = await api.listNotebooks();
+  const stored = getDefaultStore().get(activeNotebookIdAtom);
+  return notebooks.find((notebook) => notebook.id === stored) ?? notebooks[0];
 }
 
 const rootRoute = createRootRoute({
@@ -138,32 +161,62 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  beforeLoad: () => {
+  beforeLoad: async () => {
+    const notebook = await pickNotebook();
+    if (notebook) {
+      throw redirect({
+        to: "/$notebook/journal",
+        params: { notebook: notebook.id },
+        replace: true,
+      });
+    }
     throw redirect({ to: "/journal", replace: true });
   },
 });
 
-const journalRoute = createRoute({
+const notebookRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/journal",
+  path: "/$notebook",
+  beforeLoad: async ({ params }) => {
+    const notebooks = await api.listNotebooks();
+    const notebook = notebooks.find(
+      (item) => item.id === params.notebook || item.name === params.notebook,
+    );
+    if (!notebook) {
+      throw redirect({ to: "/", replace: true });
+    }
+    getDefaultStore().set(activeNotebookIdAtom, notebook.id);
+  },
+  component: NotebookLayout,
+});
+
+const journalRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "journal",
   component: JournalRoute,
 });
 
 const pagesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/pages",
+  getParentRoute: () => notebookRoute,
+  path: "pages",
   component: PagesRoute,
 });
 
 const graphRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/graph",
+  getParentRoute: () => notebookRoute,
+  path: "graph",
   component: GraphRoute,
 });
 
+const tagRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "tag/$",
+  component: TagRoute,
+});
+
 const pageRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/page",
+  getParentRoute: () => notebookRoute,
+  path: "page",
   validateSearch: (
     search: Record<string, unknown>,
   ): { p?: string } => ({
@@ -172,12 +225,89 @@ const pageRoute = createRoute({
   component: PageRoute,
 });
 
+const legacyJournalRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/journal",
+  beforeLoad: async () => {
+    const notebook = await pickNotebook();
+    if (notebook) {
+      throw redirect({
+        to: "/$notebook/journal",
+        params: { notebook: notebook.id },
+        replace: true,
+      });
+    }
+  },
+  component: JournalRoute,
+});
+
+const legacyPagesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/pages",
+  beforeLoad: async () => {
+    const notebook = await pickNotebook();
+    if (notebook) {
+      throw redirect({
+        to: "/$notebook/pages",
+        params: { notebook: notebook.id },
+        replace: true,
+      });
+    }
+    throw redirect({ to: "/journal", replace: true });
+  },
+});
+
+const legacyGraphRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/graph",
+  beforeLoad: async () => {
+    const notebook = await pickNotebook();
+    if (notebook) {
+      throw redirect({
+        to: "/$notebook/graph",
+        params: { notebook: notebook.id },
+        replace: true,
+      });
+    }
+    throw redirect({ to: "/journal", replace: true });
+  },
+});
+
+const legacyPageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/page",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { p?: string } => ({
+    p: typeof search.p === "string" ? search.p : undefined,
+  }),
+  beforeLoad: async ({ search }) => {
+    const notebook = await pickNotebook();
+    if (!notebook) {
+      throw redirect({ to: "/journal", replace: true });
+    }
+    throw redirect({
+      to: "/$notebook/page",
+      params: { notebook: notebook.id },
+      search: { p: search.p },
+      replace: true,
+    });
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  journalRoute,
-  pagesRoute,
-  graphRoute,
-  pageRoute,
+  notebookRoute.addChildren([
+    journalRoute,
+    pagesRoute,
+    graphRoute,
+    tagRoute,
+    pageRoute,
+  ]),
+  legacyJournalRoute,
+  legacyPagesRoute,
+  legacyGraphRoute,
+  legacyPageRoute,
 ]);
 
 export const router = createRouter({

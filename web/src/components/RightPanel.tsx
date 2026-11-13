@@ -71,6 +71,7 @@ export function RightPanel() {
             notebookDescription={notebook?.description ?? ""}
             tags={tags}
             onOpenNote={(path) => navigate({ view: "note", noteId: path })}
+            onOpenTag={(tag) => navigate({ view: "tag", tag })}
           />
         )}
 
@@ -138,11 +139,13 @@ function ContextTab({
   notebookDescription,
   tags,
   onOpenNote,
+  onOpenTag,
 }: {
   note: Note | null;
   notebookDescription: string;
   tags: TagCount[];
   onOpenNote: (path: string) => void;
+  onOpenTag: (tag: string) => void;
 }) {
   if (!note) {
     return (
@@ -154,13 +157,16 @@ function ContextTab({
           {tags.length > 0 ? (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {tags.map((tag) => (
-                <span
+                <button
                   key={tag.tag}
-                  className="flex items-center gap-1 rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft"
+                  type="button"
+                  onClick={() => onOpenTag(tag.tag)}
+                  className="flex items-center gap-1 rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
+                  title={`Open #${tag.tag}`}
                 >
                   #{tag.tag}
                   <span className="text-[14px] text-faint">{tag.count}</span>
-                </span>
+                </button>
               ))}
             </div>
           ) : (
@@ -186,12 +192,15 @@ function ContextTab({
         {note.tags.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {note.tags.map((tag) => (
-              <span
+              <button
                 key={tag}
-                className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft"
+                type="button"
+                onClick={() => onOpenTag(tag)}
+                className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
+                title={`Open #${tag}`}
               >
                 #{tag}
-              </span>
+              </button>
             ))}
           </div>
         ) : (
