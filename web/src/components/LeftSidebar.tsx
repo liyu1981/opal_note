@@ -10,13 +10,13 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { api } from "../api/client";
 import { formatJournalDate, ensureJournal } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
+import { OpalLogo } from "./OpalLogo";
 import {
   IconCalendar,
   IconChevron,
   IconClock,
   IconFile,
   IconGraph,
-  IconOpal,
   IconPlus,
   IconStar,
   IconTrash,
@@ -184,9 +184,7 @@ export function LeftSidebar() {
     <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-line bg-panel/35">
       <div className="border-b border-line px-3 pb-2 pt-3">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-canvas">
-            <IconOpal className="h-3.5 w-3.5" />
-          </span>
+          <OpalLogo className="h-7 w-7 shrink-0 drop-shadow-sm" />
           <span className="font-serif text-[16px] leading-none text-ink">
             Opal Note
           </span>

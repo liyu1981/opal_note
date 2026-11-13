@@ -310,7 +310,8 @@ dialog), back/forward history controls, and a Home button on the right.
   search, `H` home, `A` all pages, `G` graph, `L`/`R` sidebars, `O` settings,
   `P` command palette, `N` new page, or `J` today. Save is `Cmd+S` / `Ctrl+S`,
   or leader → `S`. User overrides are stored as one sparse JSON object on the
-  server and cached in IndexedDB for fast startup.
+  server and cached in IndexedDB for fast startup. An **About** tab shows the
+  Opal mark, the project philosophy, and the GitHub source link.
 - **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
   `/graph`, and `/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
   `Alt+Left` / `Alt+Right`, rebindable in Settings → Keyboard) use browser

@@ -278,12 +278,18 @@ export function IconLockOpen(props: IconProps) {
   );
 }
 
-export function IconOpal(props: IconProps) {
+export function IconGithub(props: IconProps) {
+  return (
+    <svg {...base(props)} fill="currentColor" stroke="none">
+      <path d="M12 .5C5.73.5.75 5.48.75 11.75c0 4.97 3.22 9.18 7.69 10.67.56.1.77-.24.77-.54 0-.27-.01-1.17-.02-2.12-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.73 1.16 1.73 1.16 1 1.72 2.63 1.22 3.27.93.1-.72.39-1.22.71-1.5-2.5-.28-5.13-1.25-5.13-5.57 0-1.23.44-2.24 1.16-3.03-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.16a10.8 10.8 0 0 1 5.64 0c2.15-1.46 3.1-1.16 3.1-1.16.61 1.55.23 2.7.11 2.98.72.79 1.16 1.8 1.16 3.03 0 4.33-2.64 5.29-5.15 5.56.4.35.76 1.04.76 2.1 0 1.52-.01 2.75-.01 3.12 0 .3.2.65.78.54a11.25 11.25 0 0 0 7.68-10.67C23.25 5.48 18.27.5 12 .5Z" />
+    </svg>
+  );
+}
+
+export function IconArrowUpRight(props: IconProps) {
   return (
     <svg {...base(props)}>
-      <path d="M4 10.5 12 3l8 7.5-8 10.5z" strokeWidth="1.5" />
-      <path d="M4 10.5h16" strokeWidth="1.2" opacity="0.65" />
-      <path d="M8.5 10.5 12 21l3.5-10.5L12 3z" strokeWidth="1.2" opacity="0.65" />
+      <path d="M7 17 17 7M8 7h9v9" />
     </svg>
   );
 }

@@ -20,7 +20,14 @@ import {
   resolveBindings,
   type ShortcutCommand,
 } from "../lib/shortcuts";
-import { IconCheck, IconSettings, IconX } from "./Icons";
+import {
+  IconArrowUpRight,
+  IconCheck,
+  IconGithub,
+  IconSettings,
+  IconX,
+} from "./Icons";
+import { OpalLogo } from "./OpalLogo";
 import {
   refreshAtom,
   saveTokenAtom,
@@ -29,7 +36,7 @@ import {
   tokenAtom,
 } from "../state/atoms";
 
-type Tab = "fonts" | "shortcuts" | "connection" | "index";
+type Tab = "fonts" | "shortcuts" | "connection" | "index" | "about";
 type TestStatus = "idle" | "testing" | "ok" | "error";
 
 const TABS: Array<{ id: Tab; label: string; description: string }> = [
@@ -52,6 +59,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "index",
     label: "Index",
     description: "Rebuild the disposable Datalog index.",
+  },
+  {
+    id: "about",
+    label: "About",
+    description: "About Opal Note and this self-hosted build.",
   },
 ];
 
@@ -244,7 +256,7 @@ export function SettingsDialog() {
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        <aside className="flex shrink-0 flex-row gap-1 border-b border-line bg-panel/50 p-2 md:w-48 md:flex-col md:border-b-0 md:border-r md:p-3">
+        <aside className="flex shrink-0 flex-row flex-wrap gap-1 border-b border-line bg-panel/50 p-2 md:w-48 md:flex-col md:flex-nowrap md:border-b-0 md:border-r md:p-3">
           <div className="hidden items-center gap-2 px-2 pb-3 md:flex">
             <span className="flex h-7 w-7 items-center justify-center rounded bg-accent-soft text-accent-strong">
               <IconSettings className="h-4 w-4" />
@@ -356,6 +368,7 @@ export function SettingsDialog() {
                 onRebuild={rebuildIndex}
               />
             )}
+            {tab === "about" && <AboutTab />}
           </div>
         </div>
       </div>
@@ -781,6 +794,102 @@ function ShortcutRow({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function AboutTab() {
+  const features = [
+    {
+      title: "Markdown first",
+      body: "Every page is a plain .md file you can read, edit, sync, and back up without Opal Note.",
+    },
+    {
+      title: "Self-hosted",
+      body: "One Rust binary serves the API and the web client. No account, no cloud dependency.",
+    },
+    {
+      title: "Yours to keep",
+      body: "The Datalog index is rebuilt from files at any time. Delete it and nothing is lost.",
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border border-line bg-panel/35 p-6">
+        <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+          <OpalLogo className="h-28 w-28 shrink-0 drop-shadow-sm" />
+          <div className="min-w-0">
+            <p className="font-mono text-[12px] uppercase tracking-[0.16em] text-faint">
+              Local-first knowledge vault
+            </p>
+            <h3 className="mt-1 font-serif text-[24px] font-semibold leading-none text-ink">
+              Opal Note
+            </h3>
+            <p className="mt-3 max-w-xl font-sans text-[14px] leading-relaxed text-muted">
+              A local markdown knowledge vault, built to be self-hosted. Files
+              stay on your disk, the index is disposable, and the whole
+              workspace runs from one binary.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {["Self-hosted", "Markdown-first", "Single binary"].map((label) => (
+                <span
+                  key={label}
+                  className="rounded border border-line bg-white px-2 py-1 font-mono text-[12px] uppercase tracking-[0.08em] text-muted"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {features.map((feature) => (
+          <section
+            key={feature.title}
+            className="rounded-lg border border-line bg-white p-4"
+          >
+            <h4 className="font-sans text-[14px] font-semibold text-ink">
+              {feature.title}
+            </h4>
+            <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
+              {feature.body}
+            </p>
+          </section>
+        ))}
+      </div>
+
+      <section className="rounded-lg border border-line bg-white p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-panel text-ink-soft">
+            <IconGithub className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-sans text-[14px] font-semibold text-ink">
+              Source code
+            </h4>
+            <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
+              Opal Note is open source. Follow development, report issues, or
+              build and run your own copy.
+            </p>
+            <a
+              href="https://github.com/liyu1981/opal_note"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 font-sans text-[14px] font-medium text-accent-strong transition hover:text-accent"
+            >
+              github.com/liyu1981/opal_note
+              <IconArrowUpRight className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <p className="border-t border-line pt-4 font-sans text-[14px] text-faint">
+        Built for people who want their notes to outlive the app.
+      </p>
     </div>
   );
 }
