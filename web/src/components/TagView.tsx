@@ -135,58 +135,56 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 bg-canvas">
-      <div className="flex min-h-0 flex-1">
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-5xl space-y-3 px-6 py-5">
-            {error && (
-              <p className="rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
-                {error}
-              </p>
-            )}
+    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
+        <div className="min-w-0 space-y-3">
+          {error && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+              {error}
+            </p>
+          )}
 
-            {loading ? (
-              <div className="space-y-3">
-                {[0, 1, 2].map((index) => (
-                  <div
-                    key={index}
-                    className="h-32 animate-pulse rounded-xl border border-line bg-panel/30"
-                  />
-                ))}
-              </div>
-            ) : cards.length === 0 ? (
-              <div className="rounded-xl border border-line bg-white/30 px-4 py-12 text-center">
-                <p className="font-sans text-[14px] text-muted">
-                  No pages tagged #{tag}.
-                </p>
-              </div>
-            ) : (
-              cards.map((item, index) => (
-                <TagPageCard
-                  key={item.page.id}
-                  item={item}
-                  index={index}
-                  focused={focused === index}
-                  linkKeys={linkKeys}
-                  linkTargets={linkTargets}
-                  onOpenPage={(page) =>
-                    navigate({ view: "note", noteId: page.id })
-                  }
-                  onWikiLink={openWiki}
-                  onTag={openTag}
+          {loading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((index) => (
+                <div
+                  key={index}
+                  className="h-32 animate-pulse rounded-xl border border-line bg-panel/30"
                 />
-              ))
-            )}
-
-            {!loading && total > pages.length && (
-              <p className="pt-1 text-center font-mono text-[14px] text-faint">
-                Showing the {pages.length} most recently updated of {total} pages.
+              ))}
+            </div>
+          ) : cards.length === 0 ? (
+            <div className="rounded-xl border border-line bg-white/30 px-4 py-12 text-center">
+              <p className="font-sans text-[14px] text-muted">
+                No pages tagged #{tag}.
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            cards.map((item, index) => (
+              <TagPageCard
+                key={item.page.id}
+                item={item}
+                index={index}
+                focused={focused === index}
+                linkKeys={linkKeys}
+                linkTargets={linkTargets}
+                onOpenPage={(page) =>
+                  navigate({ view: "note", noteId: page.id })
+                }
+                onWikiLink={openWiki}
+                onTag={openTag}
+              />
+            ))
+          )}
+
+          {!loading && total > pages.length && (
+            <p className="pt-1 text-center font-mono text-[14px] text-faint">
+              Showing the {pages.length} most recently updated of {total} pages.
+            </p>
+          )}
         </div>
 
-        <aside className="hidden w-64 shrink-0 overflow-y-auto border-l border-line bg-panel/20 px-3 py-4 lg:block">
+        <aside className="sticky top-5 hidden max-h-[calc(100vh-5rem)] self-start overflow-y-auto rounded-xl border border-line bg-panel/85 px-3 py-4 shadow-panel backdrop-blur lg:block">
           <div className="flex items-center justify-between px-1.5">
             <p className="font-mono text-[14px] font-semibold uppercase tracking-[0.12em] text-faint">
               Pages
