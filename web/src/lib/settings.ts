@@ -48,7 +48,7 @@ export type AppSettings = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   fonts: {
-    ui: { family: "Inter", google: false },
+    ui: { family: "Google Sans", google: false },
     display: { family: "JetBrains Mono", google: false },
     editor: { family: "JetBrains Mono", google: false },
     mono: { family: "JetBrains Mono", google: false },

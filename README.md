@@ -80,11 +80,11 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 The UI follows the **Square** design skill from
 `liyu1981/awesome-design-skills`: minimal white surfaces, primary blue and
 secondary violet, success/warning/danger tokens, 4px controls and 8px
-surfaces. Default role fonts are Google Fonts with system fallbacks:
-**Inter** for the interface and **JetBrains Mono** for page titles, the note
-editor, labels and code. Google Sans and Anonymous Pro remain selectable in
-Settings. Inter, JetBrains Mono, Google Sans and Anonymous Pro are self-hosted
-so the single binary remains offline-capable.
+surfaces. Default role fonts are **Google Sans** for the interface and
+**JetBrains Mono** for page titles, the note editor, labels and code. Inter and
+Anonymous Pro remain selectable in Settings. Google Sans, Inter, JetBrains Mono
+and Anonymous Pro are self-hosted so the single binary remains
+offline-capable.
 
 ## Quick start
 
@@ -277,9 +277,8 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 
 The shell follows a Logseq-like split. It opens on the journal feed, which is
 the workspace **Home**. The top bar carries search (by default the leader
-sequence `Cmd+Shift+Space` on macOS, `Ctrl+Shift+Space` elsewhere, then `F`
-opens an in-page dialog), back/forward history controls, and a Home button on
-the right.
+sequence `Cmd+/` on macOS, `Ctrl+/` elsewhere, then `F` opens an in-page
+dialog), back/forward history controls, and a Home button on the right.
 
 - **Left sidebar** — notebook switcher, Favorites, Recent, Journal and Pages.
   Journals open a dedicated feed of **editable journal cards** rather than a
@@ -300,14 +299,18 @@ the right.
   dialog instead of filtering the left panel. Results come from the server's
   `note:fts` index, show match-centered excerpts with highlighted terms, and
   open the selected page directly.
+- **Command palette** — leader → `P` opens a VS Code-style command search.
+  Type to filter every workspace command, use ↑/↓ and Enter to run it, or click
+  a row. Each row shows the current, rebindable shortcut.
 - **Settings** — a large left-tabbed dialog. Fonts are configured by role
   (interface, titles, editor, labels/code); any Google Font can be named and
   loaded over HTTPS. **Keyboard** lists every workspace shortcut and lets you
   record a replacement chord sequence. Workspace and navigation commands share
-  a leader chord (`Cmd+Shift+Space` on macOS, `Ctrl+Shift+Space` elsewhere),
-  followed by `F` search, `H` home, `A` all pages, `G` graph, `L`/`R` sidebars,
-  `S` settings, `N` new page, or `J` today. User overrides are stored as one
-  sparse JSON object on the server and cached in IndexedDB for fast startup.
+  a leader chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F`
+  search, `H` home, `A` all pages, `G` graph, `L`/`R` sidebars, `O` settings,
+  `P` command palette, `N` new page, or `J` today. Save is `Cmd+S` / `Ctrl+S`,
+  or leader → `S`. User overrides are stored as one sparse JSON object on the
+  server and cached in IndexedDB for fast startup.
 - **Navigation** — TanStack Router browser routes: `/journal`, `/pages`,
   `/graph`, and `/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
   `Alt+Left` / `Alt+Right`, rebindable in Settings → Keyboard) use browser

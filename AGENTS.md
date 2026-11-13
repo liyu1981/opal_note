@@ -262,9 +262,9 @@ web/
   they land in `data/.trash/`). Do not bypass the trash path.
 - The UI follows the Square design system (primary `#3B82F6`, secondary
   `#8B5CF6`, success/warning/danger tokens, 4px controls and 8px surfaces).
-  Default role fonts are Google Fonts with system fallbacks: Inter for UI and
-  JetBrains Mono for page titles, note editor, labels and code. Google Sans and
-  Anonymous Pro remain selectable. Use the semantic tokens in
+  Default role fonts are Google Sans for UI and JetBrains Mono for page titles,
+  note editor, labels and code. Inter and Anonymous Pro remain selectable. Use
+  the semantic tokens in
   `web/src/index.css`; do not introduce one-off colors, radii or fonts.
 - Settings are sparse overrides in `<data-dir>/settings.json`, served by
   `GET/PUT /api/settings`. System defaults live in `web/src/lib/settings.ts`;
@@ -281,9 +281,9 @@ web/
   components. User overrides live under `keybindings` in the sparse settings
   object and are recorded from Settings → Keyboard.
 - New user-visible strings should be plain English; keep the UI quiet and
-  keyboard-friendly (customizable shortcuts; the default leader is
-  `Cmd+Shift+Space` on macOS and `Ctrl+Shift+Space` elsewhere, then `F` for
-  search and `Cmd+S` / `Ctrl+S` to save).
+  keyboard-friendly (customizable shortcuts; the default leader is `Cmd+/`
+  on macOS and `Ctrl+/` elsewhere, then `F` for search, `P` for the command
+  palette and `O` for settings. Save is `Cmd+S` / `Ctrl+S` or leader → `S`).
 
 ### Tests
 

@@ -2,6 +2,7 @@ import { Suspense, useEffect } from "react";
 import { Outlet } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 
+import { CommandPalette } from "./CommandPalette";
 import { LeftSidebar } from "./LeftSidebar";
 import { RightPanel } from "./RightPanel";
 import { SearchDialog } from "./SearchDialog";
@@ -99,6 +100,7 @@ export function Workspace() {
         </div>
       </div>
       <SearchDialog />
+      <CommandPalette />
       <SettingsDialog />
       <ShortcutHud />
     </div>

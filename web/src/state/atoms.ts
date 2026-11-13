@@ -170,6 +170,8 @@ export const readOnlyAtom = atom(false);
 
 export const settingsOpenAtom = atom(false);
 
+export const commandPaletteOpenAtom = atom(false);
+
 /** Incremented by the Save shortcut; the active note editor consumes it. */
 export const saveRequestAtom = atom(0);
 
