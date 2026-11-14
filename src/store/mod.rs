@@ -11,6 +11,7 @@ mod queries;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -29,6 +30,7 @@ use self::model::{
 
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 const SUMMARY_CHARS: usize = 220;
+const MAX_IMPORT_BYTES: u64 = 512 * 1024 * 1024;
 
 /// User search text is not FTS syntax. Split it into alphanumeric words and
 /// quote each one so punctuation and operator words cannot break the parser.
@@ -1426,6 +1428,74 @@ impl Store {
         )?)))
     }
 
+    pub fn import_notebook_zip(&self, requested_name: &str, bytes: &[u8]) -> Result<Notebook> {
+        if bytes.len() as u64 > MAX_IMPORT_BYTES {
+            bail!("zip file must be at most {MAX_IMPORT_BYTES} bytes");
+        }
+        let _guard = self.lock_fs();
+        self.sync_all_locked(false)?;
+
+        let base = files::sanitize_name(requested_name, "Imported Notebook");
+        let mut name = base.clone();
+        let mut suffix = 2;
+        while self.notebooks_dir.join(&name).exists() {
+            name = format!("{base} {suffix}");
+            suffix += 1;
+            if suffix > 10_000 {
+                bail!("could not find an available notebook name");
+            }
+        }
+        let notebook = self.notebooks_dir.join(&name);
+        files::ensure_layout(&notebook)?;
+
+        let extracted = (|| -> Result<()> {
+            let mut archive =
+                zip::ZipArchive::new(Cursor::new(bytes)).context("opening notebook zip")?;
+            let mut imported = 0usize;
+            let mut total = 0u64;
+            for index in 0..archive.len() {
+                let mut entry = archive.by_index(index)?;
+                if entry.is_dir() {
+                    continue;
+                }
+                let raw = entry.name().replace('\\', "/");
+                let Some(rel) = normalize_zip_path(&raw) else {
+                    continue;
+                };
+                total = total.saturating_add(entry.size());
+                if total > MAX_IMPORT_BYTES {
+                    bail!("zip contents exceed {MAX_IMPORT_BYTES} bytes");
+                }
+                let target = notebook.join(&rel);
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut output = fs::File::create(&target)?;
+                std::io::copy(&mut entry, &mut output)?;
+                imported += 1;
+            }
+            if imported == 0 {
+                bail!("zip contains no Logseq pages, journals or assets");
+            }
+            Ok(())
+        })();
+
+        if let Err(err) = extracted {
+            let _ = fs::remove_dir_all(&notebook);
+            return Err(err);
+        }
+        if let Err(err) = self.sync_notebook_locked(&name, true) {
+            let _ = fs::remove_dir_all(&notebook);
+            return Err(err);
+        }
+
+        let row = self
+            .get_notebook_row_locked(&name)?
+            .ok_or_else(|| anyhow!("notebook vanished after import"))?;
+        let count = self.notebook_note_count_locked(&name)?;
+        Ok(row.into_model(count))
+    }
+
     pub fn create_note(
         &self,
         notebook_id: &str,
@@ -1723,6 +1793,39 @@ fn col_f64(row: &[DataValue], index: usize) -> f64 {
 
 fn col_i64(row: &[DataValue], index: usize) -> i64 {
     row.get(index).and_then(DataValue::get_int).unwrap_or(0)
+}
+
+fn normalize_zip_path(raw: &str) -> Option<String> {
+    let parts = raw
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>();
+    if parts.is_empty() || parts.iter().any(|part| *part == "..") {
+        return None;
+    }
+    let known = |part: &str| -> Option<&'static str> {
+        match part.to_ascii_lowercase().as_str() {
+            "pages" => Some(files::PAGE_DIR),
+            "journals" | "journal" => Some(files::JOURNAL_DIR),
+            "assets" => Some(files::ASSET_DIR),
+            "draws" => Some("draws"),
+            _ => None,
+        }
+    };
+    let (dir, rest) = if let Some(dir) = known(parts[0]) {
+        (dir, &parts[1..])
+    } else if parts.len() > 1 {
+        let Some(dir) = known(parts[1]) else {
+            return None;
+        };
+        (dir, &parts[2..])
+    } else {
+        return None;
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    Some(format!("{dir}/{}", rest.join("/")))
 }
 
 fn asset_entry(asset: files::AssetFile) -> AssetEntry {

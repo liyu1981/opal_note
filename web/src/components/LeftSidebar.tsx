@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -22,6 +23,7 @@ import {
   IconPlus,
   IconStar,
   IconTrash,
+  IconUpload,
 } from "./Icons";
 import {
   activeNoteIdAtom,
@@ -65,7 +67,9 @@ export function LeftSidebar() {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAdding(false);
@@ -107,6 +111,32 @@ export function LeftSidebar() {
     const notebookId = id || null;
     selectNotebook(notebookId);
     navigate({ view: "home" }, { notebookId });
+  }
+
+  async function importNotebook(file: File) {
+    if (importing || locked) return;
+    setImporting(true);
+    setError(null);
+    const requested =
+      file.name.replace(/\.zip$/iu, "").trim() || "Imported Notebook";
+    try {
+      const created = await api.importNotebook(file, requested);
+      setAdding(false);
+      switchNotebook(created.id);
+      refresh();
+      if (created.name !== requested) {
+        window.alert(
+          `Imported as “${created.name}” because “${requested}” already exists.`,
+        );
+      }
+    } catch (cause) {
+      window.alert(
+        cause instanceof Error ? cause.message : "Could not import notebook",
+      );
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+    }
   }
 
   async function createNotebook(event: FormEvent) {
@@ -187,6 +217,26 @@ export function LeftSidebar() {
             title={locked ? "Unlock editing to create notebooks" : "New notebook"}
           >
             <IconPlus className="h-3.5 w-3.5" />
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".zip,application/zip"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importNotebook(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => importRef.current?.click()}
+            disabled={locked || importing}
+            className="rounded-md border border-transparent p-1 text-faint transition hover:bg-panel-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label="Import notebook ZIP"
+            title={locked ? "Read only" : "Import Logseq ZIP as a new notebook"}
+          >
+            <IconUpload className={`h-3.5 w-3.5 ${importing ? "animate-pulse" : ""}`} />
           </button>
           <button
             type="button"

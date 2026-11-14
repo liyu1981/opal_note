@@ -278,6 +278,15 @@ export function IconLockOpen(props: IconProps) {
   );
 }
 
+export function IconUpload(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 21V10m0 0 4 4m-4-4-4 4" />
+      <path d="M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
 export function IconDownload(props: IconProps) {
   return (
     <svg {...base(props)}>

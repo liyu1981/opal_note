@@ -637,3 +637,27 @@ select:focus-visible {
   font-size: 12px;
   padding: 0.3rem 0.5rem;
 }
+
+/* Ghost buttons are the default action style. Active/selected controls keep
+   their accent surface so state remains visible; solid primary/danger buttons
+   are reduced to the same ghost shape with semantic text color. */
+button:not([aria-pressed="true"]):not([data-solid]):not([class~="bg-accent-soft"]):not([class~="bg-accent-soft/70"]):not([class~="bg-panel-strong"]) {
+  background-color: transparent;
+  border-color: transparent;
+}
+
+button[class~="bg-accent-strong"] {
+  color: var(--color-accent-strong);
+}
+
+button[class~="bg-accent-strong"]:hover {
+  background-color: var(--color-accent-soft);
+}
+
+button[class~="bg-danger"] {
+  color: var(--color-danger);
+}
+
+button[class~="bg-danger"]:hover {
+  background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}

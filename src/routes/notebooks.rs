@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
@@ -26,6 +26,56 @@ pub async fn list(State(state): State<AppState>) -> ApiResult<Json<Vec<Notebook>
     let store = state.store.clone();
     let notebooks = db_call(move || store.list_notebooks(), AppError::Internal).await?;
     Ok(Json(notebooks))
+}
+
+pub async fn import(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> ApiResult<(StatusCode, Json<Notebook>)> {
+    let mut requested_name = String::new();
+    let mut file_name = String::new();
+    let mut data: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|err| AppError::bad_request(err.to_string()))?
+    {
+        let name = field.name().unwrap_or_default().to_string();
+        if name == "name" {
+            requested_name = field
+                .text()
+                .await
+                .map_err(|err| AppError::bad_request(err.to_string()))?;
+        } else if name == "file" {
+            file_name = field.file_name().unwrap_or("import.zip").to_string();
+            data = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|err| AppError::bad_request(err.to_string()))?
+                    .to_vec(),
+            );
+        }
+    }
+
+    let data = data.ok_or_else(|| AppError::bad_request("zip file is required"))?;
+    let requested_name = requested_name.trim();
+    let name = if requested_name.is_empty() {
+        file_name
+            .trim_end_matches(".zip")
+            .trim_end_matches(".ZIP")
+            .to_string()
+    } else {
+        requested_name.to_string()
+    };
+    let store = state.store.clone();
+    let notebook = db_call(
+        move || store.import_notebook_zip(&name, &data),
+        AppError::Internal,
+    )
+    .await?;
+    Ok((StatusCode::CREATED, Json(notebook)))
 }
 
 pub async fn create(

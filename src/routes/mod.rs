@@ -7,6 +7,7 @@ pub mod query;
 pub mod settings;
 
 use anyhow::anyhow;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::{middleware, Router};
 use tower_http::cors::{Any, CorsLayer};
@@ -39,6 +40,10 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/plugins", get(plugins::list))
         .route("/plugins/reload", post(plugins::reload))
         .route("/notebooks", get(notebooks::list).post(notebooks::create))
+        .route(
+            "/notebooks/import",
+            post(notebooks::import).layer(DefaultBodyLimit::max(512 * 1024 * 1024)),
+        )
         .route(
             "/notebooks/{id}",
             get(notebooks::get)

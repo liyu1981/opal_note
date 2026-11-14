@@ -53,7 +53,11 @@ export function storeToken(token: string): void {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body !== undefined && !headers.has("content-type")) {
+  if (
+    init.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("content-type")
+  ) {
     headers.set("content-type", "application/json");
   }
   const token = getStoredToken();
@@ -149,6 +153,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  importNotebook: (file: File, name?: string) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    if (name?.trim()) body.append("name", name.trim());
+    return request<Notebook>("/notebooks/import", {
+      method: "POST",
+      body,
+    });
+  },
 
   updateNotebook: (
     id: string,

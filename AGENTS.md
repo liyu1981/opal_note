@@ -319,6 +319,9 @@ web/
   by `useKeyboardShortcuts`; do not add ad-hoc global key listeners in
   components. User overrides live under `keybindings` in the sparse settings
   object and are recorded from Settings → Keyboard.
+- Default action buttons are ghost-style: transparent surface/border with
+  hover feedback. Selected controls keep `bg-accent-soft`/`bg-panel-strong`,
+  and primary/danger buttons use semantic text colors rather than solid fills.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (customizable shortcuts; the default leader is `Cmd+/`
   on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `M` for
@@ -352,12 +355,15 @@ GET /api/notebooks/{notebook}/assets/{*path}
 GET /api/notebooks/{notebook}/asset?path=
 PATCH /api/notebooks/{notebook}/asset
 GET /api/notebooks/{notebook}/plugins
+POST /api/notebooks/import
 GET /api/plugins
 POST /api/plugins/reload
 GET|PUT /api/settings
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.
+`POST /api/notebooks/import` accepts a multipart `file` ZIP and optional `name`;
+it never overwrites an existing notebook and auto-suffixes conflicting names.
 `GET /journals` is a cursor-paginated, newest-first feed. `GET /pages` returns
 one page of all notes (pages and journals) with resolved backlink counts;
 `total` is the filtered row count. `GET /orphans` returns empty pages with no

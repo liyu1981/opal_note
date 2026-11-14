@@ -150,7 +150,13 @@ build. Debug builds skip that embed step and read both directories at runtime.
 
 ### Importing a Logseq graph
 
-Copy the graph into a notebook folder and start (or reindex):
+Use the notebook import button in the left sidebar to upload a Logseq-format
+ZIP. The archive may contain `pages/`, `journals/`, `assets/` and `draws/`
+directly or inside one wrapper folder. Existing notebooks are never
+overwritten; if the requested name exists, the server imports as
+`<name> 2`, `<name> 3`, and so on, and the UI reports the chosen name.
+
+You can also copy a graph into a notebook folder manually and start/reindex:
 
 ```bash
 mkdir -p data/notebooks
@@ -329,6 +335,9 @@ Home button on the right.
 - **Home** — `/<notebook>/home` is the default dashboard. It shows today's
   editable journal card, Favorites, the top three recently edited pages with a
   New page button, and outstanding todo-plugin items in a sticky right strip.
+- **Ghost controls** — action buttons default to a transparent ghost style
+  with hairline hover feedback; selected/active controls keep their accent
+  surface, and destructive actions use danger text on hover.
 - **Assets** — `/<notebook>/assets` browses every file under the notebook's
   `assets/` folder with search, type filters, sorting and pagination. Cards
   provide download and rename actions. Asset detail pages (`/<notebook>/asset/
@@ -442,6 +451,7 @@ Public (no token): `GET /health`, `GET /meta`.
 | ------ | -------------------------------------------- | ---------------------------------------------- |
 | GET    | `/notebooks`                                 | List folders with note counts                  |
 | POST   | `/notebooks`                                 | `{name, description?}` — creates the folder    |
+| POST   | `/notebooks/import`                          | Multipart ZIP import; auto-suffixes conflicts  |
 | GET    | `/notebooks/{id}`                            | Notebook metadata                              |
 | PATCH  | `/notebooks/{id}`                            | `{name?, description?}` — may rename the folder|
 | DELETE | `/notebooks/{id}`                            | Move notebook folder to `.trash/`              |
