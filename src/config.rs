@@ -337,8 +337,12 @@ pub fn run_install_service(args: InstallServiceArgs, global_config: Option<&Path
     fs::create_dir_all(&service_dir)
         .with_context(|| format!("creating {}", service_dir.display()))?;
     fs::create_dir_all(&data_dir).with_context(|| format!("creating {}", data_dir.display()))?;
-    fs::create_dir_all(config.parent().unwrap_or(&home))
-        .with_context(|| format!("creating {}", home.display()))?;
+    if let Some(parent) = config
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
 
     if service_path.exists() && !args.force {
         bail!(

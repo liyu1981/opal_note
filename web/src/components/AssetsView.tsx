@@ -284,86 +284,74 @@ function AssetCard({
   const { url, error } = useAssetBlob(notebookId, asset.path, previewable);
 
   return (
-    <article
-      className="group cursor-pointer overflow-hidden rounded-xl border border-line bg-paper transition hover:border-line-strong"
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-    >
-      <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-panel/50">
-        {asset.kind === "image" && url ? (
-          <img
-            src={url}
-            alt={asset.name}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : asset.kind === "video" && url ? (
-          <video
-            src={url}
-            muted
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
-        ) : asset.kind === "audio" ? (
-          <IconFile className="h-10 w-10 text-faint" />
-        ) : (
-          <IconFile className="h-10 w-10 text-faint" />
-        )}
-        {error && (
-          <span className="absolute inset-x-2 bottom-2 rounded bg-danger/10 px-2 py-1 font-mono text-[12px] text-danger">
-            {error}
-          </span>
-        )}
-        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDownload();
-            }}
-            className="rounded border border-line bg-white/85 p-1.5 text-muted shadow-sm transition hover:bg-white hover:text-ink"
-            aria-label={`Download ${asset.name}`}
-            title="Download"
-          >
-            <IconDownload className="h-3.5 w-3.5" />
-          </button>
-          {!locked && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onRename();
-              }}
-              className="rounded border border-line bg-white/85 p-1.5 text-muted shadow-sm transition hover:bg-white hover:text-ink"
-              aria-label={`Rename ${asset.name}`}
-              title="Rename"
-            >
-              <IconPencil className="h-3.5 w-3.5" />
-            </button>
+    <article className="group relative overflow-hidden rounded-xl border border-line bg-paper transition hover:border-line-strong">
+      <button
+        type="button"
+        data-solid
+        onClick={onOpen}
+        className="block w-full cursor-pointer text-left"
+        aria-label={`Open ${asset.name}`}
+      >
+        <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-panel/50">
+          {asset.kind === "image" && url ? (
+            <img
+              src={url}
+              alt={asset.name}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : asset.kind === "video" && url ? (
+            <video
+              src={url}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <IconFile className="h-10 w-10 text-faint" />
+          )}
+          {error && (
+            <span className="absolute inset-x-2 bottom-2 rounded bg-danger/10 px-2 py-1 font-mono text-[12px] text-danger">
+              {error}
+            </span>
           )}
         </div>
-      </div>
-      <div className="border-t border-line/60 px-3 py-2.5">
-        <p className="truncate font-sans text-[14px] font-medium text-ink">
-          {asset.name}
-        </p>
-        <p className="mt-0.5 truncate font-mono text-[12px] text-faint">
-          {asset.path}
-        </p>
-        <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[12px] text-faint">
-          <span>{assetKindLabel(asset.kind)}</span>
-          <span>{formatBytes(asset.size)}</span>
-          <span>{relativeTime(asset.updated_at)}</span>
+        <div className="border-t border-line/60 px-3 py-2.5">
+          <p className="truncate font-sans text-[14px] font-medium text-ink">
+            {asset.name}
+          </p>
+          <p className="mt-0.5 truncate font-mono text-[12px] text-faint">
+            {asset.path}
+          </p>
+          <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[12px] text-faint">
+            <span>{assetKindLabel(asset.kind)}</span>
+            <span>{formatBytes(asset.size)}</span>
+            <span>{relativeTime(asset.updated_at)}</span>
+          </div>
         </div>
+      </button>
+      <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+        <button
+          type="button"
+          onClick={onDownload}
+          className="rounded border border-line bg-white/85 p-1.5 text-muted shadow-sm transition hover:bg-white hover:text-ink"
+          aria-label={`Download ${asset.name}`}
+          title="Download"
+        >
+          <IconDownload className="h-3.5 w-3.5" />
+        </button>
+        {!locked && (
+          <button
+            type="button"
+            onClick={onRename}
+            className="rounded border border-line bg-white/85 p-1.5 text-muted shadow-sm transition hover:bg-white hover:text-ink"
+            aria-label={`Rename ${asset.name}`}
+            title="Rename"
+          >
+            <IconPencil className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </article>
   );

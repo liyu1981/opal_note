@@ -7,7 +7,7 @@ use crate::error::{ApiResult, AppError};
 use crate::routes::{check_content, check_tags, clamp_limit, clamp_offset, clean_title, db_call};
 use crate::state::AppState;
 use crate::store::model::{GraphData, JournalPage, Note, NoteSummary, PageList, PageOverview};
-use crate::store::{NoteSection, NoteUpdate};
+use crate::store::{NoteSection, NoteUpdate, PageListOptions};
 
 fn default_limit() -> usize {
     50
@@ -122,12 +122,14 @@ pub async fn pages(
             }
             Ok(Some(store.list_page_overviews(
                 &notebook_id,
-                limit,
-                offset,
-                (!q.is_empty()).then_some(q.as_str()),
-                (!tag.is_empty()).then_some(tag.as_str()),
-                (!sort.is_empty()).then_some(sort.as_str()),
-                (!dir.is_empty()).then_some(dir.as_str()),
+                PageListOptions {
+                    limit,
+                    offset,
+                    query: (!q.is_empty()).then_some(q.as_str()),
+                    tag: (!tag.is_empty()).then_some(tag.as_str()),
+                    sort: (!sort.is_empty()).then_some(sort.as_str()),
+                    direction: (!dir.is_empty()).then_some(dir.as_str()),
+                },
             )?))
         },
         AppError::Internal,

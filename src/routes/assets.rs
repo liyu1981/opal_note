@@ -8,7 +8,7 @@ use crate::error::{ApiResult, AppError};
 use crate::routes::{clamp_limit, clamp_offset, db_call};
 use crate::state::AppState;
 use crate::store::model::{AssetEntry, AssetInfo, AssetList};
-use crate::store::AssetRename;
+use crate::store::{AssetListOptions, AssetRename};
 
 fn default_limit() -> usize {
     24
@@ -53,12 +53,14 @@ pub async fn list(
         move || {
             store.list_assets(
                 &notebook_id,
-                limit,
-                offset,
-                (!q.is_empty()).then_some(q.as_str()),
-                (!kind.is_empty()).then_some(kind.as_str()),
-                (!sort.is_empty()).then_some(sort.as_str()),
-                (!dir.is_empty()).then_some(dir.as_str()),
+                AssetListOptions {
+                    limit,
+                    offset,
+                    query: (!q.is_empty()).then_some(q.as_str()),
+                    kind: (!kind.is_empty()).then_some(kind.as_str()),
+                    sort: (!sort.is_empty()).then_some(sort.as_str()),
+                    direction: (!dir.is_empty()).then_some(dir.as_str()),
+                },
             )
         },
         AppError::Internal,

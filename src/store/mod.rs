@@ -54,7 +54,7 @@ fn search_excerpt(content: &str, terms: &[String]) -> Option<String> {
     let mut hit: Option<usize> = None;
     for term in terms {
         if let Some(position) = lower.find(term) {
-            if hit.map_or(true, |earliest| position < earliest) {
+            if hit.is_none_or(|earliest| position < earliest) {
                 hit = Some(position);
             }
         }
@@ -120,7 +120,7 @@ fn clean_search_snippet(text: &str) -> String {
 
     let cleaned = out.split_whitespace().collect::<Vec<_>>().join(" ");
     cleaned
-        .trim_start_matches(|c: char| matches!(c, '#' | '>' | '-' | '*' | '+' | ' '))
+        .trim_start_matches(['#', '>', '-', '*', '+', ' '])
         .to_string()
 }
 
@@ -272,6 +272,26 @@ struct PageRecord {
     size: i64,
     created_at: f64,
     updated_at: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PageListOptions<'a> {
+    pub limit: usize,
+    pub offset: usize,
+    pub query: Option<&'a str>,
+    pub tag: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub direction: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AssetListOptions<'a> {
+    pub limit: usize,
+    pub offset: usize,
+    pub query: Option<&'a str>,
+    pub kind: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub direction: Option<&'a str>,
 }
 
 impl Store {
@@ -875,13 +895,16 @@ impl Store {
     pub fn list_page_overviews(
         &self,
         notebook_id: &str,
-        limit: usize,
-        offset: usize,
-        query: Option<&str>,
-        tag: Option<&str>,
-        sort: Option<&str>,
-        direction: Option<&str>,
+        options: PageListOptions<'_>,
     ) -> Result<PageList> {
+        let PageListOptions {
+            limit,
+            offset,
+            query,
+            tag,
+            sort,
+            direction,
+        } = options;
         self.ensure_synced()?;
         let mut pages = self.all_page_overviews_locked(notebook_id)?;
 
@@ -1269,13 +1292,16 @@ impl Store {
     pub fn list_assets(
         &self,
         notebook_id: &str,
-        limit: usize,
-        offset: usize,
-        query: Option<&str>,
-        kind: Option<&str>,
-        sort: Option<&str>,
-        dir: Option<&str>,
+        options: AssetListOptions<'_>,
     ) -> Result<Option<AssetList>> {
+        let AssetListOptions {
+            limit,
+            offset,
+            query,
+            kind,
+            sort,
+            direction,
+        } = options;
         let notebook = self.notebook_dir(notebook_id)?;
         if !notebook.is_dir() {
             return Ok(None);
@@ -1296,14 +1322,14 @@ impl Store {
 
         match sort.unwrap_or_default() {
             "name" => assets.sort_by(|left, right| left.name.cmp(&right.name)),
-            "size" => assets.sort_by(|left, right| left.size.cmp(&right.size)),
+            "size" => assets.sort_by_key(|left| left.size),
             _ => assets.sort_by(|left, right| {
                 left.updated_at
                     .partial_cmp(&right.updated_at)
                     .unwrap_or(std::cmp::Ordering::Equal)
             }),
         }
-        if dir.unwrap_or_default() != "asc" {
+        if direction.unwrap_or_default() != "asc" {
             assets.reverse();
         }
 
@@ -1800,7 +1826,7 @@ fn normalize_zip_path(raw: &str) -> Option<String> {
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
         .collect::<Vec<_>>();
-    if parts.is_empty() || parts.iter().any(|part| *part == "..") {
+    if parts.is_empty() || parts.contains(&"..") {
         return None;
     }
     let known = |part: &str| -> Option<&'static str> {
@@ -1815,9 +1841,7 @@ fn normalize_zip_path(raw: &str) -> Option<String> {
     let (dir, rest) = if let Some(dir) = known(parts[0]) {
         (dir, &parts[1..])
     } else if parts.len() > 1 {
-        let Some(dir) = known(parts[1]) else {
-            return None;
-        };
+        let dir = known(parts[1])?;
         (dir, &parts[2..])
     } else {
         return None;
@@ -2118,7 +2142,17 @@ mod tests {
         store.create_note(&notebook.id, "Empty", "", &[]).unwrap();
 
         let page_list = store
-            .list_page_overviews(&notebook.id, 50, 0, None, None, None, None)
+            .list_page_overviews(
+                &notebook.id,
+                PageListOptions {
+                    limit: 50,
+                    offset: 0,
+                    query: None,
+                    tag: None,
+                    sort: None,
+                    direction: None,
+                },
+            )
             .unwrap();
         assert_eq!(page_list.total, 4);
         let pages = page_list.pages;
@@ -2154,18 +2188,48 @@ mod tests {
         assert_eq!(orphans[0].id, "pages/Empty.md");
 
         let first = store
-            .list_page_overviews(&notebook.id, 2, 0, None, None, Some("title"), Some("asc"))
+            .list_page_overviews(
+                &notebook.id,
+                PageListOptions {
+                    limit: 2,
+                    offset: 0,
+                    query: None,
+                    tag: None,
+                    sort: Some("title"),
+                    direction: Some("asc"),
+                },
+            )
             .unwrap();
         assert_eq!(first.pages.len(), 2);
         assert_eq!(first.total, 4);
         let second = store
-            .list_page_overviews(&notebook.id, 2, 2, None, None, Some("title"), Some("asc"))
+            .list_page_overviews(
+                &notebook.id,
+                PageListOptions {
+                    limit: 2,
+                    offset: 2,
+                    query: None,
+                    tag: None,
+                    sort: Some("title"),
+                    direction: Some("asc"),
+                },
+            )
             .unwrap();
         assert_eq!(second.pages.len(), 2);
         assert_eq!(second.offset, 2);
 
         let tagged = store
-            .list_page_overviews(&notebook.id, 50, 0, None, Some("inline"), None, None)
+            .list_page_overviews(
+                &notebook.id,
+                PageListOptions {
+                    limit: 50,
+                    offset: 0,
+                    query: None,
+                    tag: Some("inline"),
+                    sort: None,
+                    direction: None,
+                },
+            )
             .unwrap();
         assert_eq!(tagged.total, 1);
         assert_eq!(tagged.pages[0].id, "pages/Source.md");
