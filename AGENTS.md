@@ -63,9 +63,10 @@ builds embed both via `rust-embed`; `build.rs` only builds `web/dist` for releas
 builds. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile a release without Node (a
 placeholder page is embedded if no bundle exists).
 
-`.github/workflows/release.yml` is manually triggered and builds an arm64
-release from the selected commit. Its release version is `Cargo.toml`'s
-version plus the first six commit characters (for example `0.1.0-a1b2c3`).
+`.github/workflows/dev-build.yml` is manually triggered and builds an arm64
+development artifact from the selected commit. Its version is `Cargo.toml`'s
+version plus the first six commit characters (for example `0.1.0-a1b2c3`), and
+it is uploaded to the workflow run rather than creating a GitHub release.
 
 ## Layout
 

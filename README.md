@@ -87,12 +87,13 @@ Anonymous Pro remain selectable in Settings. Google Sans, Inter, JetBrains Mono
 and Anonymous Pro are self-hosted so the single binary remains
 offline-capable.
 
-## Releases
+## Development builds
 
-A manually triggered GitHub Actions workflow builds an **arm64** release from
-the selected commit. The release version is the Cargo package version plus the
-first six characters of the commit hash, e.g. `0.1.0-a1b2c3`. The workflow
-creates a GitHub release with the arm64 tarball.
+A manually triggered GitHub Actions workflow builds an **arm64 development
+artifact** from the selected commit. The artifact version is the Cargo package
+version plus the first six characters of the commit hash, e.g.
+`0.1.0-a1b2c3`. It is uploaded to the workflow run as a downloadable artifact;
+the workflow does not create a GitHub release.
 
 ## Quick start
 
