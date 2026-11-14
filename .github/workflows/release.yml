@@ -1,0 +1,83 @@
+name: Release arm64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build arm64 release
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out the selected commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libclang-dev pkg-config libssl-dev
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Build web client
+        run: pnpm --dir web build
+
+      - name: Build release binary
+        env:
+          OPALNOTE_SKIP_WEB_BUILD: "1"
+        run: cargo build --release --locked
+
+      - name: Package release
+        id: package
+        shell: bash
+        run: |
+          VERSION=$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)
+          SHORT_SHA=${GITHUB_SHA::6}
+          RELEASE_VERSION="${VERSION}-${SHORT_SHA}"
+          ARTIFACT="opalnote-${RELEASE_VERSION}-aarch64-unknown-linux-gnu.tar.gz"
+          mkdir -p dist
+          cp target/release/opalnote dist/
+          cp README.md LICENSE dist/
+          tar -C dist -czf "dist/${ARTIFACT}" opalnote README.md LICENSE
+          echo "version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "artifact=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opalnote-${{ steps.package.outputs.version }}-aarch64
+          path: dist/${{ steps.package.outputs.artifact }}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.package.outputs.version }}" \
+            "dist/${{ steps.package.outputs.artifact }}" \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.package.outputs.version }}" \
+            --generate-notes

@@ -87,6 +87,13 @@ Anonymous Pro remain selectable in Settings. Google Sans, Inter, JetBrains Mono
 and Anonymous Pro are self-hosted so the single binary remains
 offline-capable.
 
+## Releases
+
+A manually triggered GitHub Actions workflow builds an **arm64** release from
+the selected commit. The release version is the Cargo package version plus the
+first six characters of the commit hash, e.g. `0.1.0-a1b2c3`. The workflow
+creates a GitHub release with the arm64 tarball.
+
 ## Quick start
 
 Requirements: Rust (1.85+), Node 22.12+ / 24, pnpm, a C compiler for bundled
@@ -101,15 +108,18 @@ pnpm dev
 
 1. installs the web dependencies on first run;
 2. builds the client bundle;
-3. syncs the bundle into the location the server embeds;
-4. rebuilds the Rust server;
-5. starts it on **`https://0.0.0.0:7827`**;
-6. watches client and server sources.
+3. starts the debug server;
+4. watches client, server and built-in plugin sources.
+
+Debug builds deliberately **do not embed** `web/dist` or `plugins/builtin`.
+The debug server reads both directly from disk, so Rust only needs rebuilding
+when Rust source/config changes.
 
 Changes are debounced for 220 ms, then coalesced:
 
 - a change under `web/src`, `web/public`, or a web config file rebuilds the
   client and restarts the server;
+- a change under `plugins/builtin` restarts the server without compiling Rust;
 - a change under `src`, `Cargo.toml`, `Cargo.lock`, or `build.rs` rebuilds the
   binary and restarts the server;
 - a failed build leaves the current server running and waits for the next edit.
@@ -134,8 +144,9 @@ pnpm start
 ```
 
 `pnpm build` runs the same web build + asset sync, then
-`cargo build --release --locked`. `build.rs` also builds `web/dist` on demand
-for a plain `cargo build`.
+`cargo build --release --locked`. Release builds embed `web/dist` and
+`plugins/builtin`; `build.rs` builds `web/dist` on demand for a plain release
+build. Debug builds skip that embed step and read both directories at runtime.
 
 ### Importing a Logseq graph
 
@@ -508,9 +519,9 @@ src/
   config.rs          clap + env
   state.rs           shared AppState
   auth.rs            optional bearer-token middleware
-  assets.rs          rust-embed asset + SPA fallback
+  assets.rs          release rust-embed / debug disk asset handler + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
-  plugins.rs         embedded/data plugin registry + QuickJS runner
+  plugins.rs         release embed / debug disk plugin registry + QuickJS runner
   settings.rs        sparse settings.json store
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
@@ -518,7 +529,7 @@ src/
     markdown.rs      wikilinks, tags, frontmatter, summaries
     queries.rs       every CozoScript statement
     model.rs         API models
-plugins/builtin/     native plugin folders embedded into the binary
+plugins/builtin/     native plugin folders embedded in release builds
 web/
   src/api/           typed client + types
   src/router.tsx     TanStack route tree + URL/view synchronization

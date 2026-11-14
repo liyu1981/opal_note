@@ -8,12 +8,10 @@ export const WEB_DIR = path.join(ROOT, "web");
 export const WEB_DIST = path.join(WEB_DIR, "dist");
 
 /**
- * Directory compiled into the Rust binary by `rust-embed`
- * (see `#[folder = "web/dist"]` in src/assets.rs).
- *
- * It is the same path as the Vite output today, so the sync step only
- * verifies the bundle. Keeping the two names explicit means a future split
- * (e.g. `server/assets`) copies instead of silently embedding stale files.
+ * Directory embedded by release builds (see `#[folder = "web/dist"]` in
+ * src/assets.rs). Debug builds read this directory from disk at runtime.
+ * It is the same path as the Vite output today, so the sync step only verifies
+ * the bundle.
  */
 export const SERVER_ASSETS = path.join(ROOT, "web/dist");
 

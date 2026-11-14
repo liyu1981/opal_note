@@ -22,6 +22,13 @@ const PLACEHOLDER: &str = r#"<!doctype html>
 "#;
 
 fn main() {
+    // Debug builds serve web/dist and plugins/builtin from disk at runtime.
+    // They do not embed either payload, so frontend/plugin changes only need a
+    // server restart, not a Rust rebuild.
+    if std::env::var("PROFILE").as_deref() == Ok("debug") {
+        return;
+    }
+
     println!("cargo:rerun-if-changed=web/dist");
     println!("cargo:rerun-if-changed=web/src");
     println!("cargo:rerun-if-changed=web/index.html");

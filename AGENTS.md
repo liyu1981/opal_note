@@ -50,16 +50,22 @@ The root `package.json` is the only task runner. Do not add a Makefile,
 justfile, or shell-script entry points — add a script there and, if
 orchestration is needed, a Node entry under `scripts/`.
 
-`pnpm dev` is a **single command**: it builds the client, syncs the bundle into
-the server, rebuilds and runs the server (bound to `0.0.0.0:7827`), then watches
-`web/src`/`web/public`/web config files and `src`/`Cargo.toml`/`Cargo.lock`/
-`build.rs`. Changes are debounced (220 ms), rebuilt, and the server is
-restarted. A failed build keeps the previous server alive. There is no separate
-Vite dev server or HMR — reload the browser tab for a new client bundle.
+`pnpm dev` is a **single command**: it builds the client and runs the debug
+server (bound to `0.0.0.0:7827`), then watches `web/src`/`web/public`/web config
+files, `plugins/builtin`, and `src`/`Cargo.toml`/`Cargo.lock`/`build.rs`.
+Changes are debounced (220 ms). Client and built-in plugin changes restart the
+server without a Rust rebuild; Rust source/config changes rebuild the binary.
+A failed build keeps the previous server alive. There is no separate Vite dev
+server or HMR — reload the browser tab for a new client bundle.
 
-`build.rs` builds `web/dist` on demand if it is missing/stale, so a plain
-`cargo build` also works. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile Rust
-without Node (a placeholder page is embedded if no bundle exists).
+Debug builds read `web/dist` and `plugins/builtin` from disk at runtime. Release
+builds embed both via `rust-embed`; `build.rs` only builds `web/dist` for release
+builds. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile a release without Node (a
+placeholder page is embedded if no bundle exists).
+
+`.github/workflows/release.yml` is manually triggered and builds an arm64
+release from the selected commit. Its release version is `Cargo.toml`'s
+version plus the first six commit characters (for example `0.1.0-a1b2c3`).
 
 ## Layout
 
@@ -71,9 +77,9 @@ src/
   config.rs        clap/env configuration
   state.rs         AppState (Store + auth token)
   auth.rs          optional bearer-token middleware
-  assets.rs        rust-embed static/SPA handler
+  assets.rs        release rust-embed / debug disk static handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
-  plugins.rs       embedded/data plugin registry + QuickJS runner
+  plugins.rs       release embed / debug disk plugin registry + QuickJS runner
   settings.rs      sparse settings.json store
   store/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
@@ -136,8 +142,9 @@ web/
   reindex) use `refreshAtom`; note content/title/tag saves use
   `refreshNotesAtom`. Do not call global refresh from the autosave path.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
-- The server embeds `web/dist` via `rust-embed`; `scripts/lib.mjs` owns the
-  build/sync step. Any new asset location must be wired through both.
+- Release builds embed `web/dist` and `plugins/builtin` via `rust-embed`; debug
+  builds read them from disk. `scripts/lib.mjs` owns the web build/sync step.
+  Any new embedded asset location must be wired through both modes.
 - Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
   in `src/index.css`; do not hard-code new hex colors.
 - The note body is a **live block editor**, not a split preview. Keep source

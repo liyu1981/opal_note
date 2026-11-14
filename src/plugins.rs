@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context as _, Result};
 use cozo::{DataValue, JsonData};
 use rquickjs::{Context, Ctx, Function, Runtime};
+#[cfg(not(debug_assertions))]
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -33,6 +34,7 @@ const MAX_DESCRIPTION_CHARS: usize = 500;
 const MEMORY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 const STACK_LIMIT_BYTES: usize = 512 * 1024;
 
+#[cfg(not(debug_assertions))]
 #[derive(RustEmbed)]
 #[folder = "plugins/builtin/"]
 struct BuiltinPluginAssets;
@@ -224,21 +226,21 @@ fn load_registry(directory: &Path) -> Result<RegistryState> {
 
 fn load_builtin_plugins() -> Result<Vec<PluginDefinition>> {
     let mut folders = BTreeSet::new();
-    for path in BuiltinPluginAssets::iter() {
-        if let Some(folder) = path.as_ref().strip_suffix("/plugin.json") {
+    for path in builtin_plugin_paths()? {
+        if let Some(folder) = path.strip_suffix("/plugin.json") {
             folders.insert(folder.to_string());
         }
     }
 
     let mut plugins = Vec::new();
     for folder in folders {
-        let manifest = BuiltinPluginAssets::get(&format!("{folder}/plugin.json"))
+        let manifest = read_builtin_plugin(&format!("{folder}/plugin.json"))
             .with_context(|| format!("reading built-in plugin manifest `{folder}`"))?;
-        let script = BuiltinPluginAssets::get(&format!("{folder}/plugin.js"))
+        let script = read_builtin_plugin(&format!("{folder}/plugin.js"))
             .with_context(|| format!("reading built-in plugin source `{folder}`"))?;
-        let manifest = std::str::from_utf8(&manifest.data)
+        let manifest = std::str::from_utf8(&manifest)
             .with_context(|| format!("built-in plugin manifest `{folder}` is not UTF-8"))?;
-        let script = std::str::from_utf8(&script.data)
+        let script = std::str::from_utf8(&script)
             .with_context(|| format!("built-in plugin source `{folder}` is not UTF-8"))?;
         plugins.push(parse_plugin(
             &folder,
@@ -249,6 +251,60 @@ fn load_builtin_plugins() -> Result<Vec<PluginDefinition>> {
         )?);
     }
     Ok(plugins)
+}
+
+#[cfg(not(debug_assertions))]
+fn builtin_plugin_paths() -> Result<Vec<String>> {
+    Ok(BuiltinPluginAssets::iter()
+        .map(|path| path.into_owned())
+        .collect())
+}
+
+#[cfg(debug_assertions)]
+fn builtin_plugin_paths() -> Result<Vec<String>> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                walk(root, &path, out)?;
+            } else if entry.file_type()?.is_file() {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .components()
+                    .map(|component| component.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push(rel);
+            }
+        }
+        Ok(())
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/builtin");
+    let mut paths = Vec::new();
+    walk(&root, &root, &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
+#[cfg(not(debug_assertions))]
+fn read_builtin_plugin(path: &str) -> Result<Vec<u8>> {
+    Ok(BuiltinPluginAssets::get(path)
+        .with_context(|| format!("missing embedded built-in plugin file `{path}`"))?
+        .data
+        .into_owned())
+}
+
+#[cfg(debug_assertions)]
+fn read_builtin_plugin(path: &str) -> Result<Vec<u8>> {
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("plugins/builtin")
+            .join(path),
+    )
+    .with_context(|| format!("reading built-in plugin file `{path}`"))
 }
 
 fn load_data_plugins(directory: &Path) -> Vec<(String, Result<PluginDefinition>)> {

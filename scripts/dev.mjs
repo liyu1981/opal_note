@@ -57,6 +57,7 @@ let shuttingDown = false;
 let buildInFlight = false;
 let pendingClient = false;
 let pendingServer = false;
+let pendingRuntime = false;
 let debounceTimer = null;
 const watchers = [];
 
@@ -136,6 +137,7 @@ function scheduleFlush() {
 function mark(kind) {
   if (shuttingDown) return;
   if (kind === "client") pendingClient = true;
+  else if (kind === "runtime") pendingRuntime = true;
   else pendingServer = true;
   scheduleFlush();
 }
@@ -146,8 +148,10 @@ async function runPending() {
 
   const rebuildClient = pendingClient;
   const rebuildServer = pendingServer;
+  const restartOnly = pendingRuntime;
   pendingClient = false;
   pendingServer = false;
+  pendingRuntime = false;
 
   let ok = true;
 
@@ -161,14 +165,16 @@ async function runPending() {
     ok = tryRun("cargo", ["build"]) && ok;
   }
 
-  if (ok && !shuttingDown) {
+  if (ok && !shuttingDown && (rebuildClient || rebuildServer || restartOnly)) {
     await restartServer();
   } else if (!ok) {
     console.log("  keeping the current server until the next passing build");
   }
 
   buildInFlight = false;
-  if (!shuttingDown && (pendingClient || pendingServer)) scheduleFlush();
+  if (!shuttingDown && (pendingClient || pendingServer || pendingRuntime)) {
+    scheduleFlush();
+  }
 }
 
 const IGNORED_BASENAMES = new Set([".DS_Store", "4913"]);
@@ -225,6 +231,7 @@ function startWatchers() {
   step("Watching for changes");
   console.log("  client: web/src, web/public, web config files");
   console.log("  server: src, Cargo.toml, Cargo.lock, build.rs");
+  console.log("  plugins: plugins/builtin (restart only)");
   console.log("  debounce: 220 ms · Ctrl+C to stop\n");
 
   addWatcher("web/src", true, () => mark("client"));
@@ -234,6 +241,7 @@ function startWatchers() {
   });
 
   addWatcher("src", true, () => mark("server"));
+  addWatcher("plugins/builtin", true, () => mark("runtime"));
   addWatcher(".", false, (name) => {
     if (name && SERVER_CONFIG_FILES.has(path.basename(name))) mark("server");
   });
