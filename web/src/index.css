@@ -661,3 +661,9 @@ button[class~="bg-danger"] {
 button[class~="bg-danger"]:hover {
   background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
 }
+
+/* Ghost buttons reveal a hairline outline on hover without shifting layout. */
+button:not([aria-pressed="true"]):not([data-solid]):not([class~="bg-accent-soft"]):not([class~="bg-accent-soft/70"]):not([class~="bg-panel-strong"]):hover {
+  background-color: var(--color-paper);
+  box-shadow: inset 0 0 0 1px var(--color-line-strong);
+}
