@@ -74,7 +74,7 @@ package.json       dev / build / start / test scripts (the only task runner)
 scripts/           dev orchestration, asset sync, release launcher
 src/
   main.rs          startup, logging, graceful shutdown
-  config.rs        clap/env configuration
+  config.rs        clap, TOML config, env, config/install-service commands
   state.rs         AppState (Store + auth token)
   auth.rs          optional bearer-token middleware
   assets.rs        release rust-embed / debug disk static handler
@@ -311,6 +311,11 @@ web/
   settings immediately and revalidates from the server on every page load.
   Font roles are interface/display/editor/mono; arbitrary Google Fonts are
   requested over HTTPS. The large SettingsDialog uses left-side tabs.
+- Configuration resolves CLI flags → environment variables → TOML config file →
+  defaults. The default config is `~/.opalnote/config`; `--config` overrides it.
+  `opalnote config` writes a default file, `--upgrade` preserves existing values,
+  and `opalnote install-service` writes a systemd user unit defaulting to
+  `~/.opalnote/data`.
 - HTTPS is enabled by default (`--no-tls` / `OPALNOTE_NO_TLS` disables it).
   `pnpm dev` ensures mkcert certs under `certs/` (gitignored); production can
   pass `--tls-cert` / `--tls-key`. The Docker image defaults to HTTP because

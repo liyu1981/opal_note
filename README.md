@@ -200,10 +200,41 @@ The container defaults to HTTP because it has no certificate mount. Mount
 
 ## Configuration
 
-All flags have environment-variable equivalents.
+All server flags have environment-variable equivalents. Values are resolved in
+this order: **CLI flags → environment variables → config file → defaults**.
+
+The default config file is `~/.opalnote/config`; override it with `--config`.
+The file is TOML:
+
+```toml
+version = 1
+bind = "127.0.0.1:7827"
+data_dir = "./data"
+token = ""
+query_timeout_secs = 5.0
+plugin_timeout_secs = 5.0
+no_tls = false
+tls_cert = "certs/localhost.pem"
+tls_key = "certs/localhost-key.pem"
+dev_cors = false
+```
+
+Config commands:
+
+```bash
+opalnote config                 # write ./config with current defaults
+opalnote config --path ./config --force
+opalnote config --upgrade       # add new keys, preserve existing values
+```
+
+`opalnote install-service` writes a systemd **user** service to
+`~/.config/systemd/user/opalnote.service`. It defaults to
+`~/.opalnote/data` and the default config path. Use `--data-dir`, `--binary`
+or `--force` to customize it; the command prints the enable commands.
 
 | Flag                       | Env                           | Default           | Meaning                                                  |
 | -------------------------- | ----------------------------- | ----------------- | -------------------------------------------------------- |
+| `--config`                 | —                             | `~/.opalnote/config` | TOML configuration file                              |
 | `--bind`                   | `OPALNOTE_BIND`               | `127.0.0.1:7827`  | Listen address (`pnpm dev` forces `0.0.0.0:7827`)        |
 | `--data-dir`               | `OPALNOTE_DATA_DIR`           | `./data`          | Root holding `notebooks/`, `index/` and `.trash/`        |
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
@@ -526,7 +557,7 @@ package.json         the only task runner: dev / build / start / test
 scripts/             dev orchestration, asset sync, release launcher
 src/
   main.rs            startup, tracing, graceful shutdown
-  config.rs          clap + env
+  config.rs          clap, config file, env, config/install-service commands
   state.rs           shared AppState
   auth.rs            optional bearer-token middleware
   assets.rs          release rust-embed / debug disk asset handler + SPA fallback

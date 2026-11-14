@@ -18,7 +18,7 @@ use axum_server::Handle;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use crate::config::Cli;
+use crate::config::{Cli, Command};
 use crate::plugins::PluginRegistry;
 use crate::settings::SettingsStore;
 use crate::state::AppState;
@@ -28,7 +28,18 @@ use crate::store::Store;
 async fn main() -> anyhow::Result<()> {
     init_tracing();
     let cli = Cli::parse();
-    let args = cli.serve;
+
+    if let Some(command) = cli.command {
+        match command {
+            Command::Config(args) => config::run_config(args, cli.config.as_deref())?,
+            Command::InstallService(args) => {
+                config::run_install_service(args, cli.config.as_deref())?
+            }
+        }
+        return Ok(());
+    }
+
+    let args = cli.serve.resolve(cli.config.as_deref())?;
 
     let store = Arc::new(Store::open(&args.data_dir, args.query_timeout_secs)?);
     store.ping()?;
