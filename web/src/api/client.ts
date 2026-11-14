@@ -1,4 +1,7 @@
 import type {
+  AssetEntry,
+  AssetInfo,
+  AssetList,
   GraphData,
   Health,
   JournalPage,
@@ -90,7 +93,43 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function requestBlob(path: string): Promise<Blob> {
+  const headers = new Headers();
+  const token = getStoredToken();
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { headers });
+  } catch (error) {
+    throw new ApiError(
+      0,
+      "network_error",
+      error instanceof Error ? error.message : "Network request failed",
+    );
+  }
+  if (!response.ok) {
+    let code = "http_error";
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const payload = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      if (payload.error?.code) code = payload.error.code;
+      if (payload.error?.message) message = payload.error.message;
+    } catch {
+      // Keep the status text for non-JSON errors.
+    }
+    throw new ApiError(response.status, code, message);
+  }
+  return response.blob();
+}
+
 const encode = encodeURIComponent;
+
+function assetPath(notebookId: string, path: string): string {
+  const encodedPath = path.split("/").map(encode).join("/");
+  return `/notebooks/${encode(notebookId)}/assets/${encodedPath}`;
+}
 
 function notePath(notebookId: string, path: string): string {
   const encodedPath = path.split("/").map(encode).join("/");
@@ -156,6 +195,43 @@ export const api = {
 
   graph: (notebookId: string) =>
     request<GraphData>(`/notebooks/${encode(notebookId)}/graph`),
+
+  listAssets: (
+    notebookId: string,
+    params: {
+      limit?: number;
+      offset?: number;
+      q?: string;
+      kind?: string;
+      sort?: string;
+      dir?: string;
+    } = {},
+  ) => {
+    const search = new URLSearchParams();
+    search.set("limit", String(params.limit ?? 24));
+    search.set("offset", String(params.offset ?? 0));
+    if (params.q) search.set("q", params.q);
+    if (params.kind) search.set("kind", params.kind);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.dir) search.set("dir", params.dir);
+    return request<AssetList>(
+      `/notebooks/${encode(notebookId)}/assets?${search.toString()}`,
+    );
+  },
+
+  assetInfo: (notebookId: string, path: string) =>
+    request<AssetInfo>(
+      `/notebooks/${encode(notebookId)}/asset?path=${encode(path)}`,
+    ),
+
+  getAssetBlob: (notebookId: string, path: string) =>
+    requestBlob(assetPath(notebookId, path)),
+
+  renameAsset: (notebookId: string, path: string, name: string) =>
+    request<AssetEntry>(`/notebooks/${encode(notebookId)}/asset`, {
+      method: "PATCH",
+      body: JSON.stringify({ path, name }),
+    }),
 
   journalPlugins: (notebookId: string) =>
     request<JournalPluginResult[]>(

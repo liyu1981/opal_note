@@ -27,12 +27,13 @@ pub async fn static_handler(OriginalUri(uri): OriginalUri) -> Response {
 
     // Missing hashed assets should be a real 404, not the SPA shell. Only
     // extension-less paths are client-side routes.
+    let is_asset_detail = path.split('/').nth(1) == Some("asset");
     let looks_like_asset = requested.starts_with("assets/")
         || requested
             .rsplit('/')
             .next()
             .is_some_and(|name| name.contains('.'));
-    if looks_like_asset {
+    if looks_like_asset && !is_asset_detail {
         return AppError::not_found("asset not found").into_response();
     }
 

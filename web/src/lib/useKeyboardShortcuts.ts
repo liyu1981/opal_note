@@ -10,7 +10,6 @@ import {
 import { useShortcutRunner } from "./useShortcutRunner";
 import { settingsAtom } from "./settings";
 import {
-  commandPaletteOpenAtom,
   shortcutRecordingAtom,
   shortcutSequenceAtom,
   settingsOpenAtom,
@@ -24,8 +23,6 @@ export function useKeyboardShortcuts() {
   const [sequence, setSequence] = useAtom(shortcutSequenceAtom);
   const recording = useAtomValue(shortcutRecordingAtom);
   const settingsOpen = useAtomValue(settingsOpenAtom);
-  const commandPaletteOpen = useAtomValue(commandPaletteOpenAtom);
-
   const sequenceRef = useRef("");
   const timerRef = useRef<number | null>(null);
   const bindingsRef = useRef(new Map<string, string>());
@@ -35,12 +32,12 @@ export function useKeyboardShortcuts() {
   }, [sequence]);
 
   useEffect(() => {
-    if (recording || settingsOpen || commandPaletteOpen) {
+    if (recording || settingsOpen) {
       sequenceRef.current = "";
       setSequence("");
       if (timerRef.current) window.clearTimeout(timerRef.current);
     }
-  }, [commandPaletteOpen, recording, setSequence, settingsOpen]);
+  }, [recording, setSequence, settingsOpen]);
 
   useEffect(() => {
     const map = new Map<string, string>();
@@ -67,7 +64,6 @@ export function useKeyboardShortcuts() {
       if (
         recording ||
         settingsOpen ||
-        commandPaletteOpen ||
         event.isComposing
       ) {
         return;
@@ -126,7 +122,6 @@ export function useKeyboardShortcuts() {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
   }, [
-    commandPaletteOpen,
     recording,
     run,
     setSequence,

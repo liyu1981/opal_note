@@ -10,7 +10,6 @@ import {
   normalizeLinkTarget,
 } from "../lib/markdown";
 import { JournalCard } from "./JournalCard";
-import { JournalPluginsPanel } from "./JournalPluginsPanel";
 import {
   activeNotebookIdAtom,
   notesAtom,
@@ -196,7 +195,6 @@ export function JournalFeed() {
         </div>
         </div>
       </div>
-      <JournalPluginsPanel />
     </main>
   );
 }

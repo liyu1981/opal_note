@@ -509,7 +509,7 @@ function NoteEditor({ note }: { note: Note }) {
                   title: note.title,
                 })
               }
-              className={`rounded-lg border p-1.5 transition ${
+              className={`inline-flex h-[35px] w-[35px] shrink-0 items-center justify-center rounded-lg border p-0 transition ${
                 isFavorite
                   ? "border-accent/30 bg-accent-soft text-accent-strong"
                   : "border-line bg-white/70 text-faint hover:border-line-strong hover:bg-white hover:text-ink"
@@ -519,9 +519,9 @@ function NoteEditor({ note }: { note: Note }) {
               title={isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
               {isFavorite ? (
-                <IconStarFilled className="h-3.5 w-3.5" />
+                <IconStarFilled className="h-4 w-4" />
               ) : (
-                <IconStar className="h-3.5 w-3.5" />
+                <IconStar className="h-4 w-4" />
               )}
             </button>
             <button
@@ -621,6 +621,8 @@ function NoteEditor({ note }: { note: Note }) {
             }}
             onWikiLink={navigateWiki}
             onTag={(tag) => void navigateTag(tag)}
+            notebookId={note.notebook_id}
+            notePath={note.id}
             linkKeys={linkKeys}
             linkTargets={linkTargets}
             readOnly={locked}

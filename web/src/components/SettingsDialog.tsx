@@ -9,6 +9,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { PluginList } from "../api/types";
+import { CODE_THEMES } from "../lib/codeThemes";
 import {
   FONT_PRESETS,
   FONT_ROLES,
@@ -47,6 +48,7 @@ import {
 
 type Tab =
   | "fonts"
+  | "code"
   | "shortcuts"
   | "connection"
   | "index"
@@ -59,6 +61,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "fonts",
     label: "Fonts",
     description: "Choose the typeface for each part of the workspace.",
+  },
+  {
+    id: "code",
+    label: "Code",
+    description: "Choose syntax colors for fenced code blocks.",
   },
   {
     id: "shortcuts",
@@ -204,6 +211,14 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateCodeTheme(id: string) {
+    const next: AppSettings = { ...draft, codeTheme: id };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   function resetKeybindings() {
     const next: AppSettings = { ...draft, keybindings: {} };
     setDraft(next);
@@ -321,7 +336,8 @@ export function SettingsDialog() {
                 {activeTab.description}
               </p>
             </div>
-            {fontStatus !== "idle" && (tab === "fonts" || tab === "shortcuts") && (
+            {fontStatus !== "idle" &&
+              (tab === "fonts" || tab === "code" || tab === "shortcuts") && (
               <span
                 className={`mt-1 font-mono text-[14px] ${
                   fontStatus === "error" ? "text-danger" : "text-faint"
@@ -353,6 +369,13 @@ export function SettingsDialog() {
                 settings={draft}
                 onChange={updateFont}
                 onReset={resetFonts}
+                error={fontError}
+              />
+            )}
+            {tab === "code" && (
+              <CodeTab
+                value={draft.codeTheme}
+                onChange={updateCodeTheme}
                 error={fontError}
               />
             )}
@@ -393,6 +416,78 @@ export function SettingsDialog() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CodeTab({
+  value,
+  onChange,
+  error,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  error: string | null;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="max-w-xl font-sans text-[14px] leading-relaxed text-muted">
+        Code blocks use their own syntax theme. The page and editor paper
+        background stays unchanged.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {CODE_THEMES.map((theme) => {
+          const selected = theme.id === value;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              onClick={() => onChange(theme.id)}
+              aria-pressed={selected}
+              className={`overflow-hidden rounded-lg border bg-white text-left transition ${
+                selected
+                  ? "border-accent ring-1 ring-accent/25"
+                  : "border-line hover:border-line-strong"
+              }`}
+            >
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="font-sans text-[14px] font-semibold text-ink">
+                  {theme.label}
+                </span>
+                {selected && (
+                  <IconCheck className="h-3.5 w-3.5 text-accent-strong" />
+                )}
+              </div>
+              <pre
+                className="overflow-hidden border-t px-3 py-2.5 font-mono text-[12px] leading-relaxed"
+                style={{
+                  background: theme.background,
+                  borderColor: theme.border,
+                  color: theme.foreground,
+                }}
+              >
+                <code>
+                  <span style={{ color: theme.keyword }}>const</span>{" "}
+                  <span style={{ color: theme.function }}>greet</span> = (
+                  <span style={{ color: theme.property }}>name</span>) =&gt;{" "}
+                  <span style={{ color: theme.string }}>&quot;hello&quot;</span>;
+                  {"\n"}
+                  <span style={{ color: theme.comment }}>
+                    // {theme.label}
+                  </span>
+                </code>
+              </pre>
+            </button>
+          );
+        })}
+      </div>
+
+      {error && (
+        <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -760,7 +855,9 @@ function ShortcutRow({
       ? "Press keys…"
       : custom
         ? formatBinding(custom)
-        : effective.map(formatBinding).join(" / ");
+        : effective.length > 0
+          ? effective.map(formatBinding).join(" / ")
+          : "Unbound";
 
   return (
     <div className="flex items-center gap-3 border-b border-line/60 px-3 py-2.5 last:border-b-0">

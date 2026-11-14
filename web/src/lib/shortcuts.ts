@@ -38,6 +38,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     defaultBindings: ["mod+/ g"],
   },
   {
+    id: "nav.assets",
+    label: "Go to asset page",
+    description: "Open the asset browser",
+    group: "Navigation",
+    defaultBindings: [],
+  },
+  {
     id: "nav.back",
     label: "Back",
     description: "Go back in browser history",
@@ -70,7 +77,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     label: "Command palette",
     description: "Search and run workspace commands",
     group: "Workspace",
-    defaultBindings: ["mod+/ p"],
+    defaultBindings: ["mod+m", "mod+/ m"],
   },
   {
     id: "ui.settings",
@@ -117,7 +124,9 @@ export function resolveBindings(
 }
 
 export function defaultBindingText(command: ShortcutCommand): string {
-  return command.defaultBindings.map(formatBinding).join(" / ");
+  return command.defaultBindings.length > 0
+    ? command.defaultBindings.map(formatBinding).join(" / ")
+    : "Unbound";
 }
 
 export function bindingLabel(

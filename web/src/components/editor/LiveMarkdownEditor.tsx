@@ -22,6 +22,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 
+import { api } from "../../api/client";
 import {
   livePreview,
   refreshLivePreview,
@@ -42,6 +43,8 @@ type Props = {
   onChange: (value: string) => void;
   onWikiLink: (target: string) => void;
   onTag: (tag: string) => void;
+  notebookId: string;
+  notePath: string;
   linkKeys: Set<string>;
   linkTargets: LinkTarget[];
   readOnly: boolean;
@@ -70,6 +73,8 @@ export const LiveMarkdownEditor = forwardRef<
     onChange,
     onWikiLink,
     onTag,
+    notebookId,
+    notePath,
     linkKeys,
     linkTargets,
     readOnly,
@@ -103,8 +108,16 @@ export const LiveMarkdownEditor = forwardRef<
     },
     onTag: (tag) => onTagRef.current(tag),
     readOnly,
+    notePath,
+    loadAsset: (path) => api.getAssetBlob(notebookId, path),
   });
-  optionsRef.current = { ...optionsRef.current, linkKeys, readOnly };
+  optionsRef.current = {
+    ...optionsRef.current,
+    linkKeys,
+    readOnly,
+    notePath,
+    loadAsset: (path) => api.getAssetBlob(notebookId, path),
+  };
 
   useImperativeHandle(
     ref,

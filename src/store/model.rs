@@ -137,3 +137,35 @@ pub struct Stats {
     pub tags: i64,
     pub links: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetEntry {
+    /// Path relative to the notebook's `assets/` directory.
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+    pub mime: String,
+    pub size: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetReference {
+    pub note_path: String,
+    pub title: String,
+    pub excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetInfo {
+    pub asset: AssetEntry,
+    pub references: Vec<AssetReference>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetList {
+    pub assets: Vec<AssetEntry>,
+    pub total: i64,
+    pub limit: usize,
+    pub offset: usize,
+}

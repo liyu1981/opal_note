@@ -87,7 +87,7 @@ web/
   src/api/         typed fetch client + shared types
   src/router.tsx   TanStack route tree and URL/view synchronization
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
-  src/components/  workspace shell, journal/plugin rails, pages, graph, panels
+  src/components/  workspace shell, home/plugin cards, pages, graph, assets, panels
   src/components/editor/  CodeMirror live editor + link completion
   src/lib/         app navigation, settings, live preview, graph layout
 ```
@@ -171,29 +171,34 @@ web/
   deliberately removes the code surface, syntax colors and active-line tint:
   source mode should read as plain markdown. Keep code lines hanging-indented
   so wrapped source remains aligned.
-- Code blocks use the light code surface (`--color-panel` plus theme syntax
-  colors) and `@codemirror/language-data` for lazy language highlighting. Use
-  theme tokens for token colors; do not bring back the dark code surface.
+- Code blocks use the configurable `codeTheme` setting (`--code-*` variables,
+  GitHub Light by default) and `@codemirror/language-data` for lazy language
+  highlighting. `.cm-live-code-line` maps the selected theme onto the shared
+  `--syntax-*` token variables. Keep the copy-button widget on each fenced block
+  and do not hard-code a single code surface.
 - The single-page editor uses `autoHeight`: the page/main pane scrolls and
   the editor grows with its content. Do not put the editor back in a fixed
   height container with an internal `.cm-scroller` scrollbar. Journal cards
   use the same auto-height renderer and the same `--note-ch` hanging indent.
 - The workspace opens on `HomeView` (`homeViewAtom`): today's editable journal
-  card, the three most recently edited pages, a New page action, and outstanding
-  todo-plugin items in a sticky right strip. The global top bar hosts the
-  **OmniBar**: normal text searches notes, while a leading `#` lists available
-  tags and navigates to tag views. Tag views prefill `#tag` in the bar. Do not
-  reintroduce the old centered search dialog, and do not put search back into
-  `LeftSidebar` or make `notesAtom` query-dependent.
+  card, a Favorites section, the three most recently edited pages, a New page
+  action, and outstanding todo-plugin items in a sticky right strip. The global top bar hosts the
+  **OmniBar**: normal text searches notes, a leading `#` lists tags, and a
+  leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode. Tag
+  views prefill `#tag` in the bar. Do not reintroduce the old centered search
+  or command dialogs, and do not put search back into `LeftSidebar` or make
+  `notesAtom` query-dependent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
-  `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
-  Pages, Favorites, Recent and Graph view. The right panel is wider and tabbed
+  `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Home,
+  Journals, Pages, Graph and Assets navigation plus Favorites/Recent sections,
+  which default collapsed. The right panel is wider and tabbed
   Context / Info / Graph. Keep it that way rather than adding new permanent
   side panels.
 - Client routing is TanStack Router with browser history, not hashes. Canonical
   paths are `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
-  `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
-  `/<notebook>/page?p=<note-path-or-title>`, where `<notebook>` is the
+  `/<notebook>/graph`, `/<notebook>/assets`, `/<notebook>/asset/<path>`,
+  `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=<note-path-or-title>`, where
+  `<notebook>` is the
   URL-encoded notebook name. Unprefixed legacy paths redirect to the selected
   notebook (and remain the no-notebook fallback). All in-app destinations go
   through `useAppNavigate`; notes set the `p` search param and
@@ -236,27 +241,34 @@ web/
   per-plugin deadline that interrupts JS and bounds Datalog queries. Plugins
   return a generic `{items: [...]}` JSON payload. Do not add filesystem or
   network host APIs.
-- Native plugins live in `plugins/builtin/<id>/` and are embedded with
-  `rust-embed`; data plugins live in `<data-dir>/plugins/<id>/`. Each folder
-  needs `plugin.json` (`id`, `title`, `description`) and `plugin.js`. Built-in
-  ids win over data plugins; conflicting data folders are reported as load
-  errors. The registry loads at startup and can rescan via
+- Native plugins live in `plugins/builtin/OpalNote/<extension>/` and are
+  embedded with `rust-embed`; their ids are `OpalNote/<extension>`. Data
+  plugins live in `<data-dir>/plugins/<folder>/` and use ids shaped
+  `<domain>/<extension>`. Each folder needs `plugin.json` (`id`, `title`,
+  `description`) and `plugin.js`. Built-in ids win over data plugins;
+  conflicting data folders are reported as load errors. The registry loads at startup and can rescan via
   `POST /api/plugins/reload`; `GET /api/plugins` lists metadata. The journal
   endpoint is `GET /notebooks/{id}/plugins` and uses
   `OPALNOTE_PLUGIN_TIMEOUT_SECS`.
 - Tasks are derived during filesystem sync into the `task` relation from
   markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
   rows in sync with note insert/update/delete and notebook deletion.
-- `JournalPluginsPanel` is the right-hand journal rail (desktop only). It loads
-  the plugin endpoint, renders generic items, and opens item pages through
-  `useAppNavigate`. Journal card saves refresh `notesRevisionAtom` so task
-  widgets update after checkbox edits.
-- `TagView` is the `/<notebook>/tag/<tag>` page: editable `JournalCard`s plus a
-  page-title jump list. Tag clicks everywhere (journal cards, inline editor
-  tags, page tags, right panel, pages table) go through `useAppNavigate`. Keep
-  the tag route as a splat so tags containing `/` remain one logical tag.
+- `PluginCard` renders generic plugin items and is used by the Home todo strip;
+  the journal feed no longer has a plugin rail. Plugin saves refresh
+  `notesRevisionAtom` so todo widgets update after checkbox edits.
+- `AssetsView` browses the notebook `assets/` folder with server-side search,
+  kind filters, sorting and pagination. `AssetDetailView` provides image
+  zoom/pan, video/audio players, download/rename actions, and reference
+  backlinks. Asset bytes are fetched through the authenticated API as blobs;
+  rename updates `assets/<path>` references in notes and reindexes the notebook.
+- `TagView` is the `/<notebook>/tag/<tag>` page: editable `JournalCard`s showing
+  only the tagged block (plus its indented children), and a page-title jump
+  list. Edits are merged back into the full page content by block range. Tag
+  clicks everywhere (journal cards, inline editor tags, page tags, right panel,
+  pages table) go through `useAppNavigate`. Keep the tag route as a splat so
+  tags containing `/` remain one logical tag.
 - Sidebar section expansion is persisted in `sidebarSectionsAtom`
-  (`opalnote.sidebar-sections.v1`), keyed by section title. Panel
+  (`opalnote.sidebar-sections.v2`), keyed by section title. Panel
   expand/collapse is persisted separately by `leftPanelOpenAtom` and
   `rightPanelOpenAtom`.
 - Graph colors are theme tokens in `src/index.css`:
@@ -302,8 +314,8 @@ web/
   object and are recorded from Settings → Keyboard.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (customizable shortcuts; the default leader is `Cmd+/`
-  on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `P` for
-  the command palette and `O` for settings. Save is `Cmd+S` / `Ctrl+S`).
+  on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `M` for
+  command mode and `O` for settings. Save is `Cmd+S` / `Ctrl+S`).
 
 ### Tests
 
@@ -328,6 +340,10 @@ GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
 GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
 GET /api/notebooks/{notebook}/graph
+GET /api/notebooks/{notebook}/assets?limit=&offset=&q=&kind=&sort=&dir=
+GET /api/notebooks/{notebook}/assets/{*path}
+GET /api/notebooks/{notebook}/asset?path=
+PATCH /api/notebooks/{notebook}/asset
 GET /api/notebooks/{notebook}/plugins
 GET /api/plugins
 POST /api/plugins/reload

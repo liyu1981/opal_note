@@ -27,7 +27,7 @@ const MAX_MANIFEST_BYTES: usize = 16 * 1024;
 const MAX_SCRIPT_BYTES: usize = 20_000;
 const MAX_PARAMS: usize = 100;
 const MAX_ITEMS: usize = 200;
-const MAX_ID_CHARS: usize = 64;
+const MAX_ID_CHARS: usize = 96;
 const MAX_TITLE_CHARS: usize = 120;
 const MAX_DESCRIPTION_CHARS: usize = 500;
 const MEMORY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
@@ -294,6 +294,29 @@ fn read_text(path: &Path, max_bytes: usize) -> Result<String> {
     String::from_utf8(raw).with_context(|| format!("{} is not UTF-8", path.display()))
 }
 
+fn valid_plugin_id(id: &str) -> bool {
+    let mut parts = id.split('/');
+    let Some(domain) = parts.next() else {
+        return false;
+    };
+    let Some(extension) = parts.next() else {
+        return false;
+    };
+    if parts.next().is_some() {
+        return false;
+    }
+    [domain, extension].iter().all(|part| {
+        !part.is_empty()
+            && part
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric())
+            && part
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    })
+}
+
 #[derive(Deserialize)]
 struct PluginManifest {
     id: String,
@@ -311,17 +334,10 @@ fn parse_plugin(
     let manifest: PluginManifest = serde_json::from_str(manifest_raw)
         .with_context(|| format!("parsing plugin.json for `{folder}`"))?;
     let id = manifest.id.trim();
-    if id.is_empty()
-        || id.chars().count() > MAX_ID_CHARS
-        || !id
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
-        || !id
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_alphanumeric())
-    {
-        bail!("plugin `{folder}` has an invalid id; use lowercase letters, digits, `-`, and `_`");
+    if id.is_empty() || id.chars().count() > MAX_ID_CHARS || !valid_plugin_id(id) {
+        bail!(
+            "plugin `{folder}` has an invalid id; use `<domain>/<extension>` with letters, digits, `-`, `_`, and `.`"
+        );
     }
     let title = manifest.title.trim();
     if title.is_empty() || title.chars().count() > MAX_TITLE_CHARS {
@@ -485,7 +501,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = Arc::new(Store::open(dir.path(), 1.0).unwrap());
         let plugin = PluginDefinition {
-            id: "runaway".to_string(),
+            id: "Test/runaway".to_string(),
             title: "Runaway".to_string(),
             description: "test".to_string(),
             script: "while (true) {}".to_string(),
@@ -505,7 +521,7 @@ mod tests {
         fs::create_dir_all(&plugin_dir).unwrap();
         fs::write(
             plugin_dir.join("plugin.json"),
-            r#"{"id":"hello","title":"Hello","description":"A test plugin."}"#,
+            r#"{"id":"Acme/hello","title":"Hello","description":"A test plugin."}"#,
         )
         .unwrap();
         fs::write(
@@ -519,11 +535,11 @@ mod tests {
         assert!(list
             .plugins
             .iter()
-            .any(|plugin| plugin.id == "todos" && plugin.source == PluginSource::Builtin));
+            .any(|plugin| plugin.id == "OpalNote/todos" && plugin.source == PluginSource::Builtin));
         assert!(list
             .plugins
             .iter()
-            .any(|plugin| plugin.id == "hello" && plugin.source == PluginSource::Data));
+            .any(|plugin| plugin.id == "Acme/hello" && plugin.source == PluginSource::Data));
         assert!(list.errors.is_empty());
     }
 
@@ -534,7 +550,7 @@ mod tests {
         fs::create_dir_all(&plugin_dir).unwrap();
         fs::write(
             plugin_dir.join("plugin.json"),
-            r#"{"id":"todos","title":"Shadow","description":"Should not load."}"#,
+            r#"{"id":"OpalNote/todos","title":"Shadow","description":"Should not load."}"#,
         )
         .unwrap();
         fs::write(
@@ -549,6 +565,6 @@ mod tests {
         assert!(list
             .plugins
             .iter()
-            .any(|plugin| plugin.id == "todos" && plugin.source == PluginSource::Builtin));
+            .any(|plugin| plugin.id == "OpalNote/todos" && plugin.source == PluginSource::Builtin));
     }
 }

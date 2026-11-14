@@ -8,7 +8,7 @@ import {
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
-import { formatJournalDate, ensureJournal } from "../lib/journal";
+import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { OpalLogo } from "./OpalLogo";
 import {
@@ -16,6 +16,7 @@ import {
   IconChevron,
   IconClock,
   IconFile,
+  IconFolder,
   IconGraph,
   IconHome,
   IconPlus,
@@ -26,6 +27,7 @@ import {
   activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
+  assetsViewAtom,
   favoritesAtom,
   graphViewAtom,
   homeViewAtom,
@@ -51,6 +53,7 @@ export function LeftSidebar() {
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
   const graphView = useAtomValue(graphViewAtom);
+  const assetsView = useAtomValue(assetsViewAtom);
   const favorites = useAtomValue(favoritesAtom);
   const recents = useAtomValue(recentsAtom);
   const locked = useAtomValue(readOnlyAtom);
@@ -76,15 +79,6 @@ export function LeftSidebar() {
     ? (favorites[activeNotebookId] ?? [])
     : [];
   const recentRefs = activeNotebookId ? (recents[activeNotebookId] ?? []) : [];
-  const journalNotes = useMemo(
-    () =>
-      notes
-        .filter((note) => note.id.startsWith("journals/"))
-        .sort((left, right) => right.id.localeCompare(left.id)),
-    [notes],
-  );
-  const pageNotes = notes.filter((note) => note.id.startsWith("pages/"));
-
   function openNote(path: string) {
     navigate({ view: "note", noteId: path });
   }
@@ -105,36 +99,8 @@ export function LeftSidebar() {
     navigate({ view: "graph" });
   }
 
-  async function openToday() {
-    if (!activeNotebookId || locked) return;
-    try {
-      const note = await ensureJournal(activeNotebookId);
-      openNote(note.id);
-      refresh();
-    } catch (cause) {
-      window.alert(
-        cause instanceof Error ? cause.message : "Could not open today's journal",
-      );
-    }
-  }
-
-  async function createPage() {
-    if (!activeNotebookId || busy || locked) return;
-    setBusy(true);
-    try {
-      const note = await api.createNote(activeNotebookId, {
-        title: "Untitled",
-        content: "",
-      });
-      openNote(note.id);
-      refresh();
-    } catch (cause) {
-      window.alert(
-        cause instanceof Error ? cause.message : "Could not create page",
-      );
-    } finally {
-      setBusy(false);
-    }
+  function openAssetsView() {
+    navigate({ view: "assets" });
   }
 
   function switchNotebook(id: string) {
@@ -293,9 +259,15 @@ export function LeftSidebar() {
               />
               <NavItem
                 icon={<IconGraph className="h-3.5 w-3.5" />}
-                label="Graph view"
+                label="Graph"
                 active={graphView}
                 onClick={openGraphView}
+              />
+              <NavItem
+                icon={<IconFolder className="h-3.5 w-3.5" />}
+                label="Assets"
+                active={assetsView}
+                onClick={openAssetsView}
               />
             </div>
 
@@ -331,77 +303,6 @@ export function LeftSidebar() {
               )}
             </SidebarSection>
 
-            <SidebarSection
-              title="Journal"
-              count={journalNotes.length}
-              action={
-                <button
-                  type="button"
-                  onClick={openToday}
-                  disabled={locked}
-                  className="rounded px-1.5 py-0.5 font-mono text-[14px] text-accent-strong transition hover:bg-accent-soft disabled:opacity-40"
-                  title={locked ? "Read only" : "Open today's journal"}
-                >
-                  Today
-                </button>
-              }
-            >
-              {journalNotes.length === 0 ? (
-                <Hint>No journal pages yet. Start with Today.</Hint>
-              ) : (
-                journalNotes.slice(0, 6).map((note) => (
-                  <NoteRow
-                    key={note.id}
-                    title={formatJournalDate(note.title)}
-                    active={note.id === activeNoteId}
-                    icon={<IconCalendar className="h-3 w-3" />}
-                    onClick={() => openNote(note.id)}
-                  />
-                ))
-              )}
-              {journalNotes.length > 0 && (
-                <button
-                  type="button"
-                  onClick={openJournalFeed}
-                  className="mt-1 w-full rounded px-2 py-1 text-left font-mono text-[14px] text-faint transition hover:bg-panel-strong hover:text-ink"
-                >
-                  Open journal feed →
-                </button>
-              )}
-            </SidebarSection>
-
-            <div id="pages-section">
-              <SidebarSection
-                title="Pages"
-                count={pageNotes.length}
-                action={
-                  <button
-                    type="button"
-                    onClick={createPage}
-                    disabled={locked || busy}
-                    className="rounded p-1 text-muted transition hover:bg-panel-strong hover:text-ink disabled:opacity-30"
-                    aria-label="New page"
-                    title={locked ? "Read only" : "New page"}
-                  >
-                    <IconPlus className="h-3 w-3" />
-                  </button>
-                }
-              >
-                {pageNotes.length === 0 ? (
-                  <Hint>No pages yet.</Hint>
-                ) : (
-                  pageNotes.map((note) => (
-                    <NoteRow
-                      key={note.id}
-                      title={note.title}
-                      active={note.id === activeNoteId}
-                      icon={<IconFile className="h-3 w-3" />}
-                      onClick={() => openNote(note.id)}
-                    />
-                  ))
-                )}
-              </SidebarSection>
-            </div>
           </>
         )}
       </div>
@@ -421,7 +322,7 @@ function SidebarSection({
   children: ReactNode;
 }) {
   const [sections, setSections] = useAtom(sidebarSectionsAtom);
-  const open = sections[title] ?? true;
+  const open = sections[title] ?? false;
   return (
     <section className="border-b border-line/60 py-2.5 last:border-0">
       <div className="flex items-center gap-1 px-1">
@@ -430,7 +331,7 @@ function SidebarSection({
           onClick={() =>
             setSections((current) => ({
               ...current,
-              [title]: !(current[title] ?? true),
+              [title]: !(current[title] ?? false),
             }))
           }
           aria-expanded={open}

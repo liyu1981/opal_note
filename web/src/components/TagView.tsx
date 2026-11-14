@@ -9,6 +9,7 @@ import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
+  assetsViewAtom,
   homeViewAtom,
   notesAtom,
   notesRevisionAtom,
@@ -37,6 +38,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   const locked = useAtomValue(readOnlyAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const setHomeView = useSetAtom(homeViewAtom);
+  const setAssetsView = useSetAtom(assetsViewAtom);
   const setOmniQuery = useSetAtom(omniQueryAtom);
   const navigate = useAppNavigate();
 
@@ -58,8 +60,9 @@ export function TagView({ tag: rawTag }: { tag: string }) {
 
   useLayoutEffect(() => {
     setHomeView(false);
+    setAssetsView(false);
     setActiveNote(null);
-  }, [setActiveNote, setHomeView]);
+  }, [setActiveNote, setAssetsView, setHomeView]);
 
   useEffect(() => {
     setOmniQuery(tag ? `#${tag}` : "");
@@ -164,8 +167,35 @@ export function TagView({ tag: rawTag }: { tag: string }) {
               </p>
             </div>
           ) : (
-            cards.map((item, index) =>
-              item.note ? (
+            cards.map((item, index) => {
+              const note = item.note;
+              const block = note ? findTaggedBlock(note.content, tag) : null;
+              if (!note || !block) {
+                return (
+                  <article
+                    key={item.page.id}
+                    id={`tag-page-${index}`}
+                    className="scroll-mt-4 rounded-xl border border-line bg-paper p-4"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate({ view: "note", noteId: item.page.id })
+                      }
+                      className="font-serif text-[20px] font-semibold text-ink hover:text-accent-strong"
+                    >
+                      {pageTitle(item.page)}
+                    </button>
+                    <p className="mt-2 font-sans text-[14px] text-faint">
+                      {note
+                        ? "No tagged block found in the page body."
+                        : "Page content is unavailable."}
+                    </p>
+                  </article>
+                );
+              }
+
+              return (
                 <div
                   key={item.page.id}
                   id={`tag-page-${index}`}
@@ -174,7 +204,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                   }`}
                 >
                   <JournalCard
-                    page={toJournalPage(item)}
+                    page={toJournalPage(item, block.text)}
                     notebookId={notebookId ?? ""}
                     linkKeys={linkKeys}
                     linkTargets={linkTargets}
@@ -184,29 +214,15 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                     }
                     onWikiLink={openWiki}
                     onTag={openTag}
+                    saveContent={(body) =>
+                      api.updateNote(notebookId ?? "", item.page.id, {
+                        content: replaceTaggedBlock(note.content, block, body),
+                      })
+                    }
                   />
                 </div>
-              ) : (
-                <article
-                  key={item.page.id}
-                  id={`tag-page-${index}`}
-                  className="scroll-mt-4 rounded-xl border border-line bg-paper p-4"
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate({ view: "note", noteId: item.page.id })
-                    }
-                    className="font-serif text-[20px] font-semibold text-ink hover:text-accent-strong"
-                  >
-                    {pageTitle(item.page)}
-                  </button>
-                  <p className="mt-2 font-sans text-[14px] text-faint">
-                    Page content is unavailable.
-                  </p>
-                </article>
-              ),
-            )
+              );
+            })
           )}
 
           {!loading && total > pages.length && (
@@ -248,15 +264,87 @@ export function TagView({ tag: rawTag }: { tag: string }) {
 }
 
 
-function toJournalPage(item: TagPage): JournalPage {
+type TagBlock = {
+  start: number;
+  end: number;
+  text: string;
+};
+
+function toJournalPage(item: TagPage, content: string): JournalPage {
   const note = item.note;
   return {
     id: item.page.id,
     notebook_id: item.page.notebook_id,
     title: item.page.title,
-    content: note?.content ?? "",
+    content,
     created_at: item.page.created_at,
     updated_at: note?.updated_at ?? item.page.updated_at,
     tags: note?.tags ?? item.page.tags,
   };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findTaggedBlock(content: string, tag: string): TagBlock | null {
+  const lines = content.split("\n");
+  const starts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += line.length + 1;
+  }
+
+  const matcher = new RegExp(
+    `(^|[\\s([{,])#${escapeRegExp(tag)}(?![\\p{L}\\p{N}_./-])`,
+    "iu",
+  );
+  const indentOf = (line: string) => line.match(/^\s*/u)?.[0].length ?? 0;
+  let inFence = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (/^\s*(```|~~~)/u.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || !matcher.test(line)) continue;
+
+    const indent = indentOf(line);
+    const isList = /^\s*(?:[-*+]|\d+[.)])\s+/u.test(line);
+    let end = index;
+
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const nextLine = lines[next] ?? "";
+      if (!nextLine.trim()) break;
+      const nextIndent = indentOf(nextLine);
+      if (nextIndent <= indent) break;
+      end = next;
+    }
+
+    if (!isList) {
+      for (let next = index + 1; next < lines.length; next += 1) {
+        const nextLine = lines[next] ?? "";
+        if (!nextLine.trim()) break;
+        if (/^\s*(?:[-*+]|\d+[.)])\s+/u.test(nextLine)) break;
+        if (/^\s*#{1,6}\s+/u.test(nextLine)) break;
+        if (indentOf(nextLine) < indent) break;
+        end = next;
+      }
+    }
+
+    const start = starts[index] ?? 0;
+    const blockEnd = (starts[end] ?? start) + (lines[end]?.length ?? 0);
+    return { start, end: blockEnd, text: content.slice(start, blockEnd) };
+  }
+  return null;
+}
+
+function replaceTaggedBlock(
+  content: string,
+  block: TagBlock,
+  body: string,
+): string {
+  return content.slice(0, block.start) + body + content.slice(block.end);
 }

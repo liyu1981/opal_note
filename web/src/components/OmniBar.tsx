@@ -12,8 +12,13 @@ import { api } from "../api/client";
 import type { NoteSummary, TagCount } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
-import { bindingLabel } from "../lib/shortcuts";
+import {
+  SHORTCUT_COMMANDS,
+  bindingLabel,
+  type ShortcutCommand,
+} from "../lib/shortcuts";
 import { settingsAtom } from "../lib/settings";
+import { useShortcutRunner } from "../lib/useShortcutRunner";
 import {
   activeNotebookIdAtom,
   notesRevisionAtom,
@@ -29,6 +34,7 @@ export function OmniBar() {
   const revision = useAtomValue(notesRevisionAtom);
   const settings = useAtomValue(settingsAtom);
   const navigate = useAppNavigate();
+  const run = useShortcutRunner();
 
   const [tags, setTags] = useState<TagCount[]>([]);
   const [results, setResults] = useState<NoteSummary[]>([]);
@@ -42,12 +48,24 @@ export function OmniBar() {
   const listRef = useRef<HTMLDivElement>(null);
 
   const trimmed = query.trim();
-  const tagMode = trimmed.startsWith("#");
+  const commandMode = trimmed.startsWith(">");
+  const tagMode = !commandMode && trimmed.startsWith("#");
   const tagQuery = tagMode ? trimmed.slice(1).toLowerCase() : "";
+  const commandQuery = commandMode ? trimmed.slice(1).trim().toLowerCase() : "";
   const terms = useMemo(
     () => searchTerms(tagMode ? tagQuery : trimmed),
     [tagMode, tagQuery, trimmed],
   );
+
+  const commandResults = useMemo(() => {
+    if (!commandMode) return [];
+    const needles = commandQuery.split(/\s+/u).filter(Boolean);
+    return SHORTCUT_COMMANDS.filter((command) => {
+      if (command.id === "command.palette") return false;
+      const haystack = `${command.label} ${command.description} ${command.group}`.toLowerCase();
+      return needles.every((needle) => haystack.includes(needle));
+    });
+  }, [commandMode, commandQuery]);
 
   const tagResults = useMemo(() => {
     if (!tagMode) return [];
@@ -84,7 +102,7 @@ export function OmniBar() {
   }, [notebookId, revision]);
 
   useEffect(() => {
-    if (!open || !notebookId || !trimmed || tagMode) {
+    if (!open || !notebookId || !trimmed || tagMode || commandMode) {
       setResults([]);
       setLoading(false);
       setError(null);
@@ -115,7 +133,7 @@ export function OmniBar() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [notebookId, open, tagMode, trimmed]);
+  }, [commandMode, notebookId, open, tagMode, trimmed]);
 
   useEffect(() => {
     setSelected(0);
@@ -169,6 +187,12 @@ export function OmniBar() {
     [navigate, setQuery],
   );
 
+  function executeCommand(command: ShortcutCommand) {
+    setQuery("");
+    setOpen(false);
+    run(command.id);
+  }
+
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -177,7 +201,11 @@ export function OmniBar() {
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      const length = tagMode ? tagResults.length : results.length;
+      const length = commandMode
+        ? commandResults.length
+        : tagMode
+          ? tagResults.length
+          : results.length;
       if (length === 0) return;
       event.preventDefault();
       setSelected((current) =>
@@ -188,7 +216,12 @@ export function OmniBar() {
       return;
     }
     if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-      if (tagMode) {
+      if (commandMode) {
+        const command = commandResults[selected];
+        if (!command) return;
+        event.preventDefault();
+        executeCommand(command);
+      } else if (tagMode) {
         const tag = tagResults[selected];
         if (!tag) return;
         event.preventDefault();
@@ -222,7 +255,7 @@ export function OmniBar() {
             if (query.trim()) setOpen(true);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Search notes or #tag…"
+          placeholder="Search notes, #tag, or > commands…"
           spellCheck={false}
           autoComplete="off"
           aria-label="Search notes or tags"
@@ -255,6 +288,50 @@ export function OmniBar() {
           >
             {!notebookId ? (
               <OmniHint>Select a notebook to search its notes and tags.</OmniHint>
+            ) : commandMode ? (
+              commandResults.length === 0 ? (
+                <OmniHint>No commands match “{commandQuery}”.</OmniHint>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between px-2 pb-1 pt-1 font-mono text-[14px] uppercase tracking-[0.12em] text-faint">
+                    <span>Commands</span>
+                    <span>{commandResults.length}</span>
+                  </div>
+                  {commandResults.map((command, index) => (
+                    <button
+                      key={command.id}
+                      type="button"
+                      data-omni-index={index}
+                      onMouseEnter={() => setSelected(index)}
+                      onClick={() => executeCommand(command)}
+                      className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition ${
+                        index === selected
+                          ? "bg-accent-soft/70"
+                          : "hover:bg-panel"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate font-sans text-[14px] font-medium text-ink">
+                            {command.label}
+                          </span>
+                          <span className="shrink-0 font-mono text-[12px] uppercase tracking-[0.08em] text-faint">
+                            {command.group}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block truncate font-sans text-[14px] text-faint">
+                          {command.description}
+                        </span>
+                      </span>
+                      {bindingLabel(command.id, settings.keybindings) && (
+                        <kbd className="max-w-48 shrink-0 truncate rounded border border-line bg-panel/60 px-1.5 py-0.5 font-mono text-[14px] text-muted">
+                          {bindingLabel(command.id, settings.keybindings)}
+                        </kbd>
+                      )}
+                    </button>
+                  ))}
+                </>
+              )
             ) : tagMode ? (
               tagResults.length === 0 ? (
                 <OmniHint>No tags match #{tagQuery}.</OmniHint>

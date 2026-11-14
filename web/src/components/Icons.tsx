@@ -278,6 +278,33 @@ export function IconLockOpen(props: IconProps) {
   );
 }
 
+export function IconDownload(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
+      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+    </svg>
+  );
+}
+
+export function IconPencil(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m4 20 4.2-1 10.4-10.4a2.1 2.1 0 0 0-3-3L5.2 16z" />
+      <path d="m13.5 6.5 3 3" />
+    </svg>
+  );
+}
+
+export function IconFolder(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3.5 6.5h6l2 2h9v10.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19z" />
+      <path d="M3.5 8.5h17" />
+    </svg>
+  );
+}
+
 export function IconGithub(props: IconProps) {
   return (
     <svg {...base(props)} fill="currentColor" stroke="none">

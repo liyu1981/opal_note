@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 
 import { api } from "../api/client";
-import type { JournalPage } from "../api/types";
+import type { JournalPage, Note } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
 import { refreshJournalPluginsAtom } from "../state/atoms";
@@ -22,6 +22,7 @@ export function JournalCard({
   onWikiLink,
   onTag,
   onSaved,
+  saveContent,
 }: {
   page: JournalPage;
   notebookId: string;
@@ -32,6 +33,7 @@ export function JournalCard({
   onWikiLink: (target: string) => void;
   onTag: (tag: string) => void;
   onSaved?: () => void;
+  saveContent?: (body: string) => Promise<Note>;
 }) {
   const [content, setContent] = useState(page.content);
   const [tags, setTags] = useState(page.tags);
@@ -57,9 +59,11 @@ export function JournalCard({
     setStatus("saving");
     setError(null);
     try {
-      const updated = await api.updateNote(notebookId, page.id, {
-        content: body,
-      });
+      const updated = saveContent
+        ? await saveContent(body)
+        : await api.updateNote(notebookId, page.id, {
+            content: body,
+          });
       setTags(updated.tags);
       setUpdatedAt(updated.updated_at);
       refreshPlugins();
@@ -79,7 +83,7 @@ export function JournalCard({
     } finally {
       savingRef.current = false;
     }
-  }, [notebookId, onSaved, page.id, refreshPlugins]);
+  }, [notebookId, onSaved, page.id, refreshPlugins, saveContent]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -196,6 +200,8 @@ export function JournalCard({
           onChange={change}
           onWikiLink={(target) => void handleWikiLink(target)}
           onTag={(tag) => void flushThen(() => onTag(tag))}
+          notebookId={notebookId}
+          notePath={page.id}
           linkKeys={linkKeys}
           linkTargets={linkTargets}
           readOnly={readOnly}

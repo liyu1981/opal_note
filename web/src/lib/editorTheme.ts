@@ -101,7 +101,7 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: t.contentSeparator, color: "var(--color-line-strong)" },
   {
     tag: [t.comment, t.lineComment, t.blockComment, t.docComment],
-    color: "var(--color-muted)",
+    color: "var(--syntax-comment)",
     fontStyle: "italic",
   },
   {
@@ -114,15 +114,15 @@ const markdownHighlightStyle = HighlightStyle.define([
       t.modifier,
       t.self,
     ],
-    color: "var(--color-accent-strong)",
+    color: "var(--syntax-keyword)",
   },
   {
     tag: [t.string, t.special(t.string), t.regexp, t.escape],
-    color: "var(--color-mint)",
+    color: "var(--syntax-string)",
   },
   {
     tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom],
-    color: "var(--color-danger)",
+    color: "var(--syntax-number)",
   },
   {
     tag: [
@@ -130,17 +130,17 @@ const markdownHighlightStyle = HighlightStyle.define([
       t.function(t.propertyName),
       t.definition(t.variableName),
     ],
-    color: "var(--color-accent)",
+    color: "var(--syntax-function)",
   },
   {
     tag: [t.typeName, t.className, t.namespace],
-    color: "var(--color-muted)",
+    color: "var(--syntax-type)",
   },
   {
     tag: [t.propertyName, t.attributeName, t.attributeValue],
-    color: "var(--color-accent-strong)",
+    color: "var(--syntax-property)",
   },
-  { tag: t.tagName, color: "var(--color-danger)" },
+  { tag: t.tagName, color: "var(--syntax-tag)" },
   {
     tag: [
       t.operator,
@@ -151,15 +151,15 @@ const markdownHighlightStyle = HighlightStyle.define([
       t.squareBracket,
       t.angleBracket,
     ],
-    color: "var(--color-muted)",
+    color: "var(--syntax-operator)",
   },
   {
     tag: [t.meta, t.annotation, t.processingInstruction],
-    color: "var(--color-faint)",
+    color: "var(--syntax-meta)",
   },
   {
     tag: t.invalid,
-    color: "var(--color-danger)",
+    color: "var(--syntax-invalid)",
     textDecoration: "underline wavy",
   },
 ]);

@@ -77,6 +77,35 @@ body,
   /* One fixed-width cell at the 16px editor size, independent of the
      line's heading font size. */
   --note-ch: 0.6rem;
+
+  /* GitHub Light defaults; Settings -> Code overrides these at runtime. */
+  --code-bg: #f6f8fa;
+  --code-text: #24292f;
+  --code-border: #d0d7de;
+  --code-comment: #6e7781;
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-function: #8250df;
+  --code-type: #953800;
+  --code-property: #116329;
+  --code-operator: #24292f;
+  --code-tag: #116329;
+  --code-meta: #6e7781;
+  --code-invalid: #82071e;
+
+  /* Default syntax tokens outside fenced code blocks. */
+  --syntax-keyword: var(--color-accent-strong);
+  --syntax-string: var(--color-mint);
+  --syntax-number: var(--color-danger);
+  --syntax-function: var(--color-accent);
+  --syntax-type: var(--color-muted);
+  --syntax-property: var(--color-accent-strong);
+  --syntax-operator: var(--color-muted);
+  --syntax-comment: var(--color-muted);
+  --syntax-tag: var(--color-danger);
+  --syntax-meta: var(--color-faint);
+  --syntax-invalid: var(--color-danger);
 }
 
 body {
@@ -347,11 +376,11 @@ select:focus-visible {
 }
 
 .cm-live-inline-code {
-  background: var(--color-panel);
+  background: var(--code-bg);
   font-family: var(--font-mono);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--code-border);
   border-radius: 4px;
-  color: var(--color-ink);
+  color: var(--code-text);
   font-size: 0.9em;
   padding: 0.04em 0.3em;
 }
@@ -430,11 +459,22 @@ select:focus-visible {
 }
 
 .cm-line.cm-live-code-line {
-  background: var(--color-panel);
+  --syntax-keyword: var(--code-keyword);
+  --syntax-string: var(--code-string);
+  --syntax-number: var(--code-number);
+  --syntax-function: var(--code-function);
+  --syntax-type: var(--code-type);
+  --syntax-property: var(--code-property);
+  --syntax-operator: var(--code-operator);
+  --syntax-comment: var(--code-comment);
+  --syntax-tag: var(--code-tag);
+  --syntax-meta: var(--code-meta);
+  --syntax-invalid: var(--code-invalid);
+  background: var(--code-bg);
+  border-left: 1px solid var(--code-border);
+  border-right: 1px solid var(--code-border);
+  color: var(--code-text);
   font-family: var(--font-mono);
-  border-left: 1px solid var(--color-line);
-  border-right: 1px solid var(--color-line);
-  color: var(--color-ink-soft);
   font-size: 0.92em;
   margin-left: calc(var(--code-indent, 0) * var(--note-ch));
   padding-left: 0.95rem;
@@ -443,19 +483,47 @@ select:focus-visible {
 
 
 .cm-line.cm-live-code-start {
+  position: relative;
+  z-index: 1;
   border-radius: 8px 8px 0 0;
-  border-top: 1px solid var(--color-line);
+  border-top: 1px solid var(--code-border);
   padding-top: 0.45rem;
 }
 
 .cm-line.cm-live-code-end {
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--code-border);
   border-radius: 0 0 8px 8px;
   padding-bottom: 0.45rem;
 }
 
 .cm-line.cm-live-code-fence {
-  color: color-mix(in srgb, var(--color-muted) 62%, transparent);
+  color: color-mix(in srgb, var(--code-comment) 62%, transparent);
+}
+
+.cm-code-copy {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.55rem;
+  z-index: 2;
+  border: 1px solid var(--code-border);
+  border-radius: 2px;
+  background: var(--code-bg);
+  color: var(--code-comment);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.8;
+  padding: 0.25rem 0.4rem;
+  transition:
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.cm-code-copy:hover,
+.cm-code-copy:focus-visible {
+  color: var(--code-text);
+  opacity: 1;
 }
 
 .cm-line.cm-live-code-fence-hidden {
@@ -541,4 +609,31 @@ select:focus-visible {
 .note-editor-surface .cm-auto-height .cm-content {
   min-height: 58vh;
   padding: 1.2rem 1.75rem 3rem !important;
+}
+
+/* Markdown images rendered in live preview. */
+.cm-live-image {
+  display: inline-block;
+  margin: 0.3rem 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.cm-live-image img {
+  border: 1px solid var(--code-border);
+  border-radius: 2px;
+  display: block;
+  max-height: 34rem;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.cm-live-image.is-error {
+  background: var(--color-panel);
+  border: 1px dashed var(--color-line-strong);
+  border-radius: 2px;
+  color: var(--color-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 0.3rem 0.5rem;
 }

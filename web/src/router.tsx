@@ -14,6 +14,8 @@ import { getDefaultStore, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "./api/client";
 import { EditorPane } from "./components/EditorPane";
+import { AssetDetailView } from "./components/AssetDetailView";
+import { AssetsView } from "./components/AssetsView";
 import { GraphView } from "./components/GraphView";
 import { HomeView } from "./components/HomeView";
 import { JournalFeed } from "./components/JournalFeed";
@@ -23,17 +25,21 @@ import { Workspace } from "./components/Workspace";
 import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
+  assetsViewAtom,
   graphViewAtom,
   homeViewAtom,
   journalViewAtom,
   pagesViewAtom,
 } from "./state/atoms";
 
-function useSyncView(view: "home" | "journal" | "pages" | "graph") {
+function useSyncView(
+  view: "home" | "journal" | "pages" | "graph" | "assets" | "asset",
+) {
   const setHome = useSetAtom(homeViewAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
+  const setAssets = useSetAtom(assetsViewAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
 
   useLayoutEffect(() => {
@@ -41,8 +47,9 @@ function useSyncView(view: "home" | "journal" | "pages" | "graph") {
     setJournal(view === "journal");
     setPages(view === "pages");
     setGraph(view === "graph");
+    setAssets(view === "assets" || view === "asset");
     setActiveNote(null);
-  }, [setActiveNote, setGraph, setHome, setJournal, setPages, view]);
+  }, [setActiveNote, setAssets, setGraph, setHome, setJournal, setPages, view]);
 }
 
 function HomeRoute() {
@@ -65,6 +72,17 @@ function GraphRoute() {
   return <GraphView />;
 }
 
+function AssetsRoute() {
+  useSyncView("assets");
+  return <AssetsView />;
+}
+
+function AssetRoute() {
+  useSyncView("asset");
+  const { _splat } = useParams({ from: "/$notebook/asset/$" });
+  return <AssetDetailView path={_splat ?? ""} />;
+}
+
 function NotebookLayout() {
   return <Outlet />;
 }
@@ -82,6 +100,7 @@ function PageRoute() {
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
+  const setAssets = useSetAtom(assetsViewAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const navigate = useNavigate();
   const param = p?.trim() ?? "";
@@ -92,6 +111,7 @@ function PageRoute() {
     setJournal(false);
     setPages(false);
     setGraph(false);
+    setAssets(false);
     if (param) {
       if (isPath) setActiveNote(param);
       else setActiveNote(null);
@@ -102,6 +122,7 @@ function PageRoute() {
     isPath,
     param,
     setActiveNote,
+    setAssets,
     setGraph,
     setHome,
     setJournal,
@@ -226,6 +247,18 @@ const graphRoute = createRoute({
   component: GraphRoute,
 });
 
+const assetsRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "assets",
+  component: AssetsRoute,
+});
+
+const assetRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "asset/$",
+  component: AssetRoute,
+});
+
 const tagRoute = createRoute({
   getParentRoute: () => notebookRoute,
   path: "tag/$",
@@ -320,6 +353,8 @@ const routeTree = rootRoute.addChildren([
     journalRoute,
     pagesRoute,
     graphRoute,
+    assetsRoute,
+    assetRoute,
     tagRoute,
     pageRoute,
   ]),

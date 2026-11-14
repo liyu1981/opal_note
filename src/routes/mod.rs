@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod health;
 pub mod notebooks;
 pub mod notes;
@@ -52,6 +53,12 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/notebooks/{id}/orphans", get(notes::orphans))
         .route("/notebooks/{id}/graph", get(notes::graph))
         .route("/notebooks/{id}/plugins", get(plugins::journal))
+        .route("/notebooks/{id}/assets", get(assets::list))
+        .route("/notebooks/{id}/assets/{*path}", get(assets::content))
+        .route(
+            "/notebooks/{id}/asset",
+            get(assets::info).patch(assets::rename),
+        )
         .route("/notebooks/{id}/search", get(notes::search))
         .route("/notebooks/{id}/journals", get(notes::journals))
         .route("/notebooks/{id}/tags", get(notebooks::tags))

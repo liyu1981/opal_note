@@ -8,6 +8,8 @@ export type AppTarget =
   | { view: "journal" }
   | { view: "pages" }
   | { view: "graph" }
+  | { view: "assets" }
+  | { view: "asset"; path: string }
   | { view: "note"; noteId: string }
   | { view: "tag"; tag: string };
 
@@ -80,6 +82,28 @@ export function useAppNavigate() {
           });
         } else {
           void navigate({ to: "/graph", replace });
+        }
+        break;
+      case "assets":
+        if (notebook) {
+          void navigate({
+            to: "/$notebook/assets",
+            params: { notebook },
+            replace,
+          });
+        } else {
+          void navigate({ to: "/journal", replace });
+        }
+        break;
+      case "asset":
+        if (notebook) {
+          void navigate({
+            to: "/$notebook/asset/$",
+            params: { notebook, _splat: target.path },
+            replace,
+          });
+        } else {
+          void navigate({ to: "/journal", replace });
         }
         break;
       case "note":

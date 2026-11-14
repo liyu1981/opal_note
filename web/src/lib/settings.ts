@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 
 import { api } from "../api/client";
+import { CODE_THEMES, DEFAULT_CODE_THEME, getCodeTheme } from "./codeThemes";
 
 export const FONT_ROLES = [
   {
@@ -43,6 +44,7 @@ export type FontChoice = {
 export type AppSettings = {
   fonts: Record<FontRole, FontChoice>;
   keybindings: Record<string, string>;
+  codeTheme: string;
   [key: string]: unknown;
 };
 
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     mono: { family: "JetBrains Mono", google: false },
   },
   keybindings: {},
+  codeTheme: DEFAULT_CODE_THEME,
 };
 
 export const FONT_PRESETS = [
@@ -115,7 +118,13 @@ export function mergeSettings(value: unknown): AppSettings {
     }
   }
 
-  return { ...DEFAULT_SETTINGS, ...root, fonts, keybindings };
+  const codeTheme =
+    typeof root.codeTheme === "string" &&
+    CODE_THEMES.some((theme) => theme.id === root.codeTheme)
+      ? root.codeTheme
+      : DEFAULT_CODE_THEME;
+
+  return { ...DEFAULT_SETTINGS, ...root, fonts, keybindings, codeTheme };
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -126,7 +135,7 @@ function same(a: unknown, b: unknown): boolean {
 export function compactSettings(settings: AppSettings): Record<string, unknown> {
   const output: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings)) {
-    if (key === "fonts" || key === "keybindings") continue;
+    if (key === "fonts" || key === "keybindings" || key === "codeTheme") continue;
     if (!same(value, DEFAULT_SETTINGS[key])) output[key] = value;
   }
 
@@ -140,6 +149,9 @@ export function compactSettings(settings: AppSettings): Record<string, unknown> 
   if (Object.keys(fonts).length > 0) output.fonts = fonts;
   if (Object.keys(settings.keybindings).length > 0) {
     output.keybindings = settings.keybindings;
+  }
+  if (settings.codeTheme !== DEFAULT_CODE_THEME) {
+    output.codeTheme = settings.codeTheme;
   }
   return output;
 }
@@ -166,6 +178,22 @@ export function applySettings(settings: AppSettings): void {
   // The source editor uses a fixed cell for indentation. Measure the chosen
   // editor face at 16px and keep --note-ch in sync, including after a webfont
   // finishes loading.
+  const codeTheme = getCodeTheme(settings.codeTheme);
+  root.style.setProperty("--code-bg", codeTheme.background);
+  root.style.setProperty("--code-text", codeTheme.foreground);
+  root.style.setProperty("--code-border", codeTheme.border);
+  root.style.setProperty("--code-comment", codeTheme.comment);
+  root.style.setProperty("--code-keyword", codeTheme.keyword);
+  root.style.setProperty("--code-string", codeTheme.string);
+  root.style.setProperty("--code-number", codeTheme.number);
+  root.style.setProperty("--code-function", codeTheme.function);
+  root.style.setProperty("--code-type", codeTheme.type);
+  root.style.setProperty("--code-property", codeTheme.property);
+  root.style.setProperty("--code-operator", codeTheme.operator);
+  root.style.setProperty("--code-tag", codeTheme.tag);
+  root.style.setProperty("--code-meta", codeTheme.meta);
+  root.style.setProperty("--code-invalid", codeTheme.invalid);
+
   const editor = settings.fonts.editor;
   const measureNoteCh = () => {
     const canvas = document.createElement("canvas").getContext("2d");

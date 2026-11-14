@@ -45,6 +45,17 @@ pub struct PageFile {
     pub size: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct AssetFile {
+    /// Path relative to the notebook's `assets/` directory.
+    pub rel: String,
+    pub name: String,
+    pub mime: String,
+    pub kind: &'static str,
+    pub size: i64,
+    pub updated_at: f64,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Times {
     pub created_at: f64,
@@ -318,6 +329,149 @@ fn walk_pages(root: &Path, notebook: &Path, out: &mut Vec<PageFile>) -> io::Resu
         });
     }
     Ok(())
+}
+
+pub fn list_asset_files(notebook: &Path) -> io::Result<Vec<AssetFile>> {
+    let root = notebook.join(ASSET_DIR);
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut files = Vec::new();
+    walk_assets(&root, &root, &mut files)?;
+    files.sort_by(|left, right| left.rel.cmp(&right.rel));
+    Ok(files)
+}
+
+fn walk_assets(root: &Path, dir: &Path, out: &mut Vec<AssetFile>) -> io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.is_empty() || name.starts_with('.') {
+            continue;
+        }
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+        if file_type.is_dir() {
+            walk_assets(root, &path, out)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let metadata = entry.metadata()?;
+        let (_, updated_at, _) = file_times(&metadata);
+        let mime = asset_mime(&path);
+        out.push(AssetFile {
+            rel,
+            name: path
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            kind: asset_kind(&mime, &path),
+            mime,
+            size: metadata.len().min(i64::MAX as u64) as i64,
+            updated_at,
+        });
+    }
+    Ok(())
+}
+
+pub fn asset_mime(path: &Path) -> String {
+    mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string()
+}
+
+pub fn asset_file(notebook: &Path, rel: &str) -> io::Result<AssetFile> {
+    let absolute = resolve_asset_path(notebook, rel)?;
+    let metadata = fs::metadata(&absolute)?;
+    let (_, updated_at, _) = file_times(&metadata);
+    let mime = asset_mime(&absolute);
+    Ok(AssetFile {
+        rel: rel.to_string(),
+        name: absolute
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        kind: asset_kind(&mime, &absolute),
+        mime,
+        size: metadata.len().min(i64::MAX as u64) as i64,
+        updated_at,
+    })
+}
+
+fn asset_kind(mime: &str, path: &Path) -> &'static str {
+    if mime.starts_with("image/") {
+        return "image";
+    }
+    if mime.starts_with("video/") {
+        return "video";
+    }
+    if mime.starts_with("audio/") {
+        return "audio";
+    }
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(
+        ext.as_str(),
+        "pdf"
+            | "doc"
+            | "docx"
+            | "xls"
+            | "xlsx"
+            | "ppt"
+            | "pptx"
+            | "txt"
+            | "md"
+            | "csv"
+            | "json"
+            | "zip"
+            | "tar"
+            | "gz"
+    ) {
+        "document"
+    } else {
+        "other"
+    }
+}
+
+/// Resolve an asset path from an API request, rejecting traversal and files
+/// outside the notebook's `assets/` directory.
+pub fn resolve_asset_path(notebook: &Path, rel: &str) -> io::Result<PathBuf> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid asset path");
+    if rel.is_empty() || rel.contains('\\') || rel.starts_with('/') {
+        return Err(invalid());
+    }
+    let path = Path::new(rel);
+    if path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(invalid());
+    }
+    let root = notebook.join(ASSET_DIR);
+    let absolute = root.join(path);
+    if !absolute.is_file() {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "asset not found"));
+    }
+    let root = fs::canonicalize(root)?;
+    let absolute = fs::canonicalize(absolute)?;
+    if !absolute.starts_with(&root) {
+        return Err(invalid());
+    }
+    Ok(absolute)
 }
 
 pub fn relative_path(notebook: &Path, path: &Path) -> String {

@@ -8,10 +8,11 @@ import { formatJournalDate, todayKey, ensureJournalPage } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import { JournalCard } from "./JournalCard";
-import { PluginCard } from "./JournalPluginsPanel";
-import { IconCalendar, IconFile, IconPlus } from "./Icons";
+import { PluginCard } from "./PluginCard";
+import { IconCalendar, IconFile, IconPlus, IconStar } from "./Icons";
 import {
   activeNotebookIdAtom,
+  favoritesAtom,
   journalPluginsRevisionAtom,
   notesAtom,
   notesRevisionAtom,
@@ -41,6 +42,7 @@ function noteTitle(note: { id: string; title: string }): string {
 export function HomeView() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notes = useAtomValue(notesAtom);
+  const favorites = useAtomValue(favoritesAtom);
   const notesRevision = useAtomValue(notesRevisionAtom);
   const pluginRevision = useAtomValue(journalPluginsRevisionAtom);
   const locked = useAtomValue(readOnlyAtom);
@@ -55,6 +57,11 @@ export function HomeView() {
   const [todosError, setTodosError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const noteByPath = useMemo(
+    () => new Map(notes.map((note) => [note.id, note])),
+    [notes],
+  );
+  const favoriteRefs = notebookId ? (favorites[notebookId] ?? []) : [];
   const linkTargets = useMemo(
     () => notes.map((note) => ({ title: note.title, path: note.id })),
     [notes],
@@ -121,7 +128,7 @@ export function HomeView() {
       .journalPlugins(notebookId)
       .then((plugins) => {
         if (cancelled) return;
-        setTodos(plugins.find((plugin) => plugin.id === "todos") ?? null);
+        setTodos(plugins.find((plugin) => plugin.id === "OpalNote/todos") ?? null);
         setTodosError(null);
       })
       .catch((cause) => {
@@ -219,6 +226,52 @@ export function HomeView() {
               <p className="rounded-xl border border-line bg-white/30 px-4 py-8 text-center font-sans text-[14px] text-faint">
                 No journal page for today yet.
               </p>
+            )}
+          </section>
+
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
+                Favorites
+              </h2>
+              <span className="font-mono text-[14px] text-faint">
+                {favoriteRefs.length}
+              </span>
+            </div>
+
+            {favoriteRefs.length === 0 ? (
+              <p className="rounded-xl border border-line bg-white/30 px-4 py-8 text-center font-sans text-[14px] text-faint">
+                Star a page in the editor to pin it here.
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-line bg-paper">
+                {favoriteRefs.map((ref) => {
+                  const note = noteByPath.get(ref.path);
+                  const title = ref.path.startsWith("journals/")
+                    ? formatJournalDate(note?.title ?? ref.title)
+                    : (note?.title ?? ref.title);
+                  return (
+                    <button
+                      key={ref.path}
+                      type="button"
+                      onClick={() =>
+                        navigate({ view: "note", noteId: ref.path })
+                      }
+                      className="flex w-full items-center gap-3 border-b border-line/60 px-4 py-3 text-left transition last:border-b-0 hover:bg-white/60"
+                    >
+                      <IconStar className="h-4 w-4 shrink-0 text-accent" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-sans text-[14px] font-medium text-ink">
+                          {title}
+                        </span>
+                        <span className="mt-0.5 block truncate font-mono text-[14px] text-faint">
+                          {ref.path}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </section>
 

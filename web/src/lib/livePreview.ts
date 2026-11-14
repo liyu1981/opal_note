@@ -23,6 +23,8 @@ export type LivePreviewOptions = {
   onOpenLink: (url: string) => void;
   onTag: (tag: string) => void;
   readOnly: boolean;
+  notePath: string;
+  loadAsset: (path: string) => Promise<Blob>;
 };
 
 type OptionsRef = { current: LivePreviewOptions };
@@ -148,6 +150,14 @@ function buildDecorations(
   }
 
   const codeBlocks = findCodeBlocks(doc);
+  const codeTextByStart = new Map<number, string>();
+  for (const block of codeBlocks) {
+    const lines: string[] = [];
+    for (let lineNumber = block.start + 1; lineNumber < block.end; lineNumber += 1) {
+      lines.push(doc.line(lineNumber).text);
+    }
+    codeTextByStart.set(block.start, lines.join("\n"));
+  }
   const editingCodeLines = new Set<number>();
   for (const block of codeBlocks) {
     const touched = Array.from(activeLines).some(
@@ -293,6 +303,14 @@ function buildDecorations(
         indent,
         !active,
       );
+      if (!active) {
+        ranges.push(
+          Decoration.widget({
+            widget: new CodeCopyWidget(codeTextByStart.get(lineNumber) ?? ""),
+            side: 1,
+          }).range(line.to),
+        );
+      }
       continue;
     }
 
@@ -484,13 +502,29 @@ function buildDecorations(
 
     const markdownLink = /(!?)\[([^\]\n]+)\]\(([^)\n]+)\)/gu;
     process(markdownLink, (match) => {
-      if (match[1] === "!") return; // embedding is deliberately out of scope
       const start = line.from + match.index;
       const end = start + match[0].length;
       if (insideClaimed(start, end) || overlaps(start, end)) return;
 
       const label = match[2] ?? "";
       const url = match[3] ?? "";
+      if (match[1] === "!") {
+        if (!active) {
+          replace(
+            start,
+            end,
+            new ImageWidget(
+              url,
+              label,
+              resolveImageAsset(options.notePath, url),
+              options.loadAsset,
+            ),
+          );
+        }
+        claimed.push([start, end]);
+        return;
+      }
+
       const labelFrom = start + 1;
       if (active) {
         addMark(labelFrom, labelFrom + label.length, "cm-live-link");
@@ -571,6 +605,34 @@ function buildDecorations(
   return Decoration.set(ranges, true);
 }
 
+function normalizePosixPath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/");
+}
+
+function resolveImageAsset(notePath: string, src: string): string | null {
+  const raw = src.trim().replace(/^<|>$/gu, "");
+  if (/^(https?:|data:|blob:)/iu.test(raw)) return null;
+  let path = raw.split(/[?#]/u)[0] ?? "";
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Keep the raw path if it is not valid percent-encoding.
+  }
+  if (path.startsWith("/assets/")) return path.slice("/assets/".length);
+  if (path.startsWith("assets/")) return path.slice("assets/".length);
+  const base = notePath.split("/").slice(0, -1).join("/");
+  const resolved = normalizePosixPath(`${base}/${path}`);
+  return resolved.startsWith("assets/")
+    ? resolved.slice("assets/".length)
+    : null;
+}
+
 /** Column where a source block's content starts, including list markers. */
 function sourceContentColumns(text: string): number {
   const task = /^(\s*)([-*+])\s+\[[ xX]\]\s?/u.exec(text);
@@ -622,6 +684,63 @@ function leadingWhitespaceChars(text: string, columns: number): number {
     if (seen >= columns) break;
   }
   return count;
+}
+
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly src: string,
+    readonly alt: string,
+    readonly assetPath: string | null,
+    readonly loadAsset: (path: string) => Promise<Blob>,
+  ) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof ImageWidget &&
+      other.src === this.src &&
+      other.alt === this.alt &&
+      other.assetPath === this.assetPath
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const wrapper = document.createElement("span");
+    wrapper.className = "cm-live-image";
+    const image = document.createElement("img");
+    image.alt = this.alt;
+    image.loading = "lazy";
+    wrapper.appendChild(image);
+
+    if (/^(https?:|data:|blob:)/iu.test(this.src)) {
+      image.src = this.src;
+    } else if (this.assetPath) {
+      void this.loadAsset(this.assetPath)
+        .then((blob) => {
+          if (!wrapper.isConnected) return;
+          const url = URL.createObjectURL(blob);
+          wrapper.dataset.objectUrl = url;
+          image.src = url;
+        })
+        .catch(() => {
+          image.remove();
+          wrapper.classList.add("is-error");
+          wrapper.textContent = this.alt || "Image unavailable";
+        });
+    } else {
+      image.remove();
+      wrapper.classList.add("is-error");
+      wrapper.textContent = this.alt || "Image unavailable";
+    }
+
+    return wrapper;
+  }
+
+  destroy(dom: HTMLElement): void {
+    const url = dom.dataset.objectUrl;
+    if (url) URL.revokeObjectURL(url);
+  }
 }
 
 class WikiLinkWidget extends WidgetType {
@@ -764,6 +883,42 @@ class TaskWidget extends WidgetType {
 
     wrapper.append(input, tick);
     return wrapper;
+  }
+}
+
+class CodeCopyWidget extends WidgetType {
+  constructor(readonly code: string) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return other instanceof CodeCopyWidget && other.code === this.code;
+  }
+
+  toDOM(): HTMLElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cm-code-copy";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", "Copy code");
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(this.code);
+        button.textContent = "Copied";
+        window.setTimeout(() => {
+          button.textContent = "Copy";
+        }, 1200);
+      } catch {
+        button.textContent = "Failed";
+        window.setTimeout(() => {
+          button.textContent = "Copy";
+        }, 1200);
+      }
+    });
+    return button;
   }
 }
 

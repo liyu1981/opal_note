@@ -248,11 +248,12 @@ editor shows the body without frontmatter.
 
 The note surface is a block-oriented live preview built on CodeMirror 6:
 
-- **Live** renders headings, emphasis, links, tags, lists, tasks, quotes and
-  code in place. The line under the cursor becomes plain markdown source —
+- **Live** renders headings, emphasis, links, tags, lists, tasks, quotes,
+  images and code in place. The line under the cursor becomes plain markdown source —
   visible markers, normal text size and weight, no rendered inline styling —
   the way Obsidian live preview does. There is no separate source mode.
-- Fenced code blocks use a light panel and language-aware syntax highlighting.
+- Fenced code blocks use configurable syntax themes (GitHub Light by default),
+  language-aware highlighting, and a copy button.
   Focusing any line inside the fence reveals the whole block as plain markdown
   source, including both fence markers, with no code or token styling so the
   text is easy to edit. Blur restores the rendered block.
@@ -277,16 +278,18 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 ### Workspace layout
 
 The shell follows a Logseq-like split. It opens on the **Home** dashboard:
-today's editable journal card, the three most recently edited pages, a New page
-action, and a right-hand strip of outstanding todos. The top bar carries the
-omni search bar, back/forward history controls, and a Home button on the right.
+today's editable journal card, a Favorites section, the three most recently
+edited pages, a New page action, and a right-hand strip of outstanding todos.
+The top bar carries the omni search bar, back/forward history controls, and a
+Home button on the right.
 
-- **Left sidebar** — notebook switcher, Favorites, Recent, Journal and Pages.
-  Journals open a dedicated feed of **editable journal cards** rather than a
-  single page; the feed loads the newest seven pages and appends older pages as
-  you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the live
-  block editor and autosaves. Opening the journal feed creates today's empty
-  page automatically when it does not exist.
+- **Left sidebar** — notebook switcher plus Home, Journals, Pages and Graph
+  navigation. Favorites and Recent are collapsible sections, collapsed by
+  default. Journals open a dedicated feed of **editable journal cards** rather
+  than a single page; the feed loads the newest seven pages and appends older
+  pages as you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the
+  live block editor and autosaves. Opening the journal feed creates today's
+  empty page automatically when it does not exist.
 - **Center** — the current page, the journal feed, or the Pages directory. The
   Pages view is a Logseq-style **All pages** table across pages and journals,
   with backlink counts, tags, created/updated timestamps, sortable columns,
@@ -296,27 +299,30 @@ omni search bar, back/forward history controls, and a Home button on the right.
   be toggled from the top bar, leaving the writing surface to fill the window.
   The single-page editor grows with its content and scrolls the page, not an
   inner editor box; journal cards use the same renderer.
-- **Omni bar** — the global header hosts one input for both note search and
-  tag navigation. Type normally to search the server's `note:fts` index and
-  open a result from the dropdown; type `#` to browse available tags and jump
-  to a tag view. Tag pages prefill `#tag` in the bar. The old centered search
-  dialog is gone.
-- **Command palette** — leader → `P` opens a VS Code-style command search.
-  Type to filter every workspace command, use ↑/↓ and Enter to run it, or click
-  a row. Each row shows the current, rebindable shortcut.
+- **Omni bar** — the global header hosts one input for note search, tag
+  navigation and commands. Type normally to search the server's `note:fts`
+  index; type `#` to browse available tags; type `>` to search and run every
+  workspace command. Tag pages prefill `#tag`. The old centered search and
+  command dialogs are gone. `Ctrl+M` or leader → `M` opens command mode.
 - **Settings** — a large left-tabbed dialog. Fonts are configured by role
   (interface, titles, editor, labels/code); any Google Font can be named and
-  loaded over HTTPS. **Keyboard** lists every workspace shortcut and lets you
-  record a replacement chord sequence. Workspace and navigation commands share
+  loaded over HTTPS. **Code** selects the fenced-code syntax theme; GitHub
+  Light is the default. **Keyboard** lists every workspace shortcut and lets
+  you record a replacement chord sequence. Workspace and navigation commands share
   a leader chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or
   `S` to focus the omni bar, `H` home, `A` all pages, `G` graph, `L`/`R`
-  sidebars, `O` settings, `P` command palette, `N` new page, or `J` today.
+  sidebars, `O` settings, `M` command mode, `N` new page, or `J` today.
   Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.
 - **Home** — `/<notebook>/home` is the default dashboard. It shows today's
-  editable journal card, the top three recently edited pages with a New page
-  button, and outstanding todo-plugin items in a sticky right strip.
+  editable journal card, Favorites, the top three recently edited pages with a
+  New page button, and outstanding todo-plugin items in a sticky right strip.
+- **Assets** — `/<notebook>/assets` browses every file under the notebook's
+  `assets/` folder with search, type filters, sorting and pagination. Cards
+  provide download and rename actions. Asset detail pages (`/<notebook>/asset/
+  <path>`) provide image zoom/pan, video/audio players, metadata, and links to
+  every page that references the asset.
 - **Navigation** — TanStack Router browser routes are scoped by notebook name:
   `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
   `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
@@ -337,28 +343,30 @@ omni search bar, back/forward history controls, and a Home button on the right.
   using the same resolved-link data, filling the available workspace. Drag the
   canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,
   and reset the view. It participates in normal back/forward history.
-- **Journal tools** — journal view reserves a vertical plugin rail on the
-  right (desktop). Plugins run server-side in QuickJS, use read-only Datalog,
-  and return JSON items. The built-in todos plugin lists open tasks across the
-  notebook; clicking one opens its page. Settings → Plugins shows installed
-  plugins and reloads the data plugin folder.
+- **Home todo strip** — the Home dashboard reserves a right-hand strip for
+  outstanding todo-plugin items. Plugins run server-side in QuickJS, use
+  read-only Datalog, and return JSON items. The built-in todos plugin lists open
+  tasks across the notebook; clicking one opens its page. Settings → Plugins
+  shows installed plugins and reloads the data plugin folder.
 - **Tag view** — `/<notebook>/tag/<tag>` shows every page carrying `#tag` as
-  editable content cards, with a page-title list for fast jumping. Clicking a
-  tag in a journal card, page, pages table, right panel, or inline in a note
-  opens the corresponding tag view.
+  editable cards containing only the tagged block, with a page-title list for
+  fast jumping. Clicking a tag in a journal card, page, pages table, right
+  panel, or inline in a note opens the corresponding tag view.
 
 ### Plugins
 
 Plugins are small JavaScript widgets with a JSON manifest:
 
 ```
-plugins/builtin/todos/plugin.json   # embedded in the binary
-plugins/builtin/todos/plugin.js
-<data-dir>/plugins/<id>/plugin.json # loaded at startup / on reload
-<data-dir>/plugins/<id>/plugin.js
+plugins/builtin/OpalNote/todos/plugin.json   # embedded in the binary
+plugins/builtin/OpalNote/todos/plugin.js
+<data-dir>/plugins/<folder>/plugin.json      # loaded at startup / on reload
+<data-dir>/plugins/<folder>/plugin.js
 ```
 
-`plugin.json` contains `id`, `title`, and `description`. `plugin.js` is an IIFE
+`plugin.json` contains an `id` shaped `<domain>/<extension>` (`OpalNote/todos`
+for built-ins, e.g. `Acme/my-widget` for a data plugin), plus `title` and
+`description`. `plugin.js` is an IIFE
 that returns `JSON.stringify({ items: [...] })`; it can call the read-only
 `__query(script, params)` bridge and read `__notebook_id`. Built-in ids take
 precedence: a data plugin with the same id is rejected and reported in Settings
@@ -373,6 +381,8 @@ precedence: a data plugin with the same id is rejected and reported in Settings
 | `/<notebook>/journal` | Journal feed |
 | `/<notebook>/pages` | All-pages table |
 | `/<notebook>/graph` | Full-page notebook graph |
+| `/<notebook>/assets` | Asset browser |
+| `/<notebook>/asset/<path>` | Asset detail and references |
 | `/<notebook>/tag/<tag>` | Pages carrying `#tag` |
 | `/<notebook>/page?p=pages/foo.md` | A page by relative path or title |
 
@@ -386,8 +396,9 @@ scoped to the active notebook; switching notebooks returns to its home.
 Favorites and recents are stored in the browser, scoped per notebook. A page can be
 pinned with the star in the editor toolbar.
 
-Embedding (images/objects) and executable blocks are deliberately out of scope
-for this pass.
+Markdown images render in the live editor using authenticated asset blobs;
+relative `assets/` paths are resolved against the note location. Executable
+blocks and non-image object embeds remain out of scope.
 
 ### Index relations
 
@@ -427,6 +438,10 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/pages`                      | Paged/filtered pages with backlink counts       |
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
+| GET    | `/notebooks/{id}/assets`                     | Paged/filtered asset list                      |
+| GET    | `/notebooks/{id}/assets/{*path}`             | Asset bytes with MIME type                     |
+| GET    | `/notebooks/{id}/asset?path=`                | Asset metadata + page references               |
+| PATCH  | `/notebooks/{id}/asset`                      | `{path, name}` — rename and update references  |
 | GET    | `/notebooks/{id}/plugins`                    | Journal plugin results (QuickJS + Datalog)     |
 | GET    | `/plugins`                                   | Installed plugin metadata + load errors        |
 | POST   | `/plugins/reload`                            | Rescan the data plugin folder                  |
@@ -527,21 +542,20 @@ web/
 - `/api/query` cannot write and cannot run `::` system operations, but it can
   read every notebook. Treat the token as full access.
 - Path traversal is rejected: note paths must stay inside
-  `pages/`/`journals/` under the canonicalized notebook folder.
+  `pages/`/`journals/` and asset paths inside `assets/` under the canonicalized
+  notebook folder.
 - Static assets are served without auth so the SPA can load and prompt for a
   token.
 
 ## Roadmap / non-goals
 
-- serving notebook `assets/` through the API (images in imported notes are not
-  rewritten yet);
 - keyset/virtualized pagination at very large notebook sizes;
 - real-time collaboration and a sync protocol;
 - per-notebook permissions and multi-user accounts;
 - CRDT-based collaborative editing;
 - true block references and transclusion (the live editor is block-oriented,
   but pages remain plain markdown files);
-- embedded images/objects and executable code blocks;
+- executable code blocks and non-image object embeds;
 - vector/semantic search — MnesticDB supports HNSW, but no embedder is wired in;
 - auto-updating `[[links]]` when a page is renamed.
 

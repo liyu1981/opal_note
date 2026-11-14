@@ -159,3 +159,32 @@ export interface QueryResult {
   next: unknown;
   took_ms: number;
 }
+
+export type AssetKind = "image" | "video" | "audio" | "document" | "other";
+
+export interface AssetEntry {
+  path: string;
+  name: string;
+  kind: AssetKind;
+  mime: string;
+  size: number;
+  updated_at: string;
+}
+
+export interface AssetReference {
+  note_path: string;
+  title: string;
+  excerpt: string;
+}
+
+export interface AssetInfo {
+  asset: AssetEntry;
+  references: AssetReference[];
+}
+
+export interface AssetList {
+  assets: AssetEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}

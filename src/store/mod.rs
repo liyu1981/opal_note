@@ -23,8 +23,8 @@ use self::markdown::{
     summarize, ParsedTask,
 };
 use self::model::{
-    BacklinkRef, GraphData, GraphEdge, GraphNode, JournalPage, LinkRef, Note, NoteSummary,
-    Notebook, PageList, PageOverview, Stats, TagCount,
+    AssetEntry, AssetInfo, AssetList, AssetReference, BacklinkRef, GraphData, GraphEdge, GraphNode,
+    JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList, PageOverview, Stats, TagCount,
 };
 
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
@@ -157,6 +157,12 @@ fn normalize_fts_query(query: &str) -> String {
 }
 
 /// Result of renaming/updating a notebook.
+pub enum AssetRename {
+    Renamed(AssetEntry),
+    NotFound,
+    Conflict,
+}
+
 pub enum NotebookUpdate {
     Updated(Notebook),
     NotFound,
@@ -1258,6 +1264,168 @@ impl Store {
             .collect())
     }
 
+    pub fn list_assets(
+        &self,
+        notebook_id: &str,
+        limit: usize,
+        offset: usize,
+        query: Option<&str>,
+        kind: Option<&str>,
+        sort: Option<&str>,
+        dir: Option<&str>,
+    ) -> Result<Option<AssetList>> {
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(None);
+        }
+        let needle = query.unwrap_or_default().trim().to_lowercase();
+        let kind = kind.unwrap_or_default().trim().to_lowercase();
+        let mut assets = files::list_asset_files(&notebook)?;
+
+        if !needle.is_empty() {
+            assets.retain(|asset| {
+                asset.rel.to_lowercase().contains(&needle)
+                    || asset.name.to_lowercase().contains(&needle)
+            });
+        }
+        if !kind.is_empty() {
+            assets.retain(|asset| asset.kind == kind);
+        }
+
+        match sort.unwrap_or_default() {
+            "name" => assets.sort_by(|left, right| left.name.cmp(&right.name)),
+            "size" => assets.sort_by(|left, right| left.size.cmp(&right.size)),
+            _ => assets.sort_by(|left, right| {
+                left.updated_at
+                    .partial_cmp(&right.updated_at)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }),
+        }
+        if dir.unwrap_or_default() != "asc" {
+            assets.reverse();
+        }
+
+        let total = assets.len() as i64;
+        let assets = assets
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(asset_entry)
+            .collect();
+        Ok(Some(AssetList {
+            assets,
+            total,
+            limit,
+            offset,
+        }))
+    }
+
+    pub fn asset_info(&self, notebook_id: &str, path: &str) -> Result<Option<AssetInfo>> {
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(None);
+        }
+        let asset = match files::asset_file(&notebook, path) {
+            Ok(asset) => asset,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+        let needle = format!("assets/{}", asset.rel);
+        let mut references = Vec::new();
+        for page in files::list_page_files(&notebook)? {
+            let raw = match files::read_text(&page.abs) {
+                Ok(raw) => raw,
+                Err(_) => continue,
+            };
+            let Some(index) = raw.find(&needle) else {
+                continue;
+            };
+            let line_start = raw[..index].rfind('\n').map(|value| value + 1).unwrap_or(0);
+            let line_end = raw[index..]
+                .find('\n')
+                .map(|value| index + value)
+                .unwrap_or(raw.len());
+            let excerpt = raw[line_start..line_end]
+                .trim()
+                .chars()
+                .take(240)
+                .collect::<String>();
+            references.push(AssetReference {
+                note_path: page.rel,
+                title: files::title_from_path(&page.abs),
+                excerpt,
+            });
+        }
+        Ok(Some(AssetInfo {
+            asset: asset_entry(asset),
+            references,
+        }))
+    }
+
+    pub fn read_asset(&self, notebook_id: &str, path: &str) -> Result<Option<(Vec<u8>, String)>> {
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(None);
+        }
+        let absolute = match files::resolve_asset_path(&notebook, path) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+        let mime = files::asset_mime(&absolute);
+        Ok(Some((fs::read(absolute)?, mime)))
+    }
+
+    pub fn rename_asset(&self, notebook_id: &str, path: &str, name: &str) -> Result<AssetRename> {
+        let _guard = self.lock_fs();
+        self.sync_all_locked(false)?;
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(AssetRename::NotFound);
+        }
+        let old = match files::resolve_asset_path(&notebook, path) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(AssetRename::NotFound);
+            }
+            Err(err) => return Err(err.into()),
+        };
+        let new_name = files::sanitize_name(name, "asset");
+        let parent = Path::new(path).parent().unwrap_or(Path::new(""));
+        let new_rel = if parent.as_os_str().is_empty() {
+            new_name
+        } else {
+            format!("{}/{}", parent.to_string_lossy(), new_name)
+        };
+        if new_rel == path {
+            return Ok(AssetRename::Renamed(asset_entry(files::asset_file(
+                &notebook, path,
+            )?)));
+        }
+        let target = notebook.join(files::ASSET_DIR).join(&new_rel);
+        if target.exists() {
+            return Ok(AssetRename::Conflict);
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&old, &target)?;
+
+        let old_needle = format!("assets/{path}");
+        let new_needle = format!("assets/{new_rel}");
+        for page in files::list_page_files(&notebook)? {
+            let raw = files::read_text(&page.abs)?;
+            if !raw.contains(&old_needle) {
+                continue;
+            }
+            files::write_atomic(&page.abs, &raw.replace(&old_needle, &new_needle))?;
+        }
+        self.sync_notebook_locked(notebook_id, false)?;
+        Ok(AssetRename::Renamed(asset_entry(files::asset_file(
+            &notebook, &new_rel,
+        )?)))
+    }
+
     pub fn create_note(
         &self,
         notebook_id: &str,
@@ -1555,6 +1723,17 @@ fn col_f64(row: &[DataValue], index: usize) -> f64 {
 
 fn col_i64(row: &[DataValue], index: usize) -> i64 {
     row.get(index).and_then(DataValue::get_int).unwrap_or(0)
+}
+
+fn asset_entry(asset: files::AssetFile) -> AssetEntry {
+    AssetEntry {
+        path: asset.rel,
+        name: asset.name,
+        kind: asset.kind.to_string(),
+        mime: asset.mime,
+        size: asset.size,
+        updated_at: fmt_ts(asset.updated_at),
+    }
 }
 
 fn fmt_ts(ts: f64) -> String {

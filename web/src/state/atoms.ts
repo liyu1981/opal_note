@@ -58,6 +58,9 @@ export const pagesViewAtom = atom(false);
 /** Full-page notebook graph view. */
 export const graphViewAtom = atom(false);
 
+/** Full-page notebook asset browser. */
+export const assetsViewAtom = atom(false);
+
 /** Current omni-bar query, including the optional `#tag` prefix. */
 export const omniQueryAtom = atom("");
 
@@ -72,7 +75,7 @@ export const pagesPageSizeAtom = atomWithStorage<number>(
 
 /** Expanded/collapsed state for left-sidebar sections, keyed by section title. */
 export const sidebarSectionsAtom = atomWithStorage<Record<string, boolean>>(
-  "opalnote.sidebar-sections.v1",
+  "opalnote.sidebar-sections.v2",
   {},
 );
 
@@ -87,6 +90,7 @@ export const selectNotebookAtom = atom(
     set(journalViewAtom, false);
     set(pagesViewAtom, false);
     set(graphViewAtom, false);
+    set(assetsViewAtom, false);
   },
 );
 
@@ -176,8 +180,6 @@ export const renameNoteRefsAtom = atom(
 export const readOnlyAtom = atom(false);
 
 export const settingsOpenAtom = atom(false);
-
-export const commandPaletteOpenAtom = atom(false);
 
 /** Incremented by the Save shortcut; the active note editor consumes it. */
 export const saveRequestAtom = atom(0);
