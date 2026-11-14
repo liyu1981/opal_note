@@ -2385,7 +2385,15 @@ mod tests {
     fn notebook_rename_moves_folder() {
         let (dir, store) = store();
         let notebook = store.create_notebook("Old Name", "").unwrap().unwrap();
-        store.create_note(&notebook.id, "n", "body", &[]).unwrap();
+        let note = store
+            .create_note(
+                &notebook.id,
+                "n",
+                "body #inline [[Other]]",
+                &["explicit".into()],
+            )
+            .unwrap()
+            .unwrap();
 
         let updated = match store
             .update_notebook(&notebook.id, "New Name", "desc")
@@ -2399,6 +2407,19 @@ mod tests {
         assert!(notebook_path(dir.path(), "New Name").is_dir());
         assert!(!notebook_path(dir.path(), "Old Name").exists());
         assert!(store.get_notebook("Old Name").unwrap().is_none());
+
+        // The old index rows are dropped and every derived row is rebuilt under
+        // the new notebook id from the unchanged markdown files.
+        let reindexed = store.get_note(&updated.id, &note.id).unwrap().unwrap();
+        assert_eq!(reindexed.content, "body #inline [[Other]]");
+        assert_eq!(reindexed.explicit_tags, vec!["explicit"]);
+        assert_eq!(reindexed.tags, vec!["explicit", "inline"]);
+        let tags = store.list_tags(&updated.id).unwrap();
+        assert_eq!(
+            tags.iter().map(|tag| tag.tag.as_str()).collect::<Vec<_>>(),
+            vec!["explicit", "inline"]
+        );
+        assert!(store.list_tags("Old Name").unwrap().is_empty());
 
         // A second notebook with the target name conflicts.
         store.create_notebook("Taken", "").unwrap().unwrap();

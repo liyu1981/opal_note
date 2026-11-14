@@ -333,9 +333,12 @@ The top bar carries the omni search bar, back/forward history controls, and a
 Home button on the right.
 
 - **Left sidebar** — notebook switcher plus Home, Journals, Pages and Graph
-  navigation. Favorites and Recent are collapsible sections, collapsed by
-  default. Journals open a dedicated feed of **editable journal cards** rather
-  than a single page; the feed loads the newest seven pages and appends older
+  navigation. The pencil action renames the current notebook folder on disk,
+  discards its index rows and reindexes every file under the new name, so it
+  warns before starting and shows elapsed reindex time. Favorites and Recent
+  are collapsible sections, collapsed by default. Journals open a dedicated
+  feed of **editable journal cards** rather than a single page; the feed loads
+  the newest seven pages and appends older
   pages as you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the
   live block editor and autosaves. Opening the journal feed creates today's
   empty page automatically when it does not exist.

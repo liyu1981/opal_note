@@ -175,6 +175,33 @@ export const renameNoteRefsAtom = atom(
   },
 );
 
+/** Keep favorites/recents under the renamed notebook id. The note paths do not
+ * change when a notebook folder is renamed, so only the notebook key and each
+ * ref's `notebookId` need to move. */
+export const renameNotebookRefsAtom = atom(
+  null,
+  (get, set, change: { oldId: string; newId: string }) => {
+    if (change.oldId === change.newId) return;
+    const migrate = (all: Record<string, NoteRef[]>) => {
+      const previous = all[change.oldId];
+      if (!previous) return all;
+      const next = { ...all };
+      delete next[change.oldId];
+      const existing = next[change.newId] ?? [];
+      const known = new Set(existing.map((item) => item.path));
+      next[change.newId] = [
+        ...previous
+          .filter((item) => !known.has(item.path))
+          .map((item) => ({ ...item, notebookId: change.newId })),
+        ...existing,
+      ];
+      return next;
+    };
+    set(favoritesAtom, migrate(get(favoritesAtom)));
+    set(recentsAtom, migrate(get(recentsAtom)));
+  },
+);
+
 /** Presentation lock. Kept outside the note editor so link navigation stays
  * read-only until the user unlocks. */
 export const readOnlyAtom = atom(false);

@@ -9,9 +9,11 @@ import {
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
+import type { Notebook } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { OpalLogo } from "./OpalLogo";
+import { RenameNotebookDialog } from "./RenameNotebookDialog";
 import {
   IconCalendar,
   IconChevron,
@@ -20,6 +22,7 @@ import {
   IconFolder,
   IconGraph,
   IconHome,
+  IconPencil,
   IconPlus,
   IconStar,
   IconTrash,
@@ -40,6 +43,7 @@ import {
   readOnlyAtom,
   recentsAtom,
   refreshAtom,
+  renameNotebookRefsAtom,
   selectNotebookAtom,
   sidebarSectionsAtom,
   type NoteRef,
@@ -63,17 +67,24 @@ export function LeftSidebar() {
   const navigate = useAppNavigate();
   const selectNotebook = useSetAtom(selectNotebookAtom);
   const refresh = useSetAtom(refreshAtom);
+  const renameNotebookRefs = useSetAtom(renameNotebookRefsAtom);
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAdding(false);
+    setRenameOpen(false);
   }, [activeNotebookId]);
+
+  useEffect(() => {
+    if (locked) setRenameOpen(false);
+  }, [locked]);
 
   const noteByPath = useMemo(
     () => new Map(notes.map((note) => [note.id, note])),
@@ -179,6 +190,17 @@ export function LeftSidebar() {
     }
   }
 
+  function handleRenamed(renamed: Notebook) {
+    const previousId = notebook?.id;
+    setRenameOpen(false);
+    if (previousId && previousId !== renamed.id) {
+      renameNotebookRefs({ oldId: previousId, newId: renamed.id });
+    }
+    selectNotebook(renamed.id);
+    navigate({ view: "home" }, { notebookId: renamed.id, replace: true });
+    refresh();
+  }
+
   function refTitle(ref: NoteRef) {
     const title = noteByPath.get(ref.path)?.title ?? ref.title;
     return ref.path.startsWith("journals/") ? formatJournalDate(title) : title;
@@ -237,6 +259,16 @@ export function LeftSidebar() {
             title={locked ? "Read only" : "Import Logseq ZIP as a new notebook"}
           >
             <IconUpload className={`h-3.5 w-3.5 ${importing ? "animate-pulse" : ""}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setRenameOpen(true)}
+            disabled={!notebook || locked}
+            className="rounded-md border border-transparent p-1 text-faint transition hover:bg-panel-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label="Rename notebook"
+            title={locked ? "Read only" : "Rename current notebook"}
+          >
+            <IconPencil className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
@@ -356,6 +388,13 @@ export function LeftSidebar() {
           </>
         )}
       </div>
+      {renameOpen && notebook && !locked && (
+        <RenameNotebookDialog
+          notebook={notebook}
+          onClose={() => setRenameOpen(false)}
+          onRenamed={handleRenamed}
+        />
+      )}
     </aside>
   );
 }
