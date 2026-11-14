@@ -40,6 +40,9 @@ type CodeBlockRange = {
   indent: number;
 };
 
+/** Last rendered height of an image line, keyed by note + source line. */
+const imageLineHeights = new Map<string, number>();
+
 /** Locate fenced blocks so focusing any line can reveal the whole block. */
 function findCodeBlocks(doc: Text): CodeBlockRange[] {
   const blocks: CodeBlockRange[] = [];
@@ -221,13 +224,19 @@ function buildDecorations(
     if (active) {
       const indent = leadingIndentColumns(text);
       const pad = sourceContentColumns(text);
+      const hasImage = /!\[[^\]\n]*\]\([^)\n]+\)/u.test(text);
+      const imageHeight = imageLineHeights.get(
+        `${options.notePath}:${line.from}`,
+      );
       addLine(
         lineNumber,
-        `cm-live-active cm-live-edit${pad > 0 ? " cm-live-hang" : ""}`,
+        `cm-live-active cm-live-edit${pad > 0 ? " cm-live-hang" : ""}${
+          hasImage ? " cm-live-image-edit" : ""
+        }`,
         {
           style: `--block-indent:${indent}${
             pad > 0 ? `;--block-pad:${pad}` : ""
-          }`,
+          }${imageHeight ? `;--image-block-height:${imageHeight}px` : ""}`,
         },
       );
     }
@@ -518,6 +527,10 @@ function buildDecorations(
               label,
               resolveImageAsset(options.notePath, url),
               options.loadAsset,
+              view,
+              options.notePath,
+              line.from,
+              line.to,
             ),
           );
         }
@@ -692,6 +705,10 @@ class ImageWidget extends WidgetType {
     readonly alt: string,
     readonly assetPath: string | null,
     readonly loadAsset: (path: string) => Promise<Blob>,
+    readonly view: EditorView,
+    readonly notePath: string,
+    readonly lineFrom: number,
+    readonly lineTo: number,
   ) {
     super();
   }
@@ -701,17 +718,42 @@ class ImageWidget extends WidgetType {
       other instanceof ImageWidget &&
       other.src === this.src &&
       other.alt === this.alt &&
-      other.assetPath === this.assetPath
+      other.assetPath === this.assetPath &&
+      other.notePath === this.notePath &&
+      other.lineFrom === this.lineFrom &&
+      other.lineTo === this.lineTo
     );
   }
 
   toDOM(): HTMLElement {
     const wrapper = document.createElement("span");
     wrapper.className = "cm-live-image";
+    wrapper.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      reportHeight();
+      this.view.dispatch({ selection: { anchor: this.lineTo } });
+      this.view.focus();
+    });
     const image = document.createElement("img");
     image.alt = this.alt;
     image.loading = "lazy";
     wrapper.appendChild(image);
+
+    const reportHeight = () => {
+      if (!wrapper.isConnected) return;
+      const line = wrapper.closest<HTMLElement>(".cm-line");
+      if (!line || line.classList.contains("cm-live-active")) return;
+      const height = line.getBoundingClientRect().height;
+      const key = `${this.notePath}:${this.lineFrom}`;
+      if (height > (imageLineHeights.get(key) ?? 0)) {
+        imageLineHeights.set(key, height);
+      }
+    };
+    image.addEventListener("load", () => {
+      window.requestAnimationFrame(reportHeight);
+    });
+    window.requestAnimationFrame(reportHeight);
 
     if (/^(https?:|data:|blob:)/iu.test(this.src)) {
       image.src = this.src;

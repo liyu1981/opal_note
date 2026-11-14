@@ -171,6 +171,15 @@ export const LiveMarkdownEditor = forwardRef<
         if (update.docChanged) {
           onChangeRef.current(update.state.doc.toString());
         }
+        if (update.selectionSet && !update.docChanged) {
+          // Auto-height editors do not have a scrollable CodeMirror scroller;
+          // keep the active line visible in the page/card scroll container.
+          window.setTimeout(() => {
+            view.dom
+              .querySelector<HTMLElement>(".cm-line.cm-live-active")
+              ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }, 60);
+        }
       }),
     ];
 
