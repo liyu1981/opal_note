@@ -46,7 +46,7 @@ export function useShortcutRunner() {
           break;
         case "nav.home":
           setCommandPaletteOpen(false);
-          navigate({ view: "journal" });
+          navigate({ view: "home" });
           break;
         case "nav.pages":
           setCommandPaletteOpen(false);

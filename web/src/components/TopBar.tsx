@@ -14,7 +14,7 @@ import {
 } from "./Icons";
 import {
   activeNotebookAtom,
-  journalViewAtom,
+  homeViewAtom,
   leftPanelOpenAtom,
   readOnlyAtom,
   rightPanelOpenAtom,
@@ -34,7 +34,7 @@ export function TopBar() {
   const canGoBack = useCanGoBack();
   const [canGoForward, setCanGoForward] = useState(false);
   const maxHistoryIndex = useRef(0);
-  const journalView = useAtomValue(journalViewAtom);
+  const homeView = useAtomValue(homeViewAtom);
   const locked = useAtomValue(readOnlyAtom);
   const setLocked = useSetAtom(readOnlyAtom);
   const leftOpen = useAtomValue(leftPanelOpenAtom);
@@ -123,14 +123,14 @@ export function TopBar() {
       <div className="ml-auto flex items-center gap-1.5 sm:ml-0 sm:justify-self-end sm:gap-2">
         <button
           type="button"
-          onClick={() => navigate({ view: "journal" })}
-          aria-pressed={journalView}
+          onClick={() => navigate({ view: "home" })}
+          aria-pressed={homeView}
           className={`rounded-md border p-1.5 transition ${
-            journalView
+            homeView
               ? "border-accent/30 bg-accent-soft text-accent-strong"
               : "border-transparent text-muted hover:bg-panel"
           }`}
-          title="Home — journal feed"
+          title="Home"
           aria-label="Home"
         >
           <IconHome className="h-4 w-4" />

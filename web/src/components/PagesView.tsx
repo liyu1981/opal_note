@@ -359,7 +359,7 @@ export function PagesView() {
             </p>
           </div>
         ) : mode === "table" ? (
-          <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white/25">
+          <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-paper">
             <table className="w-full min-w-[760px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-line bg-panel/35">
@@ -460,7 +460,7 @@ export function PagesView() {
               return (
                 <article
                   key={item.id}
-                  className="rounded-xl border border-line bg-white/30 p-3 transition hover:border-line-strong hover:bg-white/50"
+                  className="rounded-xl border border-line bg-paper p-3 transition hover:border-line-strong hover:bg-paper/80"
                 >
                   <button
                     type="button"

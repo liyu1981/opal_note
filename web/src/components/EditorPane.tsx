@@ -611,7 +611,7 @@ function NoteEditor({ note }: { note: Note }) {
           </label>
         )}
 
-        <div className="note-editor-surface mt-3 overflow-hidden rounded-xl border border-line bg-white/45 shadow-panel focus-within:border-accent/40">
+        <div className="note-editor-surface mt-3 overflow-hidden rounded-xl border border-line bg-paper focus-within:border-accent/40">
           <LiveMarkdownEditor
             ref={editorRef}
             value={content}

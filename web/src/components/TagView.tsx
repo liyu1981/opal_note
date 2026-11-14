@@ -2,20 +2,21 @@ import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
-import type { Note, PageOverview } from "../api/types";
-import { relativeTime } from "../lib/format";
+import type { JournalPage, Note, PageOverview } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
+  homeViewAtom,
   notesAtom,
   notesRevisionAtom,
   omniQueryAtom,
+  readOnlyAtom,
 } from "../state/atoms";
 import { IconCalendar, IconFile } from "./Icons";
-import { LiveMarkdownEditor } from "./editor/LiveMarkdownEditor";
+import { JournalCard } from "./JournalCard";
 
 type TagPage = {
   page: PageOverview;
@@ -33,7 +34,9 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notes = useAtomValue(notesAtom);
   const revision = useAtomValue(notesRevisionAtom);
+  const locked = useAtomValue(readOnlyAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
+  const setHomeView = useSetAtom(homeViewAtom);
   const setOmniQuery = useSetAtom(omniQueryAtom);
   const navigate = useAppNavigate();
 
@@ -54,8 +57,9 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   );
 
   useLayoutEffect(() => {
+    setHomeView(false);
     setActiveNote(null);
-  }, [setActiveNote]);
+  }, [setActiveNote, setHomeView]);
 
   useEffect(() => {
     setOmniQuery(tag ? `#${tag}` : "");
@@ -160,21 +164,49 @@ export function TagView({ tag: rawTag }: { tag: string }) {
               </p>
             </div>
           ) : (
-            cards.map((item, index) => (
-              <TagPageCard
-                key={item.page.id}
-                item={item}
-                index={index}
-                focused={focused === index}
-                linkKeys={linkKeys}
-                linkTargets={linkTargets}
-                onOpenPage={(page) =>
-                  navigate({ view: "note", noteId: page.id })
-                }
-                onWikiLink={openWiki}
-                onTag={openTag}
-              />
-            ))
+            cards.map((item, index) =>
+              item.note ? (
+                <div
+                  key={item.page.id}
+                  id={`tag-page-${index}`}
+                  className={`scroll-mt-4 rounded-xl transition ${
+                    focused === index ? "ring-1 ring-accent/40" : ""
+                  }`}
+                >
+                  <JournalCard
+                    page={toJournalPage(item)}
+                    notebookId={notebookId ?? ""}
+                    linkKeys={linkKeys}
+                    linkTargets={linkTargets}
+                    readOnly={locked}
+                    onOpenPage={(page) =>
+                      navigate({ view: "note", noteId: page.id })
+                    }
+                    onWikiLink={openWiki}
+                    onTag={openTag}
+                  />
+                </div>
+              ) : (
+                <article
+                  key={item.page.id}
+                  id={`tag-page-${index}`}
+                  className="scroll-mt-4 rounded-xl border border-line bg-paper p-4"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate({ view: "note", noteId: item.page.id })
+                    }
+                    className="font-serif text-[20px] font-semibold text-ink hover:text-accent-strong"
+                  >
+                    {pageTitle(item.page)}
+                  </button>
+                  <p className="mt-2 font-sans text-[14px] text-faint">
+                    Page content is unavailable.
+                  </p>
+                </article>
+              ),
+            )
           )}
 
           {!loading && total > pages.length && (
@@ -215,89 +247,16 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   );
 }
 
-function TagPageCard({
-  item,
-  index,
-  focused,
-  linkKeys,
-  linkTargets,
-  onOpenPage,
-  onWikiLink,
-  onTag,
-}: {
-  item: TagPage;
-  index: number;
-  focused: boolean;
-  linkKeys: Set<string>;
-  linkTargets: Array<{ title: string; path: string }>;
-  onOpenPage: (page: PageOverview) => void;
-  onWikiLink: (target: string) => void;
-  onTag: (tag: string) => void;
-}) {
-  const { page, note } = item;
 
-  return (
-    <article
-      id={`tag-page-${index}`}
-      className={`scroll-mt-4 rounded-xl border bg-white/35 px-4 pb-3 pt-3 transition ${
-        focused ? "border-accent/50 bg-accent-soft/15" : "border-line/70"
-      }`}
-    >
-      <header className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={() => onOpenPage(page)}
-          className="min-w-0 text-left font-serif text-[20px] font-semibold leading-tight tracking-tight text-ink transition hover:text-accent-strong"
-          title="Open page"
-        >
-          {pageTitle(page)}
-        </button>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap pt-1 font-mono text-[14px] text-faint">
-          <span>{relativeTime(page.updated_at)}</span>
-          <button
-            type="button"
-            onClick={() => onOpenPage(page)}
-            className="rounded-md border border-transparent p-1 text-faint transition hover:border-line hover:bg-white/70 hover:text-ink"
-            aria-label={`Open ${pageTitle(page)}`}
-            title="Open page"
-          >
-            <IconFile className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </header>
-
-      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {page.tags.map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => onTag(tag)}
-            className="rounded bg-panel px-1 py-0.5 font-mono text-[14px] text-muted transition hover:bg-accent-soft hover:text-accent-strong"
-            title={`Open #${tag}`}
-          >
-            #{tag}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-2 border-t border-line/40 pt-2">
-        {note ? (
-          <LiveMarkdownEditor
-            value={note.content}
-            onChange={() => {}}
-            onWikiLink={onWikiLink}
-            onTag={onTag}
-            linkKeys={linkKeys}
-            linkTargets={linkTargets}
-            readOnly
-            autoHeight
-          />
-        ) : (
-          <p className="px-1 py-2 font-sans text-[14px] text-faint">
-            Page content is unavailable.
-          </p>
-        )}
-      </div>
-    </article>
-  );
+function toJournalPage(item: TagPage): JournalPage {
+  const note = item.note;
+  return {
+    id: item.page.id,
+    notebook_id: item.page.notebook_id,
+    title: item.page.title,
+    content: note?.content ?? "",
+    created_at: item.page.created_at,
+    updated_at: note?.updated_at ?? item.page.updated_at,
+    tags: note?.tags ?? item.page.tags,
+  };
 }

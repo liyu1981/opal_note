@@ -10,17 +10,19 @@ export const noteEditorTheme = EditorView.theme(
   {
     "&": {
       height: "100%",
-      backgroundColor: "transparent",
+      backgroundColor: "var(--color-paper)",
       color: "var(--color-ink-soft)",
       fontFamily: "var(--font-editor)",
       fontSize: "16px",
     },
     ".cm-scroller": {
+      backgroundColor: "var(--color-paper)",
       fontFamily: "var(--font-editor)",
       lineHeight: "1.8",
       overflow: "auto",
     },
     ".cm-content": {
+      backgroundColor: "var(--color-paper)",
       maxWidth: "820px",
       margin: "0 auto",
       padding: "1.35rem 1.75rem 4rem",

@@ -78,9 +78,10 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 ## Design system
 
 The UI follows the **Square** design skill from
-`liyu1981/awesome-design-skills`: minimal white surfaces, primary blue and
-secondary violet, success/warning/danger tokens, 4px controls and 8px
-surfaces. Default role fonts are **Google Sans** for the interface and
+`liyu1981/awesome-design-skills`: a muted greige newsprint canvas, warm
+`#F8F5EC` page and editor surfaces matching the Opal mark, hairline borders,
+primary blue and secondary violet, success/warning/danger tokens, and
+near-square surfaces. Default role fonts are **Google Sans** for the interface and
 **JetBrains Mono** for page titles, the note editor, labels and code. Inter and
 Anonymous Pro remain selectable in Settings. Google Sans, Inter, JetBrains Mono
 and Anonymous Pro are self-hosted so the single binary remains
@@ -275,10 +276,10 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 
 ### Workspace layout
 
-The shell follows a Logseq-like split. It opens on the journal feed, which is
-the workspace **Home**. The top bar carries search (by default the leader
-sequence `Cmd+/` on macOS, `Ctrl+/` elsewhere, then `F` opens an in-page
-dialog), back/forward history controls, and a Home button on the right.
+The shell follows a Logseq-like split. It opens on the **Home** dashboard:
+today's editable journal card, the three most recently edited pages, a New page
+action, and a right-hand strip of outstanding todos. The top bar carries the
+omni search bar, back/forward history controls, and a Home button on the right.
 
 - **Left sidebar** — notebook switcher, Favorites, Recent, Journal and Pages.
   Journals open a dedicated feed of **editable journal cards** rather than a
@@ -313,12 +314,16 @@ dialog), back/forward history controls, and a Home button on the right.
   Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.
+- **Home** — `/<notebook>/home` is the default dashboard. It shows today's
+  editable journal card, the top three recently edited pages with a New page
+  button, and outstanding todo-plugin items in a sticky right strip.
 - **Navigation** — TanStack Router browser routes are scoped by notebook name:
-  `/<notebook>/journal`, `/<notebook>/pages`, `/<notebook>/graph`,
-  `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
+  `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
+  `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
+  `/<notebook>/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
   `Alt+Left` / `Alt+Right`, rebindable in Settings → Keyboard) use browser
   history, and page URLs can be reloaded or shared directly. Switching notebooks
-  updates the URL and opens that notebook's journal.
+  updates the URL and opens that notebook's home.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
   renders an interactive local/full notebook graph: click a node to highlight
@@ -338,7 +343,7 @@ dialog), back/forward history controls, and a Home button on the right.
   notebook; clicking one opens its page. Settings → Plugins shows installed
   plugins and reloads the data plugin folder.
 - **Tag view** — `/<notebook>/tag/<tag>` shows every page carrying `#tag` as
-  read-only content cards, with a page-title list for fast jumping. Clicking a
+  editable content cards, with a page-title list for fast jumping. Clicking a
   tag in a journal card, page, pages table, right panel, or inline in a note
   opens the corresponding tag view.
 
@@ -363,8 +368,9 @@ precedence: a data plugin with the same id is rejected and reported in Settings
 
 | Route | View |
 | --- | --- |
-| `/` | Redirects to the selected notebook's journal |
-| `/<notebook>/journal` | Journal feed / Home |
+| `/` | Redirects to the selected notebook's home |
+| `/<notebook>/home` | Home dashboard |
+| `/<notebook>/journal` | Journal feed |
 | `/<notebook>/pages` | All-pages table |
 | `/<notebook>/graph` | Full-page notebook graph |
 | `/<notebook>/tag/<tag>` | Pages carrying `#tag` |
@@ -376,7 +382,7 @@ available as a no-notebook fallback.
 | `/page?p=Some%20Page` | A page resolved by title |
 
 Routes use clean browser paths plus search params; no hash routing. They are
-scoped to the active notebook; switching notebooks returns to `/journal`.
+scoped to the active notebook; switching notebooks returns to its home.
 Favorites and recents are stored in the browser, scoped per notebook. A page can be
 pinned with the star in the editor toolbar.
 

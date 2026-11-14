@@ -4,6 +4,7 @@ import { useAtomValue } from "jotai";
 import { activeNotebookIdAtom } from "../state/atoms";
 
 export type AppTarget =
+  | { view: "home" }
   | { view: "journal" }
   | { view: "pages" }
   | { view: "graph" }
@@ -20,8 +21,9 @@ export type AppNavigateOptions = {
  * Map app-level destinations to TanStack Router paths/search. Keeping this in
  * one hook prevents view components from inventing their own URL shapes.
  *
- * Notebook-scoped routes are `/<notebook>/journal`, `/<notebook>/pages`,
- * `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=...`. The legacy unprefixed
+ * Notebook-scoped routes are `/<notebook>/home`, `/<notebook>/journal`,
+ * `/<notebook>/pages`, `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
+ * `/<notebook>/page?p=...`. The legacy unprefixed
  * routes remain as redirects/fallbacks for empty workspaces and old links.
  */
 export function useAppNavigate() {
@@ -36,6 +38,17 @@ export function useAppNavigate() {
         : activeNotebookId;
 
     switch (target.view) {
+      case "home":
+        if (notebook) {
+          void navigate({
+            to: "/$notebook/home",
+            params: { notebook },
+            replace,
+          });
+        } else {
+          void navigate({ to: "/journal", replace });
+        }
+        break;
       case "journal":
         if (notebook) {
           void navigate({

@@ -23,16 +23,17 @@
   --color-secondary: #8b5cf6;
   --color-neutral: #ffffff;
   --color-surface: #ffffff;
-  --color-text: #111827;
-  --color-canvas: #ffffff;
-  --color-panel: #f9fafb;
-  --color-panel-strong: #f3f4f6;
-  --color-line: #e5e7eb;
-  --color-line-strong: #d1d5db;
-  --color-ink: #111827;
-  --color-ink-soft: #374151;
-  --color-muted: #4b5563;
-  --color-faint: #6b7280;
+  --color-paper: #f8f5ec;
+  --color-text: #171a1b;
+  --color-canvas: #d6d7d0;
+  --color-panel: #cfd0c9;
+  --color-panel-strong: #c5c6be;
+  --color-line: #b9bab2;
+  --color-line-strong: #a4a59d;
+  --color-ink: #171a1b;
+  --color-ink-soft: #2f3334;
+  --color-muted: #565a5b;
+  --color-faint: #737877;
   --color-accent: #3b82f6;
   --color-accent-strong: #2563eb;
   --color-accent-soft: #eff6ff;
@@ -43,11 +44,11 @@
   --color-mark: #fef3c7;
 
   /* Graph palette uses Square neutral + secondary accents. */
-  --color-graph-bg: #ffffff;
-  --color-graph-node: #6b7280;
+  --color-graph-bg: #d9dad3;
+  --color-graph-node: #2f3334;
   --color-graph-node-journal: #8b5cf6;
-  --color-graph-edge: #d1d5db;
-  --color-graph-label: #374151;
+  --color-graph-edge: #a4a59d;
+  --color-graph-label: #2f3334;
 
   --font-sans:
     "Google Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
@@ -107,7 +108,7 @@ select:focus-visible {
 .rounded-lg,
 .rounded-xl,
 .rounded-2xl {
-  border-radius: 8px;
+  border-radius: 2px;
 }
 
 ::selection {
@@ -149,8 +150,14 @@ select:focus-visible {
    ------------------------------------------------------------------------- */
 
 .cm-editor {
+  background: var(--color-paper);
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "calt" 0;
+}
+
+.cm-editor .cm-scroller,
+.cm-editor .cm-content {
+  background: var(--color-paper);
 }
 
 .cm-content[contenteditable="false"] {
@@ -167,14 +174,10 @@ select:focus-visible {
 }
 
 .cm-line.cm-live-active::before {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--color-accent) 9%, transparent),
-    transparent 58%
-  );
+  background: transparent;
   border-radius: 0 6px 6px 0;
   bottom: 0;
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
+  box-shadow: none;
   content: "";
   left: calc(var(--block-indent, 0) * var(--note-ch) - 0.08rem);
   pointer-events: none;

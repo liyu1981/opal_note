@@ -18,8 +18,8 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   },
   {
     id: "nav.home",
-    label: "Home / journal",
-    description: "Open the journal feed",
+    label: "Home",
+    description: "Open the home dashboard",
     group: "Navigation",
     defaultBindings: ["mod+/ h"],
   },

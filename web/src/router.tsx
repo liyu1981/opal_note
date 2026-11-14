@@ -15,6 +15,7 @@ import { getDefaultStore, useAtomValue, useSetAtom } from "jotai";
 import { api } from "./api/client";
 import { EditorPane } from "./components/EditorPane";
 import { GraphView } from "./components/GraphView";
+import { HomeView } from "./components/HomeView";
 import { JournalFeed } from "./components/JournalFeed";
 import { PagesView } from "./components/PagesView";
 import { TagView } from "./components/TagView";
@@ -23,22 +24,30 @@ import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
   graphViewAtom,
+  homeViewAtom,
   journalViewAtom,
   pagesViewAtom,
 } from "./state/atoms";
 
-function useSyncView(view: "journal" | "pages" | "graph") {
+function useSyncView(view: "home" | "journal" | "pages" | "graph") {
+  const setHome = useSetAtom(homeViewAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
 
   useLayoutEffect(() => {
+    setHome(view === "home");
     setJournal(view === "journal");
     setPages(view === "pages");
     setGraph(view === "graph");
     setActiveNote(null);
-  }, [setActiveNote, setGraph, setJournal, setPages, view]);
+  }, [setActiveNote, setGraph, setHome, setJournal, setPages, view]);
+}
+
+function HomeRoute() {
+  useSyncView("home");
+  return <HomeView />;
 }
 
 function JournalRoute() {
@@ -69,6 +78,7 @@ function PageRoute() {
   const { p } = useSearch({ from: "/$notebook/page" });
   const { notebook } = useParams({ from: "/$notebook/page" });
   const notebookId = useAtomValue(activeNotebookIdAtom);
+  const setHome = useSetAtom(homeViewAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
@@ -78,6 +88,7 @@ function PageRoute() {
   const isPath = param.includes("/") || param.endsWith(".md");
 
   useLayoutEffect(() => {
+    setHome(false);
     setJournal(false);
     setPages(false);
     setGraph(false);
@@ -92,6 +103,7 @@ function PageRoute() {
     param,
     setActiveNote,
     setGraph,
+    setHome,
     setJournal,
     setPages,
   ]);
@@ -165,7 +177,7 @@ const indexRoute = createRoute({
     const notebook = await pickNotebook();
     if (notebook) {
       throw redirect({
-        to: "/$notebook/journal",
+        to: "/$notebook/home",
         params: { notebook: notebook.id },
         replace: true,
       });
@@ -188,6 +200,12 @@ const notebookRoute = createRoute({
     getDefaultStore().set(activeNotebookIdAtom, notebook.id);
   },
   component: NotebookLayout,
+});
+
+const homeRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "home",
+  component: HomeRoute,
 });
 
 const journalRoute = createRoute({
@@ -298,6 +316,7 @@ const legacyPageRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   notebookRoute.addChildren([
+    homeRoute,
     journalRoute,
     pagesRoute,
     graphRoute,

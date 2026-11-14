@@ -21,6 +21,7 @@ export function JournalCard({
   onOpenPage,
   onWikiLink,
   onTag,
+  onSaved,
 }: {
   page: JournalPage;
   notebookId: string;
@@ -30,6 +31,7 @@ export function JournalCard({
   onOpenPage: (page: JournalPage) => void;
   onWikiLink: (target: string) => void;
   onTag: (tag: string) => void;
+  onSaved?: () => void;
 }) {
   const [content, setContent] = useState(page.content);
   const [tags, setTags] = useState(page.tags);
@@ -68,6 +70,7 @@ export function JournalCard({
         setStatus("dirty");
         setTick((value) => value + 1);
       }
+      onSaved?.();
       return true;
     } catch (cause) {
       setStatus("error");
@@ -76,7 +79,7 @@ export function JournalCard({
     } finally {
       savingRef.current = false;
     }
-  }, [notebookId, page.id, refreshPlugins]);
+  }, [notebookId, onSaved, page.id, refreshPlugins]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -133,7 +136,7 @@ export function JournalCard({
           : "Saved";
 
   return (
-    <article className="rounded-xl border border-line/70 bg-white/35 px-3 pb-2 pt-3 transition hover:border-line">
+    <article className="rounded-xl border border-line/70 bg-paper px-3 pb-2 pt-3 transition hover:border-line">
       <header className="flex items-start gap-2">
         <button
           type="button"

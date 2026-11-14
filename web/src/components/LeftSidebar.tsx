@@ -17,6 +17,7 @@ import {
   IconClock,
   IconFile,
   IconGraph,
+  IconHome,
   IconPlus,
   IconStar,
   IconTrash,
@@ -27,6 +28,7 @@ import {
   activeNotebookIdAtom,
   favoritesAtom,
   graphViewAtom,
+  homeViewAtom,
   journalViewAtom,
   notesAtom,
   notebooksAtom,
@@ -45,6 +47,7 @@ export function LeftSidebar() {
   const activeNotebookId = useAtomValue(activeNotebookIdAtom);
   const notes = useAtomValue(notesAtom);
   const activeNoteId = useAtomValue(activeNoteIdAtom);
+  const homeView = useAtomValue(homeViewAtom);
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
   const graphView = useAtomValue(graphViewAtom);
@@ -84,6 +87,10 @@ export function LeftSidebar() {
 
   function openNote(path: string) {
     navigate({ view: "note", noteId: path });
+  }
+
+  function openHome() {
+    navigate({ view: "home" });
   }
 
   function openJournalFeed() {
@@ -133,7 +140,7 @@ export function LeftSidebar() {
   function switchNotebook(id: string) {
     const notebookId = id || null;
     selectNotebook(notebookId);
-    navigate({ view: "journal" }, { notebookId });
+    navigate({ view: "home" }, { notebookId });
   }
 
   async function createNotebook(event: FormEvent) {
@@ -266,6 +273,12 @@ export function LeftSidebar() {
         ) : (
           <>
             <div className="space-y-0.5 border-b border-line pb-2">
+              <NavItem
+                icon={<IconHome className="h-3.5 w-3.5" />}
+                label="Home"
+                active={homeView}
+                onClick={openHome}
+              />
               <NavItem
                 icon={<IconCalendar className="h-3.5 w-3.5" />}
                 label="Journals"

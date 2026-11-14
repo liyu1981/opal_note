@@ -178,23 +178,26 @@ web/
   the editor grows with its content. Do not put the editor back in a fixed
   height container with an internal `.cm-scroller` scrollbar. Journal cards
   use the same auto-height renderer and the same `--note-ch` hanging indent.
-- The workspace opens on the journal feed, which is **Home**. The global top
-  bar hosts the **OmniBar**: normal text searches notes, while a leading `#`
-  lists available tags and navigates to tag views. Tag views prefill `#tag` in
-  the bar. Do not reintroduce the old centered search dialog, and do not put
-  search back into `LeftSidebar` or make `notesAtom` query-dependent.
+- The workspace opens on `HomeView` (`homeViewAtom`): today's editable journal
+  card, the three most recently edited pages, a New page action, and outstanding
+  todo-plugin items in a sticky right strip. The global top bar hosts the
+  **OmniBar**: normal text searches notes, while a leading `#` lists available
+  tags and navigates to tag views. Tag views prefill `#tag` in the bar. Do not
+  reintroduce the old centered search dialog, and do not put search back into
+  `LeftSidebar` or make `notesAtom` query-dependent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Journals,
   Pages, Favorites, Recent and Graph view. The right panel is wider and tabbed
   Context / Info / Graph. Keep it that way rather than adding new permanent
   side panels.
 - Client routing is TanStack Router with browser history, not hashes. Canonical
-  paths are `/<notebook>/journal`, `/<notebook>/pages`, `/<notebook>/graph`,
-  `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=<note-path-or-title>`, where
-  `<notebook>` is the URL-encoded notebook name. Unprefixed legacy paths redirect to the selected
+  paths are `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
+  `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
+  `/<notebook>/page?p=<note-path-or-title>`, where `<notebook>` is the
+  URL-encoded notebook name. Unprefixed legacy paths redirect to the selected
   notebook (and remain the no-notebook fallback). All in-app destinations go
   through `useAppNavigate`; notes set the `p` search param and
-  journal/pages/graph are path segments. A title-only `p` resolves to an
+  home/journal/pages/graph are path segments. A title-only `p` resolves to an
   existing note and replaces the URL with the canonical path. A filename rename
   uses `navigate(..., { replace: true })`, not a second history entry.
   Back/forward controls use TanStack history, not a custom atom history.
@@ -248,7 +251,7 @@ web/
   the plugin endpoint, renders generic items, and opens item pages through
   `useAppNavigate`. Journal card saves refresh `notesRevisionAtom` so task
   widgets update after checkbox edits.
-- `TagView` is the `/<notebook>/tag/<tag>` page: read-only content cards plus a
+- `TagView` is the `/<notebook>/tag/<tag>` page: editable `JournalCard`s plus a
   page-title jump list. Tag clicks everywhere (journal cards, inline editor
   tags, page tags, right panel, pages table) go through `useAppNavigate`. Keep
   the tag route as a splat so tags containing `/` remain one logical tag.
@@ -260,7 +263,7 @@ web/
   `--color-graph-bg`, `--color-graph-node`, `--color-graph-node-journal`,
   `--color-graph-edge`, `--color-graph-label`. Keep the SVG using these
   variables rather than hard-coded graph colors; nodes and labels must stay
-  readable against the near-white graph surface.
+  readable against the warm graph surface.
 - `graphLayout.ts` follows Logseq's all-pages approach: `d3-force` with
   link distance 82/strength .82, many-body charge -140/distanceMax 420,
   collision radius +10, center force and Logseq's tick-count schedule. Isolated
@@ -275,11 +278,13 @@ web/
   action loads `GET /notebooks/{id}/orphans`, shows a custom confirmation
   dialog and deletes selected files through the normal note DELETE route (so
   they land in `data/.trash/`). Do not bypass the trash path.
-- The UI follows the Square design system (primary `#3B82F6`, secondary
-  `#8B5CF6`, success/warning/danger tokens, 4px controls and 8px surfaces).
-  Default role fonts are Google Sans for UI and JetBrains Mono for page titles,
-  note editor, labels and code. Inter and Anonymous Pro remain selectable. Use
-  the semantic tokens in
+- The UI follows the Square design system with a muted greige newsprint canvas
+  (primary `#3B82F6`, secondary `#8B5CF6`, success/warning/danger tokens,
+  hairline borders, 4px controls and near-square surfaces). Page cards and the
+  CodeMirror writing surface use `--color-paper` (`#F8F5EC`, the logo tile) so
+  they stand out from the canvas. Default role fonts are Google Sans
+  for UI and JetBrains Mono for page titles, note editor, labels and code.
+  Inter and Anonymous Pro remain selectable. Use the semantic tokens in
   `web/src/index.css`; do not introduce one-off colors, radii or fonts.
 - Settings are sparse overrides in `<data-dir>/settings.json`, served by
   `GET/PUT /api/settings`. System defaults live in `web/src/lib/settings.ts`;

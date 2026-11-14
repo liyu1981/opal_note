@@ -101,7 +101,7 @@ export function JournalPluginsPanel() {
   );
 }
 
-function PluginCard({
+export function PluginCard({
   plugin,
   onOpen,
 }: {

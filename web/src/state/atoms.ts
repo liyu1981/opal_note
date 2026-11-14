@@ -46,8 +46,11 @@ export const activeNoteIdAtom = atomWithStorage<string | null>(
   null,
 );
 
+/** When true the main pane is the home dashboard. */
+export const homeViewAtom = atom(true);
+
 /** When true the main pane is the journal feed rather than a single note. */
-export const journalViewAtom = atom(true);
+export const journalViewAtom = atom(false);
 
 /** Dedicated page-directory view. */
 export const pagesViewAtom = atom(false);
@@ -80,7 +83,8 @@ export const selectNotebookAtom = atom(
     if (get(activeNotebookIdAtom) === notebookId) return;
     set(activeNotebookIdAtom, notebookId);
     set(activeNoteIdAtom, null);
-    set(journalViewAtom, true);
+    set(homeViewAtom, true);
+    set(journalViewAtom, false);
     set(pagesViewAtom, false);
     set(graphViewAtom, false);
   },
