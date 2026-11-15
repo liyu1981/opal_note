@@ -15,6 +15,9 @@ import type {
   QueryResult,
   Stats,
   TagCount,
+  TrashDetail,
+  TrashList,
+  TrashRestoreResult,
 } from "./types";
 
 const TOKEN_KEY = "opalnote.token";
@@ -302,6 +305,43 @@ export const api = {
 
   deleteNote: (notebookId: string, path: string) =>
     request<void>(notePath(notebookId, path), { method: "DELETE" }),
+
+  deleteAsset: (notebookId: string, path: string) =>
+    request<void>(assetPath(notebookId, path), { method: "DELETE" }),
+
+  listTrash: (
+    params: {
+      limit?: number;
+      offset?: number;
+      q?: string;
+      kind?: string;
+      sort?: string;
+      dir?: string;
+    } = {},
+  ) => {
+    const search = new URLSearchParams();
+    search.set("limit", String(params.limit ?? 20));
+    search.set("offset", String(params.offset ?? 0));
+    if (params.q) search.set("q", params.q);
+    if (params.kind) search.set("kind", params.kind);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.dir) search.set("dir", params.dir);
+    return request<TrashList>(`/trash?${search.toString()}`);
+  },
+
+  getTrash: (id: string) =>
+    request<TrashDetail>(`/trash/${encode(id)}`),
+
+  getTrashBlob: (id: string) =>
+    requestBlob(`/trash/${encode(id)}/content`),
+
+  restoreTrash: (id: string) =>
+    request<TrashRestoreResult>(`/trash/${encode(id)}/restore`, {
+      method: "POST",
+    }),
+
+  deleteTrash: (id: string) =>
+    request<void>(`/trash/${encode(id)}`, { method: "DELETE" }),
 
   getSettings: () => request<Record<string, unknown>>("/settings"),
 

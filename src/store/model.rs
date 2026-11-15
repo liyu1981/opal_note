@@ -169,3 +169,53 @@ pub struct AssetList {
     pub limit: usize,
     pub offset: usize,
 }
+
+/// One recoverable item in the trash/bin.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrashEntry {
+    pub id: String,
+    /// Notebook that owned the file when it was deleted.
+    pub notebook_id: String,
+    pub notebook_name: String,
+    /// Relative path inside the notebook, or the notebook name itself.
+    pub original_path: String,
+    /// `page`, `journal`, `asset` or `notebook`.
+    pub kind: String,
+    pub title: String,
+    pub size: i64,
+    pub deleted_at: String,
+    /// Computed from the current retention setting.
+    pub expires_at: String,
+    /// Short plain-text summary for note entries.
+    pub preview: String,
+    pub mime: String,
+}
+
+/// One page of the global trash/bin list.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrashList {
+    pub entries: Vec<TrashEntry>,
+    pub total: i64,
+    pub limit: usize,
+    pub offset: usize,
+}
+
+/// Trash entry plus the text needed to peek at its content.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrashDetail {
+    pub entry: TrashEntry,
+    /// Markdown/body or text-file prefix. `None` for binary payloads.
+    pub content: Option<String>,
+    pub truncated: bool,
+}
+
+/// Result of restoring one trash entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrashRestoreResult {
+    pub id: String,
+    pub notebook_id: String,
+    pub notebook_name: String,
+    pub kind: String,
+    /// Path relative to the notebook, or the new notebook id.
+    pub restored_path: String,
+}

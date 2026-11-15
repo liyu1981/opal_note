@@ -188,3 +188,44 @@ export interface AssetList {
   limit: number;
   offset: number;
 }
+
+export type TrashKind = "page" | "journal" | "asset" | "notebook";
+
+export interface TrashEntry {
+  id: string;
+  notebook_id: string;
+  notebook_name: string;
+  /** Relative path inside the notebook, or the notebook name itself. */
+  original_path: string;
+  kind: TrashKind;
+  title: string;
+  size: number;
+  deleted_at: string;
+  expires_at: string;
+  /** Short plain-text summary for note entries. */
+  preview: string;
+  mime: string;
+}
+
+export interface TrashList {
+  entries: TrashEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TrashDetail {
+  entry: TrashEntry;
+  /** Markdown/body or text-file prefix. `null` for binary payloads. */
+  content: string | null;
+  truncated: boolean;
+}
+
+export interface TrashRestoreResult {
+  id: string;
+  notebook_id: string;
+  notebook_name: string;
+  kind: TrashKind;
+  /** Path relative to the notebook, or the new notebook id. */
+  restored_path: string;
+}

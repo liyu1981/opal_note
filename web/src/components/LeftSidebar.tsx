@@ -15,6 +15,7 @@ import { useAppNavigate } from "../lib/appNavigation";
 import { OpalLogo } from "./OpalLogo";
 import { RenameNotebookDialog } from "./RenameNotebookDialog";
 import {
+  IconArchive,
   IconCalendar,
   IconChevron,
   IconClock,
@@ -46,6 +47,7 @@ import {
   renameNotebookRefsAtom,
   selectNotebookAtom,
   sidebarSectionsAtom,
+  trashViewAtom,
   type NoteRef,
 } from "../state/atoms";
 
@@ -60,6 +62,7 @@ export function LeftSidebar() {
   const pagesView = useAtomValue(pagesViewAtom);
   const graphView = useAtomValue(graphViewAtom);
   const assetsView = useAtomValue(assetsViewAtom);
+  const trashView = useAtomValue(trashViewAtom);
   const favorites = useAtomValue(favoritesAtom);
   const recents = useAtomValue(recentsAtom);
   const locked = useAtomValue(readOnlyAtom);
@@ -118,6 +121,10 @@ export function LeftSidebar() {
     navigate({ view: "assets" });
   }
 
+  function openTrashView() {
+    navigate({ view: "trash" });
+  }
+
   function switchNotebook(id: string) {
     const notebookId = id || null;
     selectNotebook(notebookId);
@@ -174,7 +181,7 @@ export function LeftSidebar() {
     if (!notebook || locked) return;
     if (
       !window.confirm(
-        `Delete “${notebook.name}” and every note inside it? This cannot be undone.`,
+        `Move “${notebook.name}” and every note inside it to the trash? It can be restored until the retention period ends.`,
       )
     ) {
       return;
@@ -350,6 +357,12 @@ export function LeftSidebar() {
                 label="Assets"
                 active={assetsView}
                 onClick={openAssetsView}
+              />
+              <NavItem
+                icon={<IconArchive className="h-3.5 w-3.5" />}
+                label="Trash"
+                active={trashView}
+                onClick={openTrashView}
               />
             </div>
 

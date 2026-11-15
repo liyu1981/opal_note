@@ -41,10 +41,14 @@ export type FontChoice = {
   google: boolean;
 };
 
+export const DEFAULT_TRASH_RETENTION_DAYS = 30;
+export const MAX_TRASH_RETENTION_DAYS = 3_650;
+
 export type AppSettings = {
   fonts: Record<FontRole, FontChoice>;
   keybindings: Record<string, string>;
   codeTheme: string;
+  trashRetentionDays: number;
   [key: string]: unknown;
 };
 
@@ -57,6 +61,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   keybindings: {},
   codeTheme: DEFAULT_CODE_THEME,
+  trashRetentionDays: DEFAULT_TRASH_RETENTION_DAYS,
 };
 
 export const FONT_PRESETS = [
@@ -124,7 +129,22 @@ export function mergeSettings(value: unknown): AppSettings {
       ? root.codeTheme
       : DEFAULT_CODE_THEME;
 
-  return { ...DEFAULT_SETTINGS, ...root, fonts, keybindings, codeTheme };
+  const trashRetentionDays =
+    typeof root.trashRetentionDays === "number" &&
+    Number.isInteger(root.trashRetentionDays) &&
+    root.trashRetentionDays >= 1 &&
+    root.trashRetentionDays <= MAX_TRASH_RETENTION_DAYS
+      ? root.trashRetentionDays
+      : DEFAULT_TRASH_RETENTION_DAYS;
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...root,
+    fonts,
+    keybindings,
+    codeTheme,
+    trashRetentionDays,
+  };
 }
 
 function same(a: unknown, b: unknown): boolean {

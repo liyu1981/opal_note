@@ -21,6 +21,7 @@ import { HomeView } from "./components/HomeView";
 import { JournalFeed } from "./components/JournalFeed";
 import { PagesView } from "./components/PagesView";
 import { TagView } from "./components/TagView";
+import { TrashView } from "./components/TrashView";
 import { Workspace } from "./components/Workspace";
 import {
   activeNoteIdAtom,
@@ -30,16 +31,18 @@ import {
   homeViewAtom,
   journalViewAtom,
   pagesViewAtom,
+  trashViewAtom,
 } from "./state/atoms";
 
 function useSyncView(
-  view: "home" | "journal" | "pages" | "graph" | "assets" | "asset",
+  view: "home" | "journal" | "pages" | "graph" | "assets" | "asset" | "trash",
 ) {
   const setHome = useSetAtom(homeViewAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
   const setAssets = useSetAtom(assetsViewAtom);
+  const setTrash = useSetAtom(trashViewAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
 
   useLayoutEffect(() => {
@@ -48,8 +51,18 @@ function useSyncView(
     setPages(view === "pages");
     setGraph(view === "graph");
     setAssets(view === "assets" || view === "asset");
+    setTrash(view === "trash");
     setActiveNote(null);
-  }, [setActiveNote, setAssets, setGraph, setHome, setJournal, setPages, view]);
+  }, [
+    setActiveNote,
+    setAssets,
+    setGraph,
+    setHome,
+    setJournal,
+    setPages,
+    setTrash,
+    view,
+  ]);
 }
 
 function HomeRoute() {
@@ -83,6 +96,16 @@ function AssetRoute() {
   return <AssetDetailView path={_splat ?? ""} />;
 }
 
+function TrashRoute() {
+  useSyncView("trash");
+  return <TrashView />;
+}
+
+function TrashOnlyRoute() {
+  useSyncView("trash");
+  return <TrashView />;
+}
+
 function NotebookLayout() {
   return <Outlet />;
 }
@@ -101,6 +124,7 @@ function PageRoute() {
   const setPages = useSetAtom(pagesViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
   const setAssets = useSetAtom(assetsViewAtom);
+  const setTrash = useSetAtom(trashViewAtom);
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const navigate = useNavigate();
   const param = p?.trim() ?? "";
@@ -112,6 +136,7 @@ function PageRoute() {
     setPages(false);
     setGraph(false);
     setAssets(false);
+    setTrash(false);
     if (param) {
       if (isPath) setActiveNote(param);
       else setActiveNote(null);
@@ -127,6 +152,7 @@ function PageRoute() {
     setHome,
     setJournal,
     setPages,
+    setTrash,
   ]);
 
   useEffect(() => {
@@ -253,6 +279,12 @@ const assetsRoute = createRoute({
   component: AssetsRoute,
 });
 
+const trashRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "trash",
+  component: TrashRoute,
+});
+
 const assetRoute = createRoute({
   getParentRoute: () => notebookRoute,
   path: "asset/$",
@@ -274,6 +306,22 @@ const pageRoute = createRoute({
     p: typeof search.p === "string" ? search.p : undefined,
   }),
   component: PageRoute,
+});
+
+const legacyTrashRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/trash",
+  beforeLoad: async () => {
+    const notebook = await pickNotebook();
+    if (notebook) {
+      throw redirect({
+        to: "/$notebook/trash",
+        params: { notebook: notebook.id },
+        replace: true,
+      });
+    }
+  },
+  component: TrashOnlyRoute,
 });
 
 const legacyJournalRoute = createRoute({
@@ -355,10 +403,12 @@ const routeTree = rootRoute.addChildren([
     graphRoute,
     assetsRoute,
     assetRoute,
+    trashRoute,
     tagRoute,
     pageRoute,
   ]),
   legacyJournalRoute,
+  legacyTrashRoute,
   legacyPagesRoute,
   legacyGraphRoute,
   legacyPageRoute,

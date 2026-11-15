@@ -18,7 +18,10 @@ fork. The browser is a query UI; it never owns the notes.
   `#tags` live in the body.
 - **Links are file data**: `[[wikilinks]]` resolve against note titles or paths
   (`[[Journal/2023-03-29]]` works for imported graphs).
-- Deletes move files to `data/.trash/` rather than unlinking them.
+- Deletes move pages, assets and whole notebooks to `data/.trash/` rather than
+  unlinking them. A separate `data/.trash/trash.sqlite3` record database keeps
+  the original notebook/path, and entries are permanently deleted after
+  `trashRetentionDays` (default 30).
 
 ```
 data/
@@ -33,8 +36,8 @@ data/
   index/
     opalnote.sqlite3          # MnesticDB / SQLite (rebuildable)
   .trash/
-    notes/…
-    notebooks/…
+    trash.sqlite3            # recoverable entries + original paths
+    entries/<uuid>/…         # payload files, assets and notebook folders
 ```
 
 ### Synchronization
@@ -337,10 +340,11 @@ edited pages, a New page action, and a right-hand strip of outstanding todos.
 The top bar carries the omni search bar, back/forward history controls, and a
 Home button on the right.
 
-- **Left sidebar** — notebook switcher plus Home, Journals, Pages and Graph
-  navigation. The pencil action renames the current notebook folder on disk,
-  discards its index rows and reindexes every file under the new name, so it
-  warns before starting and shows elapsed reindex time. Favorites and Recent
+- **Left sidebar** — notebook switcher plus Home, Journals, Pages, Graph,
+  Assets and Trash navigation. The pencil action renames the current notebook
+  folder on disk, discards its index rows and reindexes every file under the
+  new name, so it warns before starting and shows elapsed reindex time.
+  Favorites and Recent
   are collapsible sections, collapsed by default. Journals open a dedicated
   feed of **editable journal cards** rather than a single page; the feed loads
   the newest seven pages and appends older
@@ -365,9 +369,10 @@ Home button on the right.
   (interface, titles, editor, labels/code); any Google Font can be named and
   loaded over HTTPS. **Code** selects the fenced-code syntax theme; GitHub
   Light is the default. **Keyboard** lists every workspace shortcut and lets
-  you record a replacement chord sequence. Workspace and navigation commands share
-  a leader chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or
-  `S` to focus the omni bar, `H` home, `A` all pages, `G` graph, `L`/`R`
+  you record a replacement chord sequence. **Trash** sets how many days deleted
+  files stay recoverable. Workspace and navigation commands share a leader
+  chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or `S` to focus
+  the omni bar, `H` home, `A` all pages, `G` graph, `T` trash, `L`/`R`
   sidebars, `O` settings, `M` command mode, `N` new page, or `J` today.
   Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
@@ -443,6 +448,7 @@ precedence: a data plugin with the same id is rejected and reported in Settings
 | `/<notebook>/graph` | Full-page notebook graph |
 | `/<notebook>/assets` | Asset browser |
 | `/<notebook>/asset/<path>` | Asset detail and references |
+| `/<notebook>/trash` | Global trash/bin and restore view |
 | `/<notebook>/tag/<tag>` | Pages carrying `#tag` |
 | `/<notebook>/page?p=pages/foo.md` | A page by relative path or title |
 
@@ -475,6 +481,17 @@ The index is keyed by relative path, so two notebooks may both contain
 `pages/index.md`. A secondary `note:by_notebook` index and a BM25 full-text
 index (`note:fts`) keep list and search queries fast.
 
+Trash metadata is deliberately kept outside that disposable index:
+
+```
+data/.trash/trash.sqlite3
+trash_entry { id => notebook_id, notebook_name, original_path, kind,
+              title, size, deleted_at, trashed_path, mime, preview }
+```
+
+`trashed_path` points into `data/.trash/entries/<uuid>/`, so a restore can move
+the payload back to `original_path` (or a numeric suffix when it is occupied).
+
 Tasks are derived from markdown checkboxes and Logseq task keywords during sync.
 Writes touching a note plus its tags/links/tasks use MnesticDB's `multi_transaction`,
 and every filesystem mutation holds a store-wide lock so scans and sends do not
@@ -501,6 +518,7 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
 | GET    | `/notebooks/{id}/assets`                     | Paged/filtered asset list                      |
 | GET    | `/notebooks/{id}/assets/{*path}`             | Asset bytes with MIME type                     |
+| DELETE | `/notebooks/{id}/assets/{*path}`             | Move the asset to the trash                    |
 | GET    | `/notebooks/{id}/asset?path=`                | Asset metadata + page references               |
 | PATCH  | `/notebooks/{id}/asset`                      | `{path, name}` — rename and update references  |
 | GET    | `/notebooks/{id}/plugins`                    | Journal plugin results (QuickJS + Datalog)     |
@@ -514,7 +532,12 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/tags`                       | Tag counts                                     |
 | GET    | `/notebooks/{id}/notes/{*path}`              | Note + tags + links + backlinks                |
 | PATCH  | `/notebooks/{id}/notes/{*path}`              | `{title?, content?, tags?}` — may rename file  |
-| DELETE | `/notebooks/{id}/notes/{*path}`              | Move the file to `.trash/`                     |
+| DELETE | `/notebooks/{id}/notes/{*path}`              | Move the file to the trash                     |
+| GET    | `/trash`                                     | `?limit=&offset=&q=&kind=&sort=&dir=`          |
+| GET    | `/trash/{id}`                                | Trash metadata + text preview                  |
+| GET    | `/trash/{id}/content`                        | Trash payload bytes                            |
+| POST   | `/trash/{id}/restore`                        | Restore to the original path (or a suffix)     |
+| DELETE | `/trash/{id}`                                | Permanently delete one trash entry             |
 | GET    | `/stats`                                     | Global counts                                  |
 | POST   | `/reindex`                                   | Force a full filesystem → index rebuild        |
 | POST   | `/query`                                     | Ad-hoc read-only Datalog                       |
@@ -575,7 +598,8 @@ src/
   settings.rs        sparse settings.json store
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
-    files.rs         folder layout, atomic writes, scanning, trash
+    files.rs         folder layout, atomic writes, scanning, trash paths
+    trash.rs         separate trash metadata database
     markdown.rs      wikilinks, tags, frontmatter, summaries
     queries.rs       every CozoScript statement
     model.rs         API models

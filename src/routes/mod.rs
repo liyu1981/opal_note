@@ -5,6 +5,7 @@ pub mod notes;
 pub mod plugins;
 pub mod query;
 pub mod settings;
+pub mod trash;
 
 use anyhow::anyhow;
 use axum::extract::DefaultBodyLimit;
@@ -59,7 +60,10 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/notebooks/{id}/graph", get(notes::graph))
         .route("/notebooks/{id}/plugins", get(plugins::journal))
         .route("/notebooks/{id}/assets", get(assets::list))
-        .route("/notebooks/{id}/assets/{*path}", get(assets::content))
+        .route(
+            "/notebooks/{id}/assets/{*path}",
+            get(assets::content).delete(assets::delete),
+        )
         .route(
             "/notebooks/{id}/asset",
             get(assets::info).patch(assets::rename),
@@ -67,6 +71,10 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/notebooks/{id}/search", get(notes::search))
         .route("/notebooks/{id}/journals", get(notes::journals))
         .route("/notebooks/{id}/tags", get(notebooks::tags))
+        .route("/trash", get(trash::list))
+        .route("/trash/{id}", get(trash::get).delete(trash::delete))
+        .route("/trash/{id}/content", get(trash::content))
+        .route("/trash/{id}/restore", post(trash::restore))
         .route(
             "/notebooks/{id}/notes/{*path}",
             get(notes::get).patch(notes::update).delete(notes::delete),

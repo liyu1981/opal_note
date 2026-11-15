@@ -45,6 +45,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     defaultBindings: [],
   },
   {
+    id: "nav.trash",
+    label: "Trash",
+    description: "Browse and restore deleted pages, assets and notebooks",
+    group: "Navigation",
+    defaultBindings: ["mod+/ t"],
+  },
+  {
     id: "nav.back",
     label: "Back",
     description: "Go back in browser history",

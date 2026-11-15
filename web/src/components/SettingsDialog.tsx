@@ -11,8 +11,10 @@ import { api } from "../api/client";
 import type { PluginList } from "../api/types";
 import { CODE_THEMES } from "../lib/codeThemes";
 import {
+  DEFAULT_TRASH_RETENTION_DAYS,
   FONT_PRESETS,
   FONT_ROLES,
+  MAX_TRASH_RETENTION_DAYS,
   applySettings,
   settingsAtom,
   settingsStatusAtom,
@@ -50,6 +52,7 @@ type Tab =
   | "fonts"
   | "code"
   | "shortcuts"
+  | "trash"
   | "connection"
   | "index"
   | "plugins"
@@ -71,6 +74,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "shortcuts",
     label: "Keyboard",
     description: "Review and customize workspace keybindings.",
+  },
+  {
+    id: "trash",
+    label: "Trash",
+    description: "How long deleted files stay recoverable.",
   },
   {
     id: "connection",
@@ -219,6 +227,14 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateTrashRetention(days: number) {
+    const next: AppSettings = { ...draft, trashRetentionDays: days };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   function resetKeybindings() {
     const next: AppSettings = { ...draft, keybindings: {} };
     setDraft(next);
@@ -337,7 +353,10 @@ export function SettingsDialog() {
               </p>
             </div>
             {fontStatus !== "idle" &&
-              (tab === "fonts" || tab === "code" || tab === "shortcuts") && (
+              (tab === "fonts" ||
+                tab === "code" ||
+                tab === "shortcuts" ||
+                tab === "trash") && (
               <span
                 className={`mt-1 font-mono text-[14px] ${
                   fontStatus === "error" ? "text-danger" : "text-faint"
@@ -384,6 +403,13 @@ export function SettingsDialog() {
                 settings={draft}
                 onChange={updateKeybinding}
                 onReset={resetKeybindings}
+                error={fontError}
+              />
+            )}
+            {tab === "trash" && (
+              <TrashTab
+                settings={draft}
+                onChange={updateTrashRetention}
                 error={fontError}
               />
             )}
@@ -587,6 +613,90 @@ function FontsTab({
         </button>
       </div>
     </div>
+  );
+}
+
+function TrashTab({
+  settings,
+  onChange,
+  error,
+}: {
+  settings: AppSettings;
+  onChange: (days: number) => void;
+  error: string | null;
+}) {
+  const [value, setValue] = useState(String(settings.trashRetentionDays));
+
+  useEffect(() => {
+    setValue(String(settings.trashRetentionDays));
+  }, [settings.trashRetentionDays]);
+
+  function commit(raw: string) {
+    const parsed = Number.parseInt(raw, 10);
+    const days = Number.isFinite(parsed)
+      ? Math.min(MAX_TRASH_RETENTION_DAYS, Math.max(1, parsed))
+      : DEFAULT_TRASH_RETENTION_DAYS;
+    setValue(String(days));
+    if (days !== settings.trashRetentionDays) onChange(days);
+  }
+
+  return (
+    <section className="max-w-2xl space-y-5">
+      <label className="block">
+        <span className="font-sans text-[16px] font-medium text-ink">
+          Keep deleted files for
+        </span>
+        <span className="mt-1 flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            max={MAX_TRASH_RETENTION_DAYS}
+            value={value}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setValue(raw);
+              const parsed = Number.parseInt(raw, 10);
+              if (
+                Number.isFinite(parsed) &&
+                parsed >= 1 &&
+                parsed <= MAX_TRASH_RETENTION_DAYS
+              ) {
+                onChange(parsed);
+              }
+            }}
+            onBlur={(event) => commit(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commit(value);
+                event.currentTarget.blur();
+              }
+            }}
+            className="w-24 rounded-md border border-line bg-white px-2.5 py-1.5 font-mono text-[14px] text-ink outline-none focus:border-accent"
+            aria-label="Trash retention days"
+          />
+          <span className="font-mono text-[14px] text-muted">days</span>
+        </span>
+      </label>
+
+      <div className="rounded-lg border border-line bg-panel/40 px-4 py-3 font-mono text-[14px] leading-relaxed text-ink-soft">
+        <p>
+          Deleted pages, journals, assets and whole notebooks move to the trash.
+          Their index rows are removed immediately; the files stay recoverable
+          until this retention period ends, then they are permanently deleted.
+        </p>
+        <p className="mt-2 text-muted">
+          Restoring puts a file back at its original path. If that path is
+          occupied, the server appends a number instead of overwriting.
+        </p>
+      </div>
+
+      {error && (
+        <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 

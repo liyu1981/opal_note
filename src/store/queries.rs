@@ -294,3 +294,44 @@ pub const COUNT_TAGS: &str = "?[count(tag)] := *note_tag{tag}";
 pub const COUNT_LINKS: &str = "?[count(from_note)] := *link{from_note}";
 
 pub const PING: &str = "?[ok] := ok = 1";
+
+// ---------------------------------------------------------------------------
+// Trash (separate metadata database under data/.trash)
+// ---------------------------------------------------------------------------
+
+pub const TRASH_CREATE: &str = r#":create trash_entry {
+    id: String
+    =>
+    notebook_id: String,
+    notebook_name: String,
+    original_path: String,
+    kind: String,
+    title: String,
+    size: Int,
+    deleted_at: Float,
+    trashed_path: String,
+    mime: String,
+    preview: String
+}"#;
+
+pub const TRASH_PUT: &str = r#"
+?[id, notebook_id, notebook_name, original_path, kind, title, size, deleted_at, trashed_path, mime, preview] <-
+    [[$id, $notebook_id, $notebook_name, $original_path, $kind, $title, $size, $deleted_at, $trashed_path, $mime, $preview]]
+:put trash_entry {id => notebook_id, notebook_name, original_path, kind, title, size, deleted_at, trashed_path, mime, preview}
+"#;
+
+pub const TRASH_LIST: &str = r#"
+?[id, notebook_id, notebook_name, original_path, kind, title, size, deleted_at, trashed_path, mime, preview] :=
+    *trash_entry{id, notebook_id, notebook_name, original_path, kind, title, size, deleted_at, trashed_path, mime, preview}
+"#;
+
+pub const TRASH_GET: &str = r#"
+?[id, notebook_id, notebook_name, original_path, kind, title, size, deleted_at, trashed_path, mime, preview] :=
+    *trash_entry{id, notebook_id, notebook_name, original_path, kind, title, size, deleted_at, trashed_path, mime, preview},
+    id = $id
+"#;
+
+pub const TRASH_DELETE: &str = r#"
+?[id] := *trash_entry{id}, id = $id
+:rm trash_entry {id}
+"#;

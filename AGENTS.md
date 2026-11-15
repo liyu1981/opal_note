@@ -86,6 +86,7 @@ src/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
     files.rs       folder layout, atomic writes, scanning, path safety, trash
     queries.rs     CozoScript statements (single source of truth)
+    trash.rs       separate trash metadata database + retention records
     markdown.rs    wikilinks, tags, frontmatter, summaries + unit tests
     model.rs       API-facing serde models
 plugins/builtin/ native plugin folders embedded with rust-embed
@@ -120,8 +121,14 @@ web/
   use the `*_locked` internals.
 - Note paths must resolve inside `pages/`/`journals/` via
   `files::resolve_note_path`; reject traversal and escapes.
-- Notes are titled by filename stem. Renames move files. Deletes go to
-  `data/.trash/`.
+- Notes are titled by filename stem. Renames move files. Deletes move pages,
+  assets and whole notebooks to `data/.trash/entries/<uuid>/` and record the
+  original path in the separate `data/.trash/trash.sqlite3` database. Remove
+  the note rows in the same operation; restore reindexes the affected notebook.
+- Trash retention is `trashRetentionDays` in sparse settings (default 30,
+  clamped 1–3650) and is applied to `deleted_at`, not stored per entry. The
+  hourly purge task plus `PUT /settings` call `Store::purge_expired_trash`;
+  restoring a conflicting path auto-suffixes instead of overwriting.
 - Explicit tags live in YAML frontmatter (`tags:`), inline `#tags` are derived
   from the body. Preserve other frontmatter keys when rewriting.
 - Legacy `Pages/` and `Journal/` folders are migrated to lowercase during sync.
@@ -297,7 +304,13 @@ web/
 - An orphan page is an empty body with zero resolved backlinks. The Clean
   action loads `GET /notebooks/{id}/orphans`, shows a custom confirmation
   dialog and deletes selected files through the normal note DELETE route (so
-  they land in `data/.trash/`). Do not bypass the trash path.
+  they land in the trash). Do not bypass the trash path.
+- `TrashView` is the global `/<notebook>/trash` bin (also the bare `/trash`
+  fallback when no notebook exists, and `nav.trash` in the command
+  palette/sidebar). It lists pages, journals, assets and notebooks, previews
+  note text or image assets, restores through `POST /trash/{id}/restore` and
+  permanently deletes through `DELETE /trash/{id}`. Trash is data-dir-wide, not
+  notebook-scoped, so deleting the last notebook must not strand its entry.
 - The UI follows the Square design system with a muted greige newsprint canvas
   (primary `#3B82F6`, secondary `#8B5CF6`, success/warning/danger tokens,
   hairline borders, 4px controls and near-square surfaces). Page cards and the
@@ -357,7 +370,7 @@ GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
 GET /api/notebooks/{notebook}/graph
 GET /api/notebooks/{notebook}/assets?limit=&offset=&q=&kind=&sort=&dir=
-GET /api/notebooks/{notebook}/assets/{*path}
+GET|DELETE /api/notebooks/{notebook}/assets/{*path}
 GET /api/notebooks/{notebook}/asset?path=
 PATCH /api/notebooks/{notebook}/asset
 GET /api/notebooks/{notebook}/plugins
@@ -365,6 +378,11 @@ POST /api/notebooks/import
 GET /api/plugins
 POST /api/plugins/reload
 GET|PUT /api/settings
+GET /api/trash?limit=&offset=&q=&kind=&sort=&dir=
+GET /api/trash/{id}
+GET /api/trash/{id}/content
+POST /api/trash/{id}/restore
+DELETE /api/trash/{id}
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.

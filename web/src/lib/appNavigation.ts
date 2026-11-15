@@ -10,6 +10,7 @@ export type AppTarget =
   | { view: "graph" }
   | { view: "assets" }
   | { view: "asset"; path: string }
+  | { view: "trash" }
   | { view: "note"; noteId: string }
   | { view: "tag"; tag: string };
 
@@ -93,6 +94,17 @@ export function useAppNavigate() {
           });
         } else {
           void navigate({ to: "/journal", replace });
+        }
+        break;
+      case "trash":
+        if (notebook) {
+          void navigate({
+            to: "/$notebook/trash",
+            params: { notebook },
+            replace,
+          });
+        } else {
+          void navigate({ to: "/trash", replace });
         }
         break;
       case "asset":

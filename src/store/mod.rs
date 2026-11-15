@@ -8,11 +8,12 @@ pub mod files;
 pub mod markdown;
 pub mod model;
 mod queries;
+mod trash;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -26,7 +27,9 @@ use self::markdown::{
 use self::model::{
     AssetEntry, AssetInfo, AssetList, AssetReference, BacklinkRef, GraphData, GraphEdge, GraphNode,
     JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList, PageOverview, Stats, TagCount,
+    TrashDetail, TrashEntry, TrashList, TrashRestoreResult,
 };
+use self::trash::{TrashDb, TrashRecord};
 
 const QUERY_MEM_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 const SUMMARY_CHARS: usize = 220;
@@ -195,6 +198,7 @@ impl NoteSection {
 
 pub struct Store {
     db: DbInstance,
+    trash: TrashDb,
     data_dir: PathBuf,
     notebooks_dir: PathBuf,
     fs_lock: Mutex<()>,
@@ -294,6 +298,16 @@ pub struct AssetListOptions<'a> {
     pub direction: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TrashListOptions<'a> {
+    pub limit: usize,
+    pub offset: usize,
+    pub query: Option<&'a str>,
+    pub kind: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub direction: Option<&'a str>,
+}
+
 impl Store {
     pub fn open(data_dir: &Path, default_query_timeout_secs: f64) -> Result<Self> {
         let notebooks_dir = data_dir.join("notebooks");
@@ -314,9 +328,11 @@ impl Store {
 
         let db = DbInstance::new("sqlite", &path, "")
             .map_err(|err| anyhow!("opening MnesticDB at {}: {err}", path.display()))?;
+        let trash = TrashDb::open(data_dir)?;
 
         let store = Self {
             db,
+            trash,
             data_dir: data_dir.to_path_buf(),
             notebooks_dir,
             fs_lock: Mutex::new(()),
@@ -801,6 +817,14 @@ impl Store {
             }
             fs::rename(&old_dir, &new_dir)
                 .with_context(|| format!("renaming notebook `{id}` to `{new_id}`"))?;
+            if let Err(err) = self.trash.rename_notebook(id, &new_id) {
+                tracing::warn!(
+                    from = id,
+                    to = new_id,
+                    error = %err,
+                    "failed to update trash records after notebook rename"
+                );
+            }
             // The index is keyed by notebook id; drop the old rows and let the
             // next sync read the (unchanged) files under the new id.
             self.delete_notebook_rows_locked(id)?;
@@ -829,9 +853,78 @@ impl Store {
         if !dir.is_dir() {
             return Ok(false);
         }
-        files::trash_notebook(&self.data_dir, id, &dir)?;
+        let size = files::path_size(&dir).unwrap_or(0).min(i64::MAX as u64) as i64;
+        let entry_id = uuid::Uuid::new_v4().to_string();
+        let dest_dir = self.trash.entries_dir().join(&entry_id);
+        fs::create_dir_all(&dest_dir)?;
+        let dest = dest_dir.join(files::sanitize_name(id, "Notebook"));
+        fs::rename(&dir, &dest)?;
+
+        let record = TrashRecord {
+            id: entry_id.clone(),
+            notebook_id: id.to_string(),
+            notebook_name: id.to_string(),
+            original_path: id.to_string(),
+            kind: "notebook".to_string(),
+            title: id.to_string(),
+            size,
+            deleted_at: now_secs(),
+            trashed_path: files::relative_path(&self.data_dir, &dest),
+            mime: "inode/directory".to_string(),
+            preview: String::new(),
+        };
+        if let Err(err) = self.trash.put(&record) {
+            let _ = fs::rename(&dest, &dir);
+            let _ = fs::remove_dir_all(&dest_dir);
+            return Err(err);
+        }
         self.delete_notebook_rows_locked(id)?;
         Ok(true)
+    }
+
+    fn stash_file(
+        &self,
+        notebook_id: &str,
+        original_path: &str,
+        kind: &str,
+        title: String,
+        mime: &str,
+        preview: Option<String>,
+        absolute: &Path,
+    ) -> Result<()> {
+        let entry_id = uuid::Uuid::new_v4().to_string();
+        let dest_dir = self.trash.entries_dir().join(&entry_id);
+        fs::create_dir_all(&dest_dir)?;
+        let filename = absolute
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".to_string());
+        let dest = dest_dir.join(filename);
+        let size = fs::metadata(absolute)
+            .with_context(|| format!("reading {}", absolute.display()))?
+            .len()
+            .min(i64::MAX as u64) as i64;
+        fs::rename(absolute, &dest)?;
+
+        let record = TrashRecord {
+            id: entry_id.clone(),
+            notebook_id: notebook_id.to_string(),
+            notebook_name: notebook_id.to_string(),
+            original_path: original_path.to_string(),
+            kind: kind.to_string(),
+            title,
+            size,
+            deleted_at: now_secs(),
+            trashed_path: files::relative_path(&self.data_dir, &dest),
+            mime: mime.to_string(),
+            preview: preview.unwrap_or_default(),
+        };
+        if let Err(err) = self.trash.put(&record) {
+            let _ = fs::rename(&dest, absolute);
+            let _ = fs::remove_dir_all(&dest_dir);
+            return Err(err);
+        }
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -1637,9 +1730,329 @@ impl Store {
             Err(_) => return Ok(false),
         };
 
-        files::trash_file(&self.data_dir, notebook_id, path, &absolute)?;
+        let raw = files::read_text(&absolute).unwrap_or_default();
+        let parsed = parse_page(&raw);
+        let title = files::title_from_path(Path::new(path));
+        let kind = if path.starts_with(&format!("{}/", files::JOURNAL_DIR)) {
+            "journal"
+        } else {
+            "page"
+        };
+        self.stash_file(
+            notebook_id,
+            path,
+            kind,
+            title,
+            "text/markdown",
+            Some(summarize(&parsed.body, SUMMARY_CHARS)),
+            &absolute,
+        )?;
         self.sync_notebook_locked(notebook_id, false)?;
         Ok(true)
+    }
+
+    pub fn delete_asset(&self, notebook_id: &str, path: &str) -> Result<bool> {
+        let _guard = self.lock_fs();
+        self.sync_all_locked(false)?;
+
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(false);
+        }
+        let absolute = match files::resolve_asset_path(&notebook, path) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(err) => return Err(err.into()),
+        };
+        let title = absolute
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string());
+        let mime = files::asset_mime(&absolute);
+        let original_path = format!("{}/{}", files::ASSET_DIR, path);
+        self.stash_file(
+            notebook_id,
+            &original_path,
+            "asset",
+            title,
+            &mime,
+            None,
+            &absolute,
+        )?;
+        Ok(true)
+    }
+
+    pub fn list_trash(
+        &self,
+        retention_days: u64,
+        options: TrashListOptions<'_>,
+    ) -> Result<TrashList> {
+        let TrashListOptions {
+            limit,
+            offset,
+            query,
+            kind,
+            sort,
+            direction,
+        } = options;
+        let needle = query.unwrap_or_default().trim().to_lowercase();
+        let kind = kind.unwrap_or_default().trim().to_lowercase();
+
+        let mut records = self.trash.list()?;
+        records.retain(|record| self.trash_payload(record).is_ok_and(|path| path.exists()));
+        if !needle.is_empty() {
+            records.retain(|record| {
+                record.title.to_lowercase().contains(&needle)
+                    || record.original_path.to_lowercase().contains(&needle)
+                    || record.notebook_name.to_lowercase().contains(&needle)
+            });
+        }
+        if !kind.is_empty() && kind != "all" {
+            records.retain(|record| record.kind == kind);
+        }
+
+        let sort = sort.unwrap_or_default();
+        match sort {
+            "title" => records
+                .sort_by(|left, right| left.title.to_lowercase().cmp(&right.title.to_lowercase())),
+            "size" => records.sort_by_key(|record| record.size),
+            "kind" => records.sort_by(|left, right| left.kind.cmp(&right.kind)),
+            "notebook" => records.sort_by(|left, right| {
+                left.notebook_name
+                    .to_lowercase()
+                    .cmp(&right.notebook_name.to_lowercase())
+            }),
+            _ => records.sort_by(|left, right| {
+                left.deleted_at
+                    .partial_cmp(&right.deleted_at)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }),
+        }
+        let descending = match direction.unwrap_or_default() {
+            "asc" => false,
+            "desc" => true,
+            _ => sort.is_empty() || sort == "deleted_at",
+        };
+        if descending {
+            records.reverse();
+        }
+
+        let total = records.len() as i64;
+        let entries = records
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .map(|record| self.trash_entry_model(record, retention_days))
+            .collect();
+        Ok(TrashList {
+            entries,
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    pub fn get_trash(&self, id: &str, retention_days: u64) -> Result<Option<TrashDetail>> {
+        let Some(record) = self.trash.get(id)? else {
+            return Ok(None);
+        };
+        let path = self.trash_payload(&record)?;
+        let (content, truncated) = match record.kind.as_str() {
+            "page" | "journal" => match fs::read_to_string(&path) {
+                Ok(raw) => {
+                    let body = parse_page(&raw).body;
+                    let (text, truncated) = truncate_detail(&body, 8_000);
+                    (Some(text), truncated)
+                }
+                Err(_) => (None, false),
+            },
+            "asset" if record.mime.starts_with("text/") => match fs::read(&path) {
+                Ok(bytes) => {
+                    let raw = String::from_utf8_lossy(&bytes).into_owned();
+                    let (text, truncated) = truncate_detail(&raw, 8_000);
+                    (Some(text), truncated)
+                }
+                Err(_) => (None, false),
+            },
+            _ => (None, false),
+        };
+        Ok(Some(TrashDetail {
+            entry: self.trash_entry_model(&record, retention_days),
+            content,
+            truncated,
+        }))
+    }
+
+    pub fn read_trash_content(&self, id: &str) -> Result<Option<(Vec<u8>, String)>> {
+        let Some(record) = self.trash.get(id)? else {
+            return Ok(None);
+        };
+        let path = self.trash_payload(&record)?;
+        if !path.is_file() {
+            return Ok(None);
+        }
+        Ok(Some((fs::read(path)?, record.mime)))
+    }
+
+    pub fn restore_trash(&self, id: &str) -> Result<Option<TrashRestoreResult>> {
+        let _guard = self.lock_fs();
+        let Some(record) = self.trash.get(id)? else {
+            return Ok(None);
+        };
+        let payload = self.trash_payload(&record)?;
+        if !payload.exists() {
+            self.trash.remove(id)?;
+            self.cleanup_trash_dir(id);
+            return Ok(None);
+        }
+
+        let result = if record.kind == "notebook" {
+            self.restore_trash_notebook(&record, &payload)?
+        } else {
+            self.restore_trash_file(&record, &payload)?
+        };
+        self.trash.remove(id)?;
+        self.cleanup_trash_dir(id);
+        Ok(Some(result))
+    }
+
+    pub fn delete_trash_entry(&self, id: &str) -> Result<bool> {
+        let _guard = self.lock_fs();
+        let Some(record) = self.trash.get(id)? else {
+            return Ok(false);
+        };
+        let payload = self.trash_payload(&record)?;
+        remove_trash_payload(&payload)?;
+        self.trash.remove(id)?;
+        self.cleanup_trash_dir(id);
+        Ok(true)
+    }
+
+    pub fn purge_expired_trash(&self, retention_days: u64) -> Result<usize> {
+        let _guard = self.lock_fs();
+        let cutoff = now_secs() - retention_days as f64 * 86_400.0;
+        let mut removed = 0usize;
+        for record in self.trash.list()? {
+            let payload = match self.trash_payload(&record) {
+                Ok(path) => path,
+                Err(err) => {
+                    tracing::warn!(entry = %record.id, error = %err, "ignoring trash entry with invalid path");
+                    continue;
+                }
+            };
+            if record.deleted_at > cutoff && payload.exists() {
+                continue;
+            }
+            if payload.exists() {
+                if let Err(err) = remove_trash_payload(&payload) {
+                    tracing::warn!(entry = %record.id, error = %err, "failed to purge trash payload");
+                    continue;
+                }
+            }
+            if let Err(err) = self.trash.remove(&record.id) {
+                tracing::warn!(entry = %record.id, error = %err, "failed to remove trash record");
+                continue;
+            }
+            self.cleanup_trash_dir(&record.id);
+            removed += 1;
+        }
+        Ok(removed)
+    }
+
+    fn trash_entry_model(&self, record: &TrashRecord, retention_days: u64) -> TrashEntry {
+        TrashEntry {
+            id: record.id.clone(),
+            notebook_id: record.notebook_id.clone(),
+            notebook_name: record.notebook_name.clone(),
+            original_path: record.original_path.clone(),
+            kind: record.kind.clone(),
+            title: record.title.clone(),
+            size: record.size,
+            deleted_at: fmt_ts(record.deleted_at),
+            expires_at: fmt_ts(record.deleted_at + retention_days as f64 * 86_400.0),
+            preview: record.preview.clone(),
+            mime: record.mime.clone(),
+        }
+    }
+
+    fn trash_payload(&self, record: &TrashRecord) -> Result<PathBuf> {
+        let rel = Path::new(&record.trashed_path);
+        if rel.is_absolute()
+            || rel
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            bail!("invalid trash path");
+        }
+        let path = self.data_dir.join(rel);
+        if !path.starts_with(self.data_dir.join(".trash")) {
+            bail!("trash path escapes the trash directory");
+        }
+        Ok(path)
+    }
+
+    fn cleanup_trash_dir(&self, id: &str) {
+        if id.is_empty() || id.contains('/') || id.contains('\\') || id == "." || id == ".." {
+            return;
+        }
+        let dir = self.trash.entries_dir().join(id);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn restore_trash_notebook(
+        &self,
+        record: &TrashRecord,
+        payload: &Path,
+    ) -> Result<TrashRestoreResult> {
+        let target = files::unique_dir_path(&self.notebooks_dir, &record.notebook_id);
+        fs::rename(payload, &target)?;
+        let new_id = target
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| record.notebook_id.clone());
+        self.sync_notebook_locked(&new_id, true)?;
+        Ok(TrashRestoreResult {
+            id: record.id.clone(),
+            notebook_id: new_id.clone(),
+            notebook_name: new_id.clone(),
+            kind: "notebook".to_string(),
+            restored_path: new_id,
+        })
+    }
+
+    fn restore_trash_file(
+        &self,
+        record: &TrashRecord,
+        payload: &Path,
+    ) -> Result<TrashRestoreResult> {
+        let relative = restore_relative_path(record)?;
+        let notebook = self.notebook_dir(&record.notebook_id)?;
+        let created = !notebook.is_dir();
+        if created {
+            files::ensure_layout(&notebook)?;
+        }
+        let parent_rel = relative.parent().unwrap_or_else(|| Path::new(""));
+        let parent = notebook.join(parent_rel);
+        fs::create_dir_all(&parent)?;
+        let stem = relative
+            .file_stem()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "restored".to_string());
+        let ext = relative
+            .extension()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let target = files::unique_file_path(&parent, &stem, &ext);
+        fs::rename(payload, &target)?;
+        let restored_path = files::relative_path(&notebook, &target);
+        self.sync_notebook_locked(&record.notebook_id, created)?;
+        Ok(TrashRestoreResult {
+            id: record.id.clone(),
+            notebook_id: record.notebook_id.clone(),
+            notebook_name: record.notebook_name.clone(),
+            kind: record.kind.clone(),
+            restored_path,
+        })
     }
 
     /// Journal pages ordered by path descending (newest date first).
@@ -1867,6 +2280,60 @@ fn fmt_ts(ts: f64) -> String {
     DateTime::<Utc>::from_timestamp_millis((ts * 1000.0).round() as i64)
         .unwrap_or_default()
         .to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+fn now_secs() -> f64 {
+    Utc::now().timestamp_millis() as f64 / 1000.0
+}
+
+fn truncate_detail(text: &str, limit: usize) -> (String, bool) {
+    let mut out = String::new();
+    let mut truncated = false;
+    for (index, ch) in text.chars().enumerate() {
+        if index >= limit {
+            truncated = true;
+            break;
+        }
+        out.push(ch);
+    }
+    (out, truncated)
+}
+
+fn restore_relative_path(record: &TrashRecord) -> Result<PathBuf> {
+    let allowed: &[&str] = if record.kind == "asset" {
+        &[files::ASSET_DIR]
+    } else {
+        &[files::PAGE_DIR, files::JOURNAL_DIR]
+    };
+    let path = Path::new(&record.original_path);
+    let mut components = path.components();
+    let Some(Component::Normal(first)) = components.next() else {
+        bail!("invalid original path");
+    };
+    let Some(first) = first.to_str() else {
+        bail!("invalid original path");
+    };
+    if !allowed.contains(&first) {
+        bail!("invalid original path");
+    }
+    if components.any(|component| !matches!(component, Component::Normal(_))) {
+        bail!("invalid original path");
+    }
+    Ok(path.to_path_buf())
+}
+
+fn remove_trash_payload(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2252,14 +2719,215 @@ mod tests {
     }
 
     #[test]
-    fn deletes_notebook_to_trash() {
+    fn deletes_notebook_to_trash_and_restores_it() {
         let (dir, store) = store();
         let notebook = store.create_notebook("Gone", "").unwrap().unwrap();
-        store.create_note(&notebook.id, "n", "body", &[]).unwrap();
+        store
+            .create_note(&notebook.id, "n", "body #tag", &[])
+            .unwrap();
         assert!(store.delete_notebook(&notebook.id).unwrap());
         assert!(!notebook_path(dir.path(), "Gone").exists());
-        assert!(dir.path().join(".trash/notebooks").is_dir());
+        assert!(dir.path().join(".trash/entries").is_dir());
         assert_eq!(store.stats().unwrap().notes, 0);
+
+        let trash = store
+            .list_trash(
+                30,
+                TrashListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: None,
+                    kind: None,
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(trash.total, 1);
+        assert_eq!(trash.entries[0].kind, "notebook");
+        assert_eq!(trash.entries[0].original_path, "Gone");
+
+        let restored = store.restore_trash(&trash.entries[0].id).unwrap().unwrap();
+        assert_eq!(restored.kind, "notebook");
+        assert_eq!(restored.restored_path, "Gone");
+        assert!(notebook_path(dir.path(), "Gone").is_dir());
+        assert_eq!(store.stats().unwrap().notes, 1);
+        assert_eq!(store.list_tags("Gone").unwrap()[0].tag, "tag");
+    }
+
+    #[test]
+    fn deleted_notes_are_indexed_out_and_restorable() {
+        let (dir, store) = store();
+        let notebook = store.create_notebook("Bin", "").unwrap().unwrap();
+        let note = store
+            .create_note(&notebook.id, "Keep me", "body #alpha", &["explicit".into()])
+            .unwrap()
+            .unwrap();
+        assert!(store.delete_note(&notebook.id, &note.id).unwrap());
+        assert!(store.get_note(&notebook.id, &note.id).unwrap().is_none());
+
+        let trash = store
+            .list_trash(
+                30,
+                TrashListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: Some("keep"),
+                    kind: Some("page"),
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(trash.total, 1);
+        assert_eq!(trash.entries[0].kind, "page");
+        assert_eq!(trash.entries[0].original_path, "pages/Keep me.md");
+        assert!(trash.entries[0].preview.contains("alpha"));
+        let detail = store.get_trash(&trash.entries[0].id, 30).unwrap().unwrap();
+        assert!(detail.content.unwrap().contains("alpha"));
+
+        let restored = store.restore_trash(&trash.entries[0].id).unwrap().unwrap();
+        assert_eq!(restored.restored_path, "pages/Keep me.md");
+        let note = store.get_note(&notebook.id, &note.id).unwrap().unwrap();
+        assert_eq!(note.explicit_tags, vec!["explicit"]);
+        assert!(dir.path().join("notebooks/Bin/pages/Keep me.md").is_file());
+    }
+
+    #[test]
+    fn restoring_twice_resolves_name_conflicts() {
+        let (dir, store) = store();
+        let notebook = store.create_notebook("Conflict", "").unwrap().unwrap();
+        store.create_note(&notebook.id, "Same", "one", &[]).unwrap();
+        let first = store
+            .list_notes(&notebook.id, 20, 0)
+            .unwrap()
+            .pop()
+            .unwrap();
+        store.delete_note(&notebook.id, &first.id).unwrap();
+        store.create_note(&notebook.id, "Same", "two", &[]).unwrap();
+        let second = store
+            .list_notes(&notebook.id, 20, 0)
+            .unwrap()
+            .pop()
+            .unwrap();
+        store.delete_note(&notebook.id, &second.id).unwrap();
+
+        let trash = store
+            .list_trash(
+                30,
+                TrashListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: None,
+                    kind: Some("page"),
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(trash.total, 2);
+        let first_restore = store.restore_trash(&trash.entries[0].id).unwrap().unwrap();
+        let second_restore = store.restore_trash(&trash.entries[1].id).unwrap().unwrap();
+        let mut paths = vec![first_restore.restored_path, second_restore.restored_path];
+        paths.sort();
+        assert_eq!(paths, vec!["pages/Same 2.md", "pages/Same.md"]);
+        assert!(dir
+            .path()
+            .join("notebooks/Conflict/pages/Same.md")
+            .is_file());
+        assert!(dir
+            .path()
+            .join("notebooks/Conflict/pages/Same 2.md")
+            .is_file());
+    }
+
+    #[test]
+    fn notebook_rename_updates_trash_records() {
+        let (dir, store) = store();
+        let notebook = store.create_notebook("Before", "").unwrap().unwrap();
+        let note = store
+            .create_note(&notebook.id, "Page", "body", &[])
+            .unwrap()
+            .unwrap();
+        store.delete_note(&notebook.id, &note.id).unwrap();
+        store.update_notebook("Before", "After", "").unwrap();
+
+        let trash = store
+            .list_trash(
+                30,
+                TrashListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: None,
+                    kind: Some("page"),
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(trash.entries[0].notebook_id, "After");
+        let restored = store.restore_trash(&trash.entries[0].id).unwrap().unwrap();
+        assert_eq!(restored.notebook_id, "After");
+        assert!(dir.path().join("notebooks/After/pages/Page.md").is_file());
+    }
+
+    #[test]
+    fn deleted_assets_are_trashed_and_restored() {
+        let (dir, store) = store();
+        store.create_notebook("Assets", "").unwrap().unwrap();
+        let assets = dir.path().join("notebooks/Assets/assets/nested/photo.png");
+        fs::create_dir_all(assets.parent().unwrap()).unwrap();
+        fs::write(&assets, b"not really a png").unwrap();
+
+        assert!(store.delete_asset("Assets", "nested/photo.png").unwrap());
+        assert!(!assets.exists());
+        let trash = store
+            .list_trash(
+                30,
+                TrashListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: None,
+                    kind: Some("asset"),
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(trash.total, 1);
+        assert_eq!(trash.entries[0].original_path, "assets/nested/photo.png");
+        let restored = store.restore_trash(&trash.entries[0].id).unwrap().unwrap();
+        assert_eq!(restored.restored_path, "assets/nested/photo.png");
+        assert!(assets.is_file());
+    }
+
+    #[test]
+    fn purges_expired_trash() {
+        let (dir, store) = store();
+        let notebook = store.create_notebook("Purge", "").unwrap().unwrap();
+        let note = store
+            .create_note(&notebook.id, "Old", "body", &[])
+            .unwrap()
+            .unwrap();
+        store.delete_note(&notebook.id, &note.id).unwrap();
+        assert!(dir.path().join(".trash/entries").is_dir());
+
+        assert_eq!(store.purge_expired_trash(0).unwrap(), 1);
+        assert!(store
+            .list_trash(
+                30,
+                TrashListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: None,
+                    kind: None,
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap()
+            .entries
+            .is_empty());
     }
 
     #[test]

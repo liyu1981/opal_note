@@ -15,6 +15,7 @@ import {
   notesRevisionAtom,
   omniQueryAtom,
   readOnlyAtom,
+  trashViewAtom,
 } from "../state/atoms";
 import { IconCalendar, IconFile } from "./Icons";
 import { JournalCard } from "./JournalCard";
@@ -39,6 +40,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   const setActiveNote = useSetAtom(activeNoteIdAtom);
   const setHomeView = useSetAtom(homeViewAtom);
   const setAssetsView = useSetAtom(assetsViewAtom);
+  const setTrashView = useSetAtom(trashViewAtom);
   const setOmniQuery = useSetAtom(omniQueryAtom);
   const navigate = useAppNavigate();
 
@@ -61,8 +63,9 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   useLayoutEffect(() => {
     setHomeView(false);
     setAssetsView(false);
+    setTrashView(false);
     setActiveNote(null);
-  }, [setActiveNote, setAssetsView, setHomeView]);
+  }, [setActiveNote, setAssetsView, setHomeView, setTrashView]);
 
   useEffect(() => {
     setOmniQuery(tag ? `#${tag}` : "");

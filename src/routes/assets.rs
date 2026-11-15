@@ -1,6 +1,6 @@
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderValue, Response};
+use axum::http::{header, HeaderValue, Response, StatusCode};
 use axum::Json;
 use serde::Deserialize;
 
@@ -133,5 +133,22 @@ pub async fn rename(
         AssetRename::Conflict => Err(AppError::Conflict(
             "an asset with that name already exists".to_string(),
         )),
+    }
+}
+
+pub async fn delete(
+    State(state): State<AppState>,
+    Path((notebook_id, path)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let store = state.store.clone();
+    let removed = db_call(
+        move || store.delete_asset(&notebook_id, &path),
+        AppError::Internal,
+    )
+    .await?;
+    if removed {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(AppError::not_found("asset not found"))
     }
 }

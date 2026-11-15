@@ -56,6 +56,9 @@ export function useShortcutRunner() {
         case "nav.assets":
           navigate({ view: "assets" });
           break;
+        case "nav.trash":
+          navigate({ view: "trash" });
+          break;
         case "nav.back":
           router.history.back();
           break;

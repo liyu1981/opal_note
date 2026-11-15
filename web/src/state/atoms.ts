@@ -61,6 +61,9 @@ export const graphViewAtom = atom(false);
 /** Full-page notebook asset browser. */
 export const assetsViewAtom = atom(false);
 
+/** Global trash/bin view. */
+export const trashViewAtom = atom(false);
+
 /** Current omni-bar query, including the optional `#tag` prefix. */
 export const omniQueryAtom = atom("");
 
@@ -91,6 +94,7 @@ export const selectNotebookAtom = atom(
     set(pagesViewAtom, false);
     set(graphViewAtom, false);
     set(assetsViewAtom, false);
+    set(trashViewAtom, false);
   },
 );
 

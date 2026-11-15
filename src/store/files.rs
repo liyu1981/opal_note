@@ -131,6 +131,36 @@ pub fn unique_file_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     candidate
 }
 
+/// Pick `name`, `name 2`, … so a restored notebook never overwrites one that
+/// already exists.
+pub fn unique_dir_path(parent: &Path, name: &str) -> PathBuf {
+    let base = sanitize_name(name, "Notebook");
+    let mut candidate = parent.join(&base);
+    let mut index = 2;
+    while candidate.exists() && index < 10_000 {
+        candidate = parent.join(format!("{base} {index}"));
+        index += 1;
+    }
+    candidate
+}
+
+/// Total size of a file or directory tree, used for notebook trash entries.
+pub fn path_size(path: &Path) -> io::Result<u64> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.is_file() {
+        return Ok(metadata.len());
+    }
+    if !metadata.is_dir() {
+        return Ok(0);
+    }
+    let mut total = 0;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        total += path_size(&entry.path())?;
+    }
+    Ok(total)
+}
+
 pub fn write_atomic(path: &Path, contents: &str) -> io::Result<()> {
     let parent = path
         .parent()
@@ -552,45 +582,4 @@ fn file_times(metadata: &fs::Metadata) -> (i64, f64, f64) {
         .unwrap_or(updated_at);
 
     (mtime_ns, updated_at, created_at)
-}
-
-/// Move a note file into `data/.trash/notes/<stamp>/<notebook>/<path>`.
-pub fn trash_file(
-    data_dir: &Path,
-    notebook: &str,
-    rel: &str,
-    absolute: &Path,
-) -> io::Result<PathBuf> {
-    let destination = data_dir
-        .join(".trash")
-        .join("notes")
-        .join(stamp())
-        .join(sanitize_name(notebook, "notebook"))
-        .join(rel);
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::rename(absolute, &destination)?;
-    Ok(destination)
-}
-
-/// Move an entire notebook folder into `data/.trash/notebooks/`.
-pub fn trash_notebook(data_dir: &Path, notebook: &str, absolute: &Path) -> io::Result<PathBuf> {
-    let destination = data_dir.join(".trash").join("notebooks").join(format!(
-        "{}-{}",
-        stamp(),
-        sanitize_name(notebook, "notebook")
-    ));
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::rename(absolute, &destination)?;
-    Ok(destination)
-}
-
-fn stamp() -> String {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| format!("{}-{}", duration.as_secs(), duration.subsec_nanos()))
-        .unwrap_or_else(|_| "0-0".to_string())
 }

@@ -329,3 +329,12 @@ export function IconArrowUpRight(props: IconProps) {
     </svg>
   );
 }
+
+export function IconArchive(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 7.5h16V20H4z" />
+      <path d="M3 4h18v3.5H3zM9.5 11.5h5" />
+    </svg>
+  );
+}

@@ -20,11 +20,19 @@ pub async fn put(
         return Err(AppError::bad_request("settings must be a JSON object"));
     }
     let settings = state.settings.clone();
+    let store = state.store.clone();
     let saved = value.clone();
     db_call(
         move || {
             settings.save(&saved)?;
-            Ok(saved)
+            if saved.get("trashRetentionDays").is_some() {
+                // Settings are saved even if a purge fails; the hourly task
+                // retries and logs the problem.
+                if let Err(err) = store.purge_expired_trash(settings.trash_retention_days()) {
+                    tracing::warn!(error = %err, "trash purge after settings change failed");
+                }
+            }
+            Ok(())
         },
         AppError::Internal,
     )

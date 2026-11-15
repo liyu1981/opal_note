@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
         args.query_timeout_secs,
         args.plugin_timeout_secs,
     );
+    spawn_trash_purger(state.clone());
     let app = routes::router(state, args.dev_cors);
 
     let address: SocketAddr = args
@@ -108,6 +109,33 @@ async fn main() -> anyhow::Result<()> {
     }
     tracing::info!("opalnote stopped");
     Ok(())
+}
+
+/// Permanently remove expired trash entries even when nobody opens the bin.
+/// The first tick runs immediately, so startup also applies the current
+/// retention setting.
+fn spawn_trash_purger(state: AppState) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(3_600));
+        loop {
+            ticker.tick().await;
+            let settings = state.settings.clone();
+            let store = state.store.clone();
+            let outcome = tokio::task::spawn_blocking(move || {
+                let days = settings.trash_retention_days();
+                store.purge_expired_trash(days)
+            })
+            .await;
+            match outcome {
+                Ok(Ok(0)) => {}
+                Ok(Ok(removed)) => {
+                    tracing::info!(removed, "permanently deleted expired trash entries");
+                }
+                Ok(Err(err)) => tracing::warn!(error = %err, "trash purge failed"),
+                Err(err) => tracing::warn!(error = %err, "trash purge task failed"),
+            }
+        }
+    });
 }
 
 fn init_tracing() {

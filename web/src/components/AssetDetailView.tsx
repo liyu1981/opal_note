@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { AssetInfo } from "../api/types";
@@ -12,18 +12,24 @@ import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { useAssetBlob } from "../lib/useAssetBlob";
-import { activeNotebookIdAtom, readOnlyAtom } from "../state/atoms";
+import {
+  activeNotebookIdAtom,
+  readOnlyAtom,
+  refreshAtom,
+} from "../state/atoms";
 import {
   IconArrowLeft,
   IconDownload,
   IconFile,
   IconPencil,
+  IconTrash,
 } from "./Icons";
 
 export function AssetDetailView({ path }: { path: string }) {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const locked = useAtomValue(readOnlyAtom);
   const navigate = useAppNavigate();
+  const refresh = useSetAtom(refreshAtom);
   const [info, setInfo] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +91,28 @@ export function AssetDetailView({ path }: { path: string }) {
       });
   }
 
+  function remove() {
+    if (!notebookId || !info || locked) return;
+    if (
+      !window.confirm(
+        `Move “${info.asset.name}” to the trash? It can be restored until the retention period ends.`,
+      )
+    ) {
+      return;
+    }
+    void api
+      .deleteAsset(notebookId, info.asset.path)
+      .then(() => {
+        navigate({ view: "assets" });
+        refresh();
+      })
+      .catch((cause) => {
+        window.alert(
+          cause instanceof Error ? cause.message : "Could not delete asset",
+        );
+      });
+  }
+
   return (
     <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
       <div className="mx-auto w-full max-w-7xl px-6 py-6">
@@ -126,14 +154,24 @@ export function AssetDetailView({ path }: { path: string }) {
                 Download
               </button>
               {!locked && (
-                <button
-                  type="button"
-                  onClick={rename}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-sans text-[14px] text-muted transition hover:bg-white hover:text-ink"
-                >
-                  <IconPencil className="h-3.5 w-3.5" />
-                  Rename
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={rename}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-sans text-[14px] text-muted transition hover:bg-white hover:text-ink"
+                  >
+                    <IconPencil className="h-3.5 w-3.5" />
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={remove}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-sans text-[14px] text-muted transition hover:border-danger/40 hover:bg-danger/10 hover:text-danger"
+                  >
+                    <IconTrash className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                </>
               )}
             </div>
           )}

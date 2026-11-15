@@ -6,6 +6,8 @@ use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
 const MAX_SETTINGS_BYTES: usize = 256 * 1024;
+pub const DEFAULT_TRASH_RETENTION_DAYS: u64 = 30;
+const MAX_TRASH_RETENTION_DAYS: u64 = 3_650;
 
 /// Sparse user settings stored as one JSON object at `<data-dir>/settings.json`.
 /// System defaults live in the client; the file only contains overrides.
@@ -49,6 +51,16 @@ impl SettingsStore {
         }
     }
 
+    /// How long deleted files stay recoverable. Sparse settings may omit the
+    /// key; clamp bad values instead of failing the whole trash view.
+    pub fn trash_retention_days(&self) -> u64 {
+        self.load()
+            .ok()
+            .and_then(|value| value.get("trashRetentionDays").and_then(Value::as_u64))
+            .unwrap_or(DEFAULT_TRASH_RETENTION_DAYS)
+            .clamp(1, MAX_TRASH_RETENTION_DAYS)
+    }
+
     pub fn save(&self, value: &Value) -> Result<()> {
         if !value.is_object() {
             bail!("settings must be a JSON object");
@@ -90,6 +102,29 @@ mod tests {
         store.save(&value).unwrap();
         assert_eq!(store.load().unwrap(), value);
         assert!(store.path().is_file());
+    }
+
+    #[test]
+    fn trash_retention_defaults_and_clamps() {
+        let dir = tempdir().unwrap();
+        let store = SettingsStore::new(dir.path()).unwrap();
+        assert_eq!(store.trash_retention_days(), DEFAULT_TRASH_RETENTION_DAYS);
+
+        store.save(&json!({ "trashRetentionDays": 7 })).unwrap();
+        assert_eq!(store.trash_retention_days(), 7);
+
+        store.save(&json!({ "trashRetentionDays": 0 })).unwrap();
+        assert_eq!(store.trash_retention_days(), 1);
+
+        store
+            .save(&json!({ "trashRetentionDays": 99_999 }))
+            .unwrap();
+        assert_eq!(store.trash_retention_days(), 3_650);
+
+        store
+            .save(&json!({ "trashRetentionDays": "seven" }))
+            .unwrap();
+        assert_eq!(store.trash_retention_days(), DEFAULT_TRASH_RETENTION_DAYS);
     }
 
     #[test]
