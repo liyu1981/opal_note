@@ -2,6 +2,7 @@ import type {
   AssetEntry,
   AssetInfo,
   AssetList,
+  BackgroundList,
   GraphData,
   Health,
   JournalPage,
@@ -259,6 +260,16 @@ export const api = {
 
   reloadPlugins: () =>
     request<PluginList>("/plugins/reload", { method: "POST" }),
+
+  listBackgrounds: () => request<BackgroundList>("/backgrounds"),
+
+  reloadBackgrounds: () =>
+    request<BackgroundList>("/backgrounds/reload", { method: "POST" }),
+
+  getBackgroundBlob: (id: string, path: string) =>
+    requestBlob(
+      `/backgrounds/asset?id=${encode(id)}&path=${encode(path)}`,
+    ),
 
   searchNotes: (notebookId: string, query: string, limit = 50) =>
     request<NoteSummary[]>(

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::backgrounds::BackgroundRegistry;
 use crate::plugins::PluginRegistry;
 use crate::settings::SettingsStore;
 use crate::store::Store;
@@ -12,6 +13,7 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub settings: Arc<SettingsStore>,
     pub plugins: Arc<PluginRegistry>,
+    pub backgrounds: Arc<BackgroundRegistry>,
     pub token: Option<Arc<str>>,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
@@ -24,6 +26,7 @@ impl AppState {
         store: Arc<Store>,
         settings: Arc<SettingsStore>,
         plugins: Arc<PluginRegistry>,
+        backgrounds: Arc<BackgroundRegistry>,
         token: Option<String>,
         query_timeout_secs: f64,
         plugin_timeout_secs: f64,
@@ -32,6 +35,7 @@ impl AppState {
             store,
             settings,
             plugins,
+            backgrounds,
             token: token.map(Arc::from),
             query_timeout_secs,
             plugin_timeout_secs,

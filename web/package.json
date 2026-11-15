@@ -5,7 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@12.4.2",
   "scripts": {
-    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build": "tsc --noEmit -p tsconfig.json && if command -v oj >/dev/null 2>&1; then oj build; else vite build; fi",
+    "build:watch": "if command -v oj >/dev/null 2>&1; then oj build --watch; else vite build --watch; fi",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

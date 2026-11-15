@@ -43,12 +43,14 @@ export type FontChoice = {
 
 export const DEFAULT_TRASH_RETENTION_DAYS = 30;
 export const MAX_TRASH_RETENTION_DAYS = 3_650;
+export const DEFAULT_BACKGROUND_ID = "OpalNote/dot-grid";
 
 export type AppSettings = {
   fonts: Record<FontRole, FontChoice>;
   keybindings: Record<string, string>;
   codeTheme: string;
   trashRetentionDays: number;
+  backgroundId: string;
   [key: string]: unknown;
 };
 
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   keybindings: {},
   codeTheme: DEFAULT_CODE_THEME,
   trashRetentionDays: DEFAULT_TRASH_RETENTION_DAYS,
+  backgroundId: DEFAULT_BACKGROUND_ID,
 };
 
 export const FONT_PRESETS = [
@@ -137,6 +140,13 @@ export function mergeSettings(value: unknown): AppSettings {
       ? root.trashRetentionDays
       : DEFAULT_TRASH_RETENTION_DAYS;
 
+  const backgroundId =
+    typeof root.backgroundId === "string" &&
+    root.backgroundId.trim() &&
+    root.backgroundId.trim().length <= 96
+      ? root.backgroundId.trim()
+      : DEFAULT_BACKGROUND_ID;
+
   return {
     ...DEFAULT_SETTINGS,
     ...root,
@@ -144,6 +154,7 @@ export function mergeSettings(value: unknown): AppSettings {
     keybindings,
     codeTheme,
     trashRetentionDays,
+    backgroundId,
   };
 }
 

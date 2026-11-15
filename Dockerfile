@@ -15,6 +15,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY src ./src
 COPY plugins ./plugins
+COPY backgrounds ./backgrounds
 COPY --from=web /app/web/dist ./web/dist
 RUN cargo build --release --locked
 

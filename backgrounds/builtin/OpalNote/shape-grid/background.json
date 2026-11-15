@@ -1,0 +1,28 @@
+{
+  "id": "OpalNote/shape-grid",
+  "title": "Shape Grid",
+  "description": "A drifting lattice that lights up around the cursor and leaves a soft trail.",
+  "kind": "shape-grid",
+  "options": {
+    "shape": "square",
+    "cellSize": 40,
+    "lineWidth": 1,
+    "direction": "diagonal",
+    "speed": 0.2,
+    "lineColor": "var(--color-line-strong)",
+    "hoverColor": "var(--color-accent-strong)",
+    "hoverFillColor": "var(--color-accent-strong)",
+    "fillOpacity": 0.12,
+    "rainbow": false,
+    "tiltX": 0,
+    "tiltY": 0,
+    "radius": 1.5,
+    "trail": 0.5,
+    "glow": 0.2,
+    "twinkle": 0.05,
+    "fade": 0.35,
+    "clickCascade": true,
+    "intro": true,
+    "opacity": 0.55
+  }
+}

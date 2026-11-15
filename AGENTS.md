@@ -42,7 +42,7 @@ pnpm build             # web build → asset sync → release binary (embedded a
 pnpm start             # run target/release/opalnote
 pnpm test              # cargo test + web typecheck
 pnpm check             # cargo check + web typecheck
-pnpm --dir web build   # web assets only
+pnpm --dir web build   # web assets only (oj when available, else Vite)
 cargo test             # Rust unit tests (Datalog store + markdown parsing)
 ```
 
@@ -52,13 +52,18 @@ orchestration is needed, a Node entry under `scripts/`.
 
 `pnpm dev` is a **single command**: it builds the client and runs the debug
 server (bound to `0.0.0.0:7827`), then watches `web/src`/`web/public`/web config
-files, `plugins/builtin`, and `src`/`Cargo.toml`/`Cargo.lock`/`build.rs`.
+files, `plugins/builtin`, `backgrounds/builtin`, and
+`src`/`Cargo.toml`/`Cargo.lock`/`build.rs`.
 Changes are debounced (220 ms). Client and built-in plugin changes restart the
 server without a Rust rebuild; Rust source/config changes rebuild the binary.
-A failed build keeps the previous server alive. There is no separate Vite dev
-server or HMR — reload the browser tab for a new client bundle.
+A failed build keeps the previous server alive. The web build uses `oj build`
+when `oj` is on `PATH` and otherwise falls back to `vite build`;
+`pnpm --dir web build:watch` is the standalone watcher with the same fallback.
+There is no separate Vite dev server or HMR — reload the browser tab for a new
+client bundle.
 
-Debug builds read `web/dist` and `plugins/builtin` from disk at runtime. Release
+Debug builds read `web/dist`, `plugins/builtin` and `backgrounds/builtin` from
+disk at runtime. Release
 builds embed both via `rust-embed`; `build.rs` only builds `web/dist` for release
 builds. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile a release without Node (a
 placeholder page is embedded if no bundle exists).
@@ -81,6 +86,7 @@ src/
   assets.rs        release rust-embed / debug disk static handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
   plugins.rs       release embed / debug disk plugin registry + QuickJS runner
+  backgrounds.rs   built-in + user background registry and asset serving
   settings.rs      sparse settings.json store
   store/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
@@ -90,6 +96,7 @@ src/
     markdown.rs    wikilinks, tags, frontmatter, summaries + unit tests
     model.rs       API-facing serde models
 plugins/builtin/ native plugin folders embedded with rust-embed
+backgrounds/builtin/ built-in background manifests and assets (rust-embed)
 web/
   package.json     build + typecheck only (no dev server)
   src/api/         typed fetch client + shared types
@@ -150,17 +157,18 @@ web/
   reindex) use `refreshAtom`; note content/title/tag saves use
   `refreshNotesAtom`. Do not call global refresh from the autosave path.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
-- Release builds embed `web/dist` and `plugins/builtin` via `rust-embed`; debug
+- Release builds embed `web/dist`, `plugins/builtin` and `backgrounds/builtin`
+  via `rust-embed`; debug
   builds read them from disk. `scripts/lib.mjs` owns the web build/sync step.
   Any new embedded asset location must be wired through both modes.
 - Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
   in `src/index.css`; do not hard-code new hex colors.
-- The main outlet has an interactive Dot Grid background (`MainBackground` →
-  `components/backgrounds/DotGrid.tsx`, adapted from React Bits). It must stay
-  scoped to the route outlet: keep it outside `LeftSidebar`, `TopBar` and
-  `RightPanel`, and keep the view `<main>` backgrounds transparent so the grid
-  shows. Dot colours come from `--color-line-strong` /
-  `--color-accent-strong`; never hard-code a replacement palette.
+- The main outlet renders the selected background via `MainBackground` from
+  the server background registry. Keep it scoped to the route outlet: outside
+  `LeftSidebar`, `TopBar` and `RightPanel`, with view `<main>` backgrounds
+  transparent so the layer shows. The Dot Grid renderer is adapted from React
+  Bits (`components/backgrounds/DotGrid.tsx`); colours come from
+  `--color-line-strong` / `--color-accent-strong`, never hard-coded.
 - The note body is a **live block editor**, not a split preview. Keep source
   marks visible while the cursor is on a block and render them elsewhere.
   Editor internals live in `src/lib/livePreview.ts`,
@@ -262,6 +270,15 @@ web/
   per-plugin deadline that interrupts JS and bounds Datalog queries. Plugins
   return a generic `{items: [...]}` JSON payload. Do not add filesystem or
   network host APIs.
+- Backgrounds are declarative plugins, not sandboxed JS. Built-ins live in
+  `backgrounds/builtin/<folder>/background.json`; users add
+  `<data-dir>/backgrounds/<folder>/background.json` plus optional assets. The
+  manifest id is `<domain>/<extension>`; built-in ids win and bad folders are
+  reported as load errors. Supported kinds are `none`, `dot-grid`, `image`
+  (requires `options.asset`), `gradient`, `galaxy`, `grid-scan`,
+  `letter-glitch` and `shape-grid`. Keep asset access inside the
+  registered folder; serve it through `/api/backgrounds/asset`, never a raw
+  filesystem path. Selection is `backgroundId` in sparse settings.
 - Native plugins live in `plugins/builtin/OpalNote/<extension>/` and are
   embedded with `rust-embed`; their ids are `OpalNote/<extension>`. Data
   plugins live in `<data-dir>/plugins/<folder>/` and use ids shaped
@@ -383,6 +400,9 @@ GET /api/notebooks/{notebook}/plugins
 POST /api/notebooks/import
 GET /api/plugins
 POST /api/plugins/reload
+GET /api/backgrounds
+POST /api/backgrounds/reload
+GET /api/backgrounds/asset?id=&path=
 GET|PUT /api/settings
 GET /api/trash?limit=&offset=&q=&kind=&sort=&dir=
 GET /api/trash/{id}

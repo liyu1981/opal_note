@@ -33,6 +33,7 @@ fn main() {
     println!("cargo:rerun-if-changed=web/src");
     println!("cargo:rerun-if-changed=web/index.html");
     println!("cargo:rerun-if-changed=web/package.json");
+    println!("cargo:rerun-if-changed=backgrounds/builtin");
     println!("cargo:rerun-if-env-changed=OPALNOTE_SKIP_WEB_BUILD");
 
     let dist = Path::new("web/dist");

@@ -223,7 +223,7 @@ export function HomeView() {
                 onSaved={refreshNotes}
               />
             ) : (
-              <p className="rounded-xl border border-line bg-white/30 px-4 py-8 text-center font-sans text-[14px] text-faint">
+              <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">
                 No journal page for today yet.
               </p>
             )}
@@ -240,7 +240,7 @@ export function HomeView() {
             </div>
 
             {favoriteRefs.length === 0 ? (
-              <p className="rounded-xl border border-line bg-white/30 px-4 py-8 text-center font-sans text-[14px] text-faint">
+              <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">
                 Star a page in the editor to pin it here.
               </p>
             ) : (
@@ -292,7 +292,7 @@ export function HomeView() {
             </div>
 
             {recent.length === 0 ? (
-              <p className="rounded-xl border border-line bg-white/30 px-4 py-8 text-center font-sans text-[14px] text-faint">
+              <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">
                 No recent pages yet.
               </p>
             ) : (
@@ -331,7 +331,7 @@ export function HomeView() {
           </section>
         </div>
 
-        <aside className="sticky top-6 hidden max-h-[calc(100vh-5rem)] self-start overflow-y-auto lg:block">
+        <aside className="sticky top-6 hidden max-h-[calc(100vh-5rem)] self-start overflow-y-auto rounded-xl border border-line bg-paper p-3 lg:block">
           <div className="mb-2 flex items-center justify-between px-1">
             <h2 className="font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
               Outstanding todos
@@ -354,7 +354,7 @@ export function HomeView() {
               }
             />
           ) : (
-            <p className="rounded-xl border border-line bg-white/30 px-4 py-8 text-center font-sans text-[14px] text-faint">
+            <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">
               No todo plugin loaded.
             </p>
           )}

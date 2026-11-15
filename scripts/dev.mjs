@@ -232,6 +232,7 @@ function startWatchers() {
   console.log("  client: web/src, web/public, web config files");
   console.log("  server: src, Cargo.toml, Cargo.lock, build.rs");
   console.log("  plugins: plugins/builtin (restart only)");
+  console.log("  backgrounds: backgrounds/builtin (restart only)");
   console.log("  debounce: 220 ms · Ctrl+C to stop\n");
 
   addWatcher("web/src", true, () => mark("client"));
@@ -242,6 +243,7 @@ function startWatchers() {
 
   addWatcher("src", true, () => mark("server"));
   addWatcher("plugins/builtin", true, () => mark("runtime"));
+  addWatcher("backgrounds/builtin", true, () => mark("runtime"));
   addWatcher(".", false, (name) => {
     if (name && SERVER_CONFIG_FILES.has(path.basename(name))) mark("server");
   });

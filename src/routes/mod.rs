@@ -1,4 +1,5 @@
 pub mod assets;
+pub mod backgrounds;
 pub mod health;
 pub mod notebooks;
 pub mod notes;
@@ -40,6 +41,9 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/settings", get(settings::get).put(settings::put))
         .route("/plugins", get(plugins::list))
         .route("/plugins/reload", post(plugins::reload))
+        .route("/backgrounds", get(backgrounds::list))
+        .route("/backgrounds/reload", post(backgrounds::reload))
+        .route("/backgrounds/asset", get(backgrounds::asset))
         .route("/notebooks", get(notebooks::list).post(notebooks::create))
         .route(
             "/notebooks/import",

@@ -1,0 +1,25 @@
+{
+  "id": "OpalNote/letter-glitch",
+  "title": "Letter Glitch",
+  "description": "Quiet rows of monospace characters that occasionally scramble and settle.",
+  "kind": "letter-glitch",
+  "options": {
+    "lightMode": true,
+    "glitchColors": ["var(--color-ink)", "var(--color-accent-strong)"],
+    "baseColor": "var(--color-ink)",
+    "fontSize": 14,
+    "spacing": 0.6,
+    "density": 0.28,
+    "baseOpacity": 0.08,
+    "glitchAmount": 0.25,
+    "speed": 0.8,
+    "flow": 0.3,
+    "smooth": true,
+    "edgeFade": 0.5,
+    "centerFade": 0.35,
+    "interactive": true,
+    "cursorRadius": 120,
+    "clickEffect": "tear",
+    "intro": true
+  }
+}

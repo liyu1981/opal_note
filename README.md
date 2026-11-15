@@ -120,7 +120,8 @@ pnpm dev
 3. starts the debug server;
 4. watches client, server and built-in plugin sources.
 
-Debug builds deliberately **do not embed** `web/dist` or `plugins/builtin`.
+Debug builds deliberately **do not embed** `web/dist`, `plugins/builtin` or
+`backgrounds/builtin`.
 The debug server reads both directly from disk, so Rust only needs rebuilding
 when Rust source/config changes.
 
@@ -128,13 +129,16 @@ Changes are debounced for 220 ms, then coalesced:
 
 - a change under `web/src`, `web/public`, or a web config file rebuilds the
   client and restarts the server;
-- a change under `plugins/builtin` restarts the server without compiling Rust;
+- a change under `plugins/builtin` or `backgrounds/builtin` restarts the server
+  without compiling Rust;
 - a change under `src`, `Cargo.toml`, `Cargo.lock`, or `build.rs` rebuilds the
   binary and restarts the server;
 - a failed build leaves the current server running and waits for the next edit.
 
-There is no Vite HMR; reload the browser tab after a client rebuild to load the
-new bundle. Override the listen address with `OPALNOTE_BIND`, or the data
+The client build uses `oj build` when `oj` is on `PATH`, and falls back to
+`vite build` otherwise. `pnpm --dir web build:watch` starts a standalone
+rebuild watcher with the same `oj`/Vite fallback. There is no Vite HMR; reload
+the browser tab after a client rebuild to load the new bundle. Override the listen address with `OPALNOTE_BIND`, or the data
 directory with `OPALNOTE_DATA_DIR`.
 
 HTTPS is on by default. `pnpm dev` creates `certs/localhost.pem` and
@@ -154,7 +158,8 @@ pnpm start
 
 `pnpm build` runs the same web build + asset sync, then
 `cargo build --release --locked`. Release builds embed `web/dist` and
-`plugins/builtin`; `build.rs` builds `web/dist` on demand for a plain release
+`plugins/builtin` and `backgrounds/builtin`; `build.rs` builds `web/dist` on
+demand for a plain release
 build. Debug builds skip that embed step and read both directories at runtime.
 
 ### Importing a Logseq graph
@@ -351,12 +356,13 @@ Home button on the right.
   pages as you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the
   live block editor and autosaves. Opening the journal feed creates today's
   empty page automatically when it does not exist.
-- **Center** — every view sits on an interactive **Dot Grid** background
-  adapted from [React Bits](https://reactbits.dev/backgrounds/dot-grid). It is
-  scoped to the route outlet: the left sidebar, right panel and top bar stay
-  outside it. Dots pull toward the cursor and emit a click shockwave; colours
-  come from the `--color-line-strong` and `--color-accent-strong` theme tokens.
-  The current page, the journal feed, or the Pages directory.
+- **Center** — every view sits on a selectable **background**, defaulting to
+  the interactive Dot Grid adapted from
+  [React Bits](https://reactbits.dev/backgrounds/dot-grid). It is scoped to the
+  route outlet: the left sidebar, right panel and top bar stay outside it. Dots
+  pull toward the cursor and emit a click shockwave. Backgrounds are loaded
+  from the built-in registry or `<data-dir>/backgrounds/`; the current page,
+  the journal feed, or the Pages directory.
   Pages view is a Logseq-style **All pages** table across pages and journals,
   with backlink counts, tags, created/updated timestamps, sortable columns,
   tag filtering, a page filter, table/card modes and server-side pagination.
@@ -373,9 +379,10 @@ Home button on the right.
 - **Settings** — a large left-tabbed dialog. Fonts are configured by role
   (interface, titles, editor, labels/code); any Google Font can be named and
   loaded over HTTPS. **Code** selects the fenced-code syntax theme; GitHub
-  Light is the default. **Keyboard** lists every workspace shortcut and lets
-  you record a replacement chord sequence. **Trash** sets how many days deleted
-  files stay recoverable. Workspace and navigation commands share a leader
+  Light is the default. **Background** chooses an installed built-in or user
+  background. **Keyboard** lists every workspace shortcut and lets you record a
+  replacement chord sequence. **Trash** sets how many days deleted files stay
+  recoverable. Workspace and navigation commands share a leader
   chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or `S` to focus
   the omni bar, `H` home, `A` all pages, `G` graph, `T` trash, `L`/`R`
   sidebars, `O` settings, `M` command mode, `N` new page, or `J` today.
@@ -441,6 +448,60 @@ that returns `JSON.stringify({ items: [...] })`; it can call the read-only
 `__query(script, params)` bridge and read `__notebook_id`. Built-in ids take
 precedence: a data plugin with the same id is rejected and reported in Settings
 → Plugins. Reloading does not require a server restart.
+
+### Backgrounds
+
+Backgrounds are declarative plugins: a JSON manifest plus optional assets.
+Built-ins are embedded; user folders are scanned at startup and on reload:
+
+```
+backgrounds/builtin/OpalNote/dot-grid/background.json  # embedded
+<data-dir>/backgrounds/<folder>/background.json        # user
+<data-dir>/backgrounds/<folder>/<asset>                # user image, etc.
+```
+
+Example image background:
+
+```json
+{
+  "id": "Acme/skyline",
+  "title": "Skyline",
+  "description": "A city skyline at dusk.",
+  "kind": "image",
+  "options": { "asset": "skyline.jpg", "fit": "cover", "opacity": 0.6 }
+}
+```
+
+The manifest `id` uses the same `<domain>/<extension>` shape as journal
+plugins. Built-in ids win over user folders with the same id; invalid folders
+are reported in Settings → Background. Supported `kind` values:
+
+- `none` — plain canvas.
+- `dot-grid` — React Bits dot grid. Numeric options follow the component
+  (`dotSize`, `gap`, `proximity`, `strength`, `bounce`, `tension`,
+  `returnDuration`, `shockRadius`, `shockStrength`, `swell`, `stretch`, `glow`,
+  `fade`, `opacity`); `shape`, `intro`, `mouseInteraction`, `clickShock` and
+  `baseColor`/`activeColor` are also accepted. Colours default to
+  `--color-line-strong` / `--color-accent-strong`.
+- `image` — requires `options.asset`; optional `fit`, `position`, `opacity`,
+  `blur`.
+- `gradient` — `from`, `to` and `angle` in degrees.
+- `galaxy` — React Bits starfield. Options include `density`, `starSpeed`,
+  `starSize`, `glowIntensity`, `flareIntensity`, `twinkleIntensity`, `layers`,
+  `lightMode`, `transparent`, `starColors` and `opacity`.
+- `grid-scan` — React Bits wireframe-room scan. Options include `cells`,
+  `depth`, `linesColor`, `scanColor`, `scanDuration`, `scanDelay`,
+  `scanDirection`, `glow` and `lightMode`. Webcam preview is disabled.
+- `letter-glitch` — React Bits monospace glitch text. Options include
+  `glitchColors`, `baseColor`, `characters`, `density`, `baseOpacity`,
+  `glitchAmount`, `speed`, `flow`, `edgeFade` and `centerFade`.
+- `shape-grid` — React Bits drifting lattice. Options include `shape`,
+  `cellSize`, `lineColor`, `hoverColor`, `direction`, `speed`, `radius`,
+  `trail`, `glow`, `twinkle` and `opacity`.
+
+Settings → Background shows a thumbnail preview for every installed background;
+selecting one stores its id as `backgroundId` in the sparse settings. Assets are
+served through the authenticated API.
 
 ### Client routes
 
@@ -529,6 +590,9 @@ Public (no token): `GET /health`, `GET /meta`.
 | GET    | `/notebooks/{id}/plugins`                    | Journal plugin results (QuickJS + Datalog)     |
 | GET    | `/plugins`                                   | Installed plugin metadata + load errors        |
 | POST   | `/plugins/reload`                            | Rescan the data plugin folder                  |
+| GET    | `/backgrounds`                               | Installed background metadata + errors         |
+| POST   | `/backgrounds/reload`                        | Rescan the user background folder              |
+| GET    | `/backgrounds/asset?id=&path=`               | Background asset bytes                         |
 | GET    | `/settings`                                  | Sparse user settings JSON                      |
 | PUT    | `/settings`                                  | Replace the sparse user settings JSON          |
 | POST   | `/notebooks/{id}/notes`                      | `{title?, content?, tags?, section?}`           |
@@ -600,6 +664,7 @@ src/
   assets.rs          release rust-embed / debug disk asset handler + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
   plugins.rs         release embed / debug disk plugin registry + QuickJS runner
+  backgrounds.rs     built-in + user background registry and assets
   settings.rs        sparse settings.json store
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
@@ -609,12 +674,13 @@ src/
     queries.rs       every CozoScript statement
     model.rs         API models
 plugins/builtin/     native plugin folders embedded in release builds
+backgrounds/builtin/ built-in background manifests and assets
 web/
   src/api/           typed client + types
   src/router.tsx     TanStack route tree + URL/view synchronization
   src/state/         Jotai atoms
   src/components/    workspace shell, journal feed, pages, graph, panels
-  src/components/backgrounds/  React Bits background components
+  src/components/backgrounds/  React Bits renderer implementations
   src/components/editor/  live CodeMirror editor surface
   src/lib/           navigation, live preview, completion, editor theme
 ```

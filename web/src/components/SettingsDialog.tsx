@@ -8,9 +8,10 @@ import {
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
-import type { PluginList } from "../api/types";
+import type { BackgroundInfo, BackgroundList, PluginList } from "../api/types";
 import { CODE_THEMES } from "../lib/codeThemes";
 import {
+  DEFAULT_BACKGROUND_ID,
   DEFAULT_TRASH_RETENTION_DAYS,
   FONT_PRESETS,
   FONT_ROLES,
@@ -38,10 +39,12 @@ import {
   IconSettings,
   IconX,
 } from "./Icons";
+import { BackgroundPreview } from "./BackgroundPreview";
 import { OpalLogo } from "./OpalLogo";
 import {
   journalPluginsRevisionAtom,
   refreshAtom,
+  refreshBackgroundsAtom,
   saveTokenAtom,
   settingsOpenAtom,
   shortcutRecordingAtom,
@@ -51,6 +54,7 @@ import {
 type Tab =
   | "fonts"
   | "code"
+  | "background"
   | "shortcuts"
   | "trash"
   | "connection"
@@ -69,6 +73,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "code",
     label: "Code",
     description: "Choose syntax colors for fenced code blocks.",
+  },
+  {
+    id: "background",
+    label: "Background",
+    description: "Choose the main view backdrop.",
   },
   {
     id: "shortcuts",
@@ -227,6 +236,14 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateBackground(id: string) {
+    const next: AppSettings = { ...draft, backgroundId: id };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   function updateTrashRetention(days: number) {
     const next: AppSettings = { ...draft, trashRetentionDays: days };
     setDraft(next);
@@ -356,7 +373,8 @@ export function SettingsDialog() {
               (tab === "fonts" ||
                 tab === "code" ||
                 tab === "shortcuts" ||
-                tab === "trash") && (
+                tab === "trash" ||
+                tab === "background") && (
               <span
                 className={`mt-1 font-mono text-[14px] ${
                   fontStatus === "error" ? "text-danger" : "text-faint"
@@ -403,6 +421,13 @@ export function SettingsDialog() {
                 settings={draft}
                 onChange={updateKeybinding}
                 onReset={resetKeybindings}
+                error={fontError}
+              />
+            )}
+            {tab === "background" && (
+              <BackgroundTab
+                settings={draft}
+                onChange={updateBackground}
                 error={fontError}
               />
             )}
@@ -613,6 +638,197 @@ function FontsTab({
         </button>
       </div>
     </div>
+  );
+}
+
+function BackgroundTab({
+  settings,
+  onChange,
+  error,
+}: {
+  settings: AppSettings;
+  onChange: (id: string) => void;
+  error: string | null;
+}) {
+  const refreshBackgrounds = useSetAtom(refreshBackgroundsAtom);
+  const [list, setList] = useState<BackgroundList | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(
+    async (reload: boolean) => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const next = reload
+          ? await api.reloadBackgrounds()
+          : await api.listBackgrounds();
+        setList(next);
+        if (reload) refreshBackgrounds();
+      } catch (cause) {
+        setLoadError(
+          cause instanceof Error ? cause.message : "Could not load backgrounds",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [refreshBackgrounds],
+  );
+
+  useEffect(() => {
+    void load(false);
+  }, [load]);
+
+  const selected = list?.backgrounds.find(
+    (background) => background.id === settings.backgroundId,
+  );
+
+  return (
+    <section className="max-w-3xl space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-sans text-[16px] font-medium text-ink">
+            Main view background
+          </h3>
+          <p className="mt-0.5 font-mono text-[14px] leading-relaxed text-muted">
+            Built-ins are embedded in the binary. Add a folder with a{" "}
+            <code>background.json</code> under the user folder below.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load(true)}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-mono text-[14px] text-muted transition hover:bg-white hover:text-ink disabled:opacity-40"
+        >
+          <IconRefresh className="h-3.5 w-3.5" />
+          {loading ? "Loading…" : "Reload"}
+        </button>
+      </div>
+
+      {loadError && (
+        <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
+          {loadError}
+        </p>
+      )}
+
+      {!list && loading ? (
+        <p className="py-10 text-center font-mono text-[14px] text-faint">
+          Loading backgrounds…
+        </p>
+      ) : list && list.backgrounds.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-line-strong px-4 py-8 text-center font-mono text-[14px] text-muted">
+          No backgrounds found. The plain canvas fallback is in use.
+        </p>
+      ) : list ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {list.backgrounds.map((background) => (
+            <BackgroundCard
+              key={background.id}
+              background={background}
+              selected={background.id === settings.backgroundId}
+              onSelect={() => onChange(background.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {list && !selected && (
+        <p className="rounded-lg bg-warning/10 px-3 py-2 font-mono text-[14px] text-warning">
+          “{settings.backgroundId}” is not installed. The main view is using{" "}
+          {list.backgrounds.find(
+            (background) => background.id === DEFAULT_BACKGROUND_ID,
+          )?.title ??
+            list.backgrounds[0]?.title ??
+            "the plain canvas"}
+          .
+        </p>
+      )}
+
+      {list && (
+        <p className="font-mono text-[14px] leading-relaxed text-faint">
+          User folder: <span className="text-muted">{list.directory}</span>
+        </p>
+      )}
+
+      {list && list.errors.length > 0 && (
+        <div className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
+          <p className="font-medium">Some background folders did not load:</p>
+          <ul className="mt-1 space-y-0.5">
+            {list.errors.map((item) => (
+              <li key={item.folder}>
+                <span className="font-medium">{item.folder}</span>: {item.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {error && (
+        <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function BackgroundCard({
+  background,
+  selected,
+  onSelect,
+}: {
+  background: BackgroundInfo;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`overflow-hidden rounded-xl border text-left transition ${
+        selected
+          ? "border-accent/50 bg-accent-soft"
+          : "border-line bg-paper/60 hover:border-line-strong hover:bg-paper"
+      }`}
+    >
+      <span className="block h-24 w-full border-b border-line/60">
+        <BackgroundPreview background={background} />
+      </span>
+      <span className="flex items-start gap-2 px-3 py-2.5">
+        <span
+          className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${
+            selected
+              ? "border-accent bg-accent"
+              : "border-line-strong bg-transparent"
+          }`}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate font-sans text-[15px] font-medium text-ink">
+              {background.title}
+            </span>
+            <span className="shrink-0 rounded bg-panel px-1 py-0.5 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+              {background.source === "builtin" ? "Built-in" : "User"}
+            </span>
+            <span className="shrink-0 rounded bg-panel-strong px-1 py-0.5 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+              {background.kind}
+            </span>
+          </span>
+          <span className="mt-1 block font-mono text-[13px] leading-relaxed text-muted">
+            {background.description}
+          </span>
+          {background.source === "data" && (
+            <span className="mt-1 block truncate font-mono text-[12px] text-faint">
+              {background.id}
+            </span>
+          )}
+        </span>
+      </span>
+    </button>
   );
 }
 

@@ -10,7 +10,7 @@ export function PluginCard({
   onOpen: (item: JournalPluginItem) => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white/35">
+    <section className="overflow-hidden rounded-xl border border-line bg-paper">
       <header className="flex items-start gap-2 border-b border-line/60 px-3 py-2.5">
         <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-mark/60 text-ink-soft">
           <IconCheck className="h-3 w-3" />

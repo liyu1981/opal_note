@@ -3,6 +3,7 @@ import { atomWithStorage } from "jotai/utils";
 
 import { ApiError, api, getStoredToken, storeToken } from "../api/client";
 import type {
+  BackgroundList,
   Note,
   NoteSummary,
   Notebook,
@@ -227,6 +228,7 @@ export const saveTokenAtom = atom(null, (_get, set, token: string) => {
   storeToken(token);
   set(tokenAtom, token);
   set(revisionAtom, (revision) => revision + 1);
+  set(backgroundsRevisionAtom, (revision) => revision + 1);
 });
 
 export const notebooksAtom = atom(async (get): Promise<Notebook[]> => {
@@ -242,6 +244,21 @@ export const activeNotebookAtom = atom(
     return notebooks.find((notebook) => notebook.id === id) ?? null;
   },
 );
+
+export const backgroundsRevisionAtom = atom(0);
+
+export const refreshBackgroundsAtom = atom(null, (_get, set) => {
+  set(backgroundsRevisionAtom, (revision) => revision + 1);
+});
+
+export const backgroundsAtom = atom(async (get): Promise<BackgroundList> => {
+  get(backgroundsRevisionAtom);
+  try {
+    return await api.listBackgrounds();
+  } catch {
+    return { directory: "", backgrounds: [], errors: [] };
+  }
+});
 
 export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
   get(notesRevisionAtom);

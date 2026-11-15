@@ -85,7 +85,13 @@ export function Workspace() {
         <TopBar />
         <div className="flex min-h-0 flex-1">
           <div className="relative flex min-h-0 min-w-0 flex-1">
-            <MainBackground />
+            <Suspense
+              fallback={
+                <div className="pointer-events-none absolute inset-0 z-0 bg-canvas" />
+              }
+            >
+              <MainBackground />
+            </Suspense>
             <div className="relative z-10 flex min-h-0 min-w-0 flex-1">
               <Suspense fallback={<EditorSkeleton />}>
                 <Outlet />

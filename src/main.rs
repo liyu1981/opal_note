@@ -1,5 +1,6 @@
 mod assets;
 mod auth;
+mod backgrounds;
 mod config;
 mod error;
 mod plugins;
@@ -18,6 +19,7 @@ use axum_server::Handle;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
+use crate::backgrounds::BackgroundRegistry;
 use crate::config::{Cli, Command};
 use crate::plugins::PluginRegistry;
 use crate::settings::SettingsStore;
@@ -47,6 +49,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::debug!(path = %settings.path().display(), "settings ready");
     let plugins = Arc::new(PluginRegistry::new(&args.data_dir)?);
     tracing::debug!(path = %plugins.directory().display(), "plugins ready");
+    let backgrounds = Arc::new(BackgroundRegistry::new(&args.data_dir)?);
+    tracing::debug!(path = %backgrounds.directory().display(), "backgrounds ready");
 
     let token = args.token();
     if token.is_none() {
@@ -60,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
         store,
         settings,
         plugins,
+        backgrounds,
         token,
         args.query_timeout_secs,
         args.plugin_timeout_secs,

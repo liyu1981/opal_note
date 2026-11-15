@@ -229,3 +229,35 @@ export interface TrashRestoreResult {
   /** Path relative to the notebook, or the new notebook id. */
   restored_path: string;
 }
+
+export type BackgroundSource = "builtin" | "data";
+export type BackgroundKind =
+  | "none"
+  | "dot-grid"
+  | "image"
+  | "gradient"
+  | "galaxy"
+  | "grid-scan"
+  | "letter-glitch"
+  | "shape-grid";
+
+export interface BackgroundInfo {
+  id: string;
+  title: string;
+  description: string;
+  kind: BackgroundKind | string;
+  options: Record<string, unknown>;
+  source: BackgroundSource;
+  path?: string;
+}
+
+export interface BackgroundLoadError {
+  folder: string;
+  message: string;
+}
+
+export interface BackgroundList {
+  directory: string;
+  backgrounds: BackgroundInfo[];
+  errors: BackgroundLoadError[];
+}

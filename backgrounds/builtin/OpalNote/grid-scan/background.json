@@ -1,0 +1,32 @@
+{
+  "id": "OpalNote/grid-scan",
+  "title": "Grid Scan",
+  "description": "A measured scan sweeping through a quiet wireframe room.",
+  "kind": "grid-scan",
+  "options": {
+    "lightMode": true,
+    "linesColor": "var(--color-line-strong)",
+    "scanColor": "var(--color-accent-strong)",
+    "cells": 8,
+    "lineThickness": 1,
+    "lineStyle": "solid",
+    "depth": 3,
+    "depthFade": 0.5,
+    "parallax": 0.5,
+    "shading": 0.35,
+    "reflection": 0.2,
+    "points": true,
+    "scanDirection": "forward",
+    "scanDuration": 3.2,
+    "scanDelay": 2.5,
+    "scanWidth": 1,
+    "trail": 0.4,
+    "glow": 0.25,
+    "autoScan": true,
+    "interactive": true,
+    "clickEffect": "ping",
+    "enableWebcam": false,
+    "showPreview": false,
+    "intro": true
+  }
+}
