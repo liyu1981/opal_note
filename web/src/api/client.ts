@@ -21,7 +21,7 @@ import type {
   TrashRestoreResult,
 } from "./types";
 
-const TOKEN_KEY = "opalnote.token";
+import { ensureSession, getCsrfToken, resetSession } from "../lib/session";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -35,27 +35,8 @@ export class ApiError extends Error {
   }
 }
 
-export function getStoredToken(): string {
-  try {
-    return window.localStorage.getItem(TOKEN_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function storeToken(token: string): void {
-  try {
-    if (token) {
-      window.localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      window.localStorage.removeItem(TOKEN_KEY);
-    }
-  } catch {
-    // Private-mode storage failures are non-fatal; the in-memory atom still works.
-  }
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  await ensureSession();
   const headers = new Headers(init.headers);
   if (
     init.body !== undefined &&
@@ -64,14 +45,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   ) {
     headers.set("content-type", "application/json");
   }
-  const token = getStoredToken();
-  if (token) {
-    headers.set("authorization", `Bearer ${token}`);
+  const method = (init.method ?? "GET").toUpperCase();
+  const csrf = getCsrfToken();
+  if (csrf && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    headers.set("x-opalnote-csrf", csrf);
   }
 
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, { ...init, headers });
+    response = await fetch(`/api${path}`, {
+      ...init,
+      headers,
+      credentials: "same-origin",
+    });
   } catch (error) {
     throw new ApiError(
       0,
@@ -81,6 +67,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      resetSession();
+      window.dispatchEvent(new Event("opalnote:unauthorized"));
+    }
     let code = "http_error";
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -102,12 +92,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 async function requestBlob(path: string): Promise<Blob> {
+  await ensureSession();
   const headers = new Headers();
-  const token = getStoredToken();
-  if (token) headers.set("authorization", `Bearer ${token}`);
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, { headers });
+    response = await fetch(`/api${path}`, {
+      headers,
+      credentials: "same-origin",
+    });
   } catch (error) {
     throw new ApiError(
       0,
@@ -116,6 +108,10 @@ async function requestBlob(path: string): Promise<Blob> {
     );
   }
   if (!response.ok) {
+    if (response.status === 401) {
+      resetSession();
+      window.dispatchEvent(new Event("opalnote:unauthorized"));
+    }
     let code = "http_error";
     let message = `${response.status} ${response.statusText}`;
     try {

@@ -5,6 +5,7 @@ mod config;
 mod error;
 mod plugins;
 mod routes;
+mod session;
 mod settings;
 mod state;
 mod store;
@@ -22,6 +23,7 @@ use tracing_subscriber::EnvFilter;
 use crate::backgrounds::BackgroundRegistry;
 use crate::config::{Cli, Command};
 use crate::plugins::PluginRegistry;
+use crate::session::SessionStore;
 use crate::settings::SettingsStore;
 use crate::state::AppState;
 use crate::store::Store;
@@ -51,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::debug!(path = %plugins.directory().display(), "plugins ready");
     let backgrounds = Arc::new(BackgroundRegistry::new(&args.data_dir)?);
     tracing::debug!(path = %backgrounds.directory().display(), "backgrounds ready");
+    let sessions = Arc::new(SessionStore::new(crate::session::SESSION_TTL));
 
     let token = args.token();
     if token.is_none() {
@@ -65,7 +68,9 @@ async fn main() -> anyhow::Result<()> {
         settings,
         plugins,
         backgrounds,
+        sessions,
         token,
+        !args.no_tls,
         args.query_timeout_secs,
         args.plugin_timeout_secs,
     );

@@ -43,16 +43,15 @@ import {
   backgroundNumber,
   mergeBackgroundOptions,
 } from "../lib/backgroundOptions";
+import { endSession, hasSession, startSession } from "../lib/session";
 import { BackgroundPreview } from "./BackgroundPreview";
 import { OpalLogo } from "./OpalLogo";
 import {
   journalPluginsRevisionAtom,
   refreshAtom,
   refreshBackgroundsAtom,
-  saveTokenAtom,
   settingsOpenAtom,
   shortcutRecordingAtom,
-  tokenAtom,
 } from "../state/atoms";
 
 type Tab =
@@ -122,8 +121,6 @@ export function SettingsDialog() {
   const setSettings = useSetAtom(settingsAtom);
   const syncStatus = useAtomValue(settingsStatusAtom);
   const recording = useAtomValue(shortcutRecordingAtom);
-  const token = useAtomValue(tokenAtom);
-  const saveToken = useSetAtom(saveTokenAtom);
   const refresh = useSetAtom(refreshAtom);
 
   const [tab, setTab] = useState<Tab>("fonts");
@@ -131,7 +128,8 @@ export function SettingsDialog() {
   const [fontStatus, setFontStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [fontError, setFontError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [tokenDraft, setTokenDraft] = useState(token);
+  const [tokenDraft, setTokenDraft] = useState("");
+  const [sessionActive, setSessionActive] = useState(hasSession);
   const [testStatus, setTestStatus] = useState<TestStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
@@ -140,7 +138,8 @@ export function SettingsDialog() {
   useEffect(() => {
     if (!open) return;
     setDraft(settings);
-    setTokenDraft(token);
+    setTokenDraft("");
+    setSessionActive(hasSession());
     setDirty(false);
     setFontStatus("saved");
     setFontError(null);
@@ -312,10 +311,17 @@ export function SettingsDialog() {
 
   async function connect(event: FormEvent) {
     event.preventDefault();
-    saveToken(tokenDraft.trim());
     setTestStatus("testing");
     setMessage(null);
     try {
+      const ok = await startSession(tokenDraft.trim());
+      if (!ok) {
+        setTestStatus("error");
+        setMessage("The server rejected that token.");
+        return;
+      }
+      setSessionActive(true);
+      setTokenDraft("");
       const health = await api.health();
       await api.listNotebooks();
       setTestStatus("ok");
@@ -329,6 +335,14 @@ export function SettingsDialog() {
         cause instanceof Error ? cause.message : "Could not reach the server",
       );
     }
+  }
+
+  async function clearSession() {
+    await endSession();
+    setSessionActive(false);
+    setTokenDraft("");
+    setTestStatus("idle");
+    setMessage("Session cleared.");
   }
 
   if (!open) return null;
@@ -472,16 +486,11 @@ export function SettingsDialog() {
               <ConnectionTab
                 token={tokenDraft}
                 setToken={setTokenDraft}
-                hasToken={Boolean(token)}
+                hasToken={sessionActive}
                 status={testStatus}
                 message={message}
                 onConnect={connect}
-                onClear={() => {
-                  saveToken("");
-                  setTokenDraft("");
-                  setTestStatus("idle");
-                  setMessage("Token cleared.");
-                }}
+                onClear={() => void clearSession()}
               />
             )}
             {tab === "index" && (
@@ -1149,8 +1158,9 @@ function ConnectionTab({
         API token
       </label>
       <p className="mt-1 font-sans text-[14px] leading-relaxed text-muted">
-        The client is stateless. The token is stored in this browser and sent as
-        an <code className="rounded bg-panel px-1 font-mono text-[14px]">Authorization: Bearer</code> header.
+        The token is exchanged for an HttpOnly session cookie. State-changing
+        requests use a CSRF header; the bearer token is not kept in browser
+        storage.
       </p>
       <input
         value={token}
@@ -1166,7 +1176,7 @@ function ConnectionTab({
           disabled={status === "testing"}
           className="rounded-lg bg-accent-strong px-3.5 py-2 font-sans text-[14px] font-medium text-white transition hover:bg-accent disabled:opacity-50"
         >
-          {status === "testing" ? "Testing…" : "Save & test"}
+          {status === "testing" ? "Testing…" : "Unlock & test"}
         </button>
         {hasToken && (
           <button
@@ -1174,7 +1184,7 @@ function ConnectionTab({
             onClick={onClear}
             className="rounded border border-line px-3 py-2 font-sans text-[14px] text-muted transition hover:bg-panel"
           >
-            Clear token
+            Clear session
           </button>
         )}
       </div>

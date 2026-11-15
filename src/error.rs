@@ -20,6 +20,9 @@ pub enum AppError {
     Unauthorized,
 
     #[error("{0}")]
+    Forbidden(String),
+
+    #[error("{0}")]
     Query(String),
 
     #[error(transparent)]
@@ -41,6 +44,7 @@ impl AppError {
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Query(_) => (StatusCode::BAD_REQUEST, "query_error"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         }

@@ -165,10 +165,11 @@ build. Debug builds skip that embed step and read both directories at runtime.
 ### Importing a Logseq graph
 
 Use the notebook import button in the left sidebar to upload a Logseq-format
-ZIP. The archive may contain `pages/`, `journals/`, `assets/` and `draws/`
-directly or inside one wrapper folder. Existing notebooks are never
-overwritten; if the requested name exists, the server imports as
-`<name> 2`, `<name> 3`, and so on, and the UI reports the chosen name.
+ZIP or gzip-compressed tar (`.tar.gz` / `.tgz`). The archive may contain
+`pages/`, `journals/`, `assets/` and `draws/` directly or inside one wrapper
+folder. Existing notebooks are never overwritten; if the requested name exists,
+the server imports as `<name> 2`, `<name> 3`, and so on, and the UI reports the
+chosen name.
 
 You can also copy a graph into a notebook folder manually and start/reindex:
 
@@ -573,13 +574,21 @@ interleave.
 Base path `/api`. Errors use
 `{"error":{"code":"bad_request","message":"..."}}`.
 
-Public (no token): `GET /health`, `GET /meta`.
+Public: `GET /health`, `GET /meta`, `POST /session`, `DELETE /session`.
+
+`POST /session` exchanges the optional `OPALNOTE_TOKEN` in `{token}` for an
+HttpOnly `opalnote_session` cookie and returns a CSRF token. Cookie-authenticated
+`POST`/`PATCH`/`PUT`/`DELETE` requests must send `x-opalnote-csrf`; API clients
+can keep using `Authorization: Bearer`. The browser never stores the bearer
+token in JavaScript storage.
 
 | Method | Path                                         | Purpose                                        |
 | ------ | -------------------------------------------- | ---------------------------------------------- |
+| POST   | `/session`                                   | Exchange token for HttpOnly cookie + CSRF     |
+| DELETE | `/session`                                   | Clear the browser session                      |
 | GET    | `/notebooks`                                 | List folders with note counts                  |
 | POST   | `/notebooks`                                 | `{name, description?}` — creates the folder    |
-| POST   | `/notebooks/import`                          | Multipart ZIP import; auto-suffixes conflicts  |
+| POST   | `/notebooks/import`                          | Multipart ZIP/tar.gz import; auto-suffixes names |
 | GET    | `/notebooks/{id}`                            | Notebook metadata                              |
 | PATCH  | `/notebooks/{id}`                            | `{name?, description?}` — may rename the folder|
 | DELETE | `/notebooks/{id}`                            | Move notebook folder to `.trash/`              |
@@ -665,7 +674,8 @@ src/
   main.rs            startup, tracing, graceful shutdown
   config.rs          clap, config file, env, config/install-service commands
   state.rs           shared AppState
-  auth.rs            optional bearer-token middleware
+  auth.rs            bearer token + HttpOnly session/CSRF middleware
+  session.rs         in-memory browser sessions
   assets.rs          release rust-embed / debug disk asset handler + SPA fallback
   routes/            /api handlers (blocking DB work offloaded)
   plugins.rs         release embed / debug disk plugin registry + QuickJS runner
@@ -699,8 +709,12 @@ web/
 - Without `OPALNOTE_TOKEN`, anyone who can reach the port can read and write
   files under `data/notebooks`. Set a token before exposing the server.
 - There is no per-notebook access control — the token is a single-user gate.
-- The token is compared in constant time and returned as `WWW-Authenticate:
-  Bearer` on 401. The client stores it in `localStorage`.
+- The optional server token is compared in constant time and returned as
+  `WWW-Authenticate: Bearer` on 401. The web UI exchanges it for an HttpOnly,
+  SameSite=Strict session cookie; the cookie is not readable by JavaScript.
+  Mutating cookie requests require `x-opalnote-csrf`.
+- Static responses carry a Content Security Policy with `script-src 'self'`;
+  external links are restricted to http/https/mailto before `window.open`.
 - `/api/query` cannot write and cannot run `::` system operations, but it can
   read every notebook. Treat the token as full access.
 - Path traversal is rejected: note paths must stay inside

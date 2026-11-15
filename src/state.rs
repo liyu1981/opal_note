@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use crate::backgrounds::BackgroundRegistry;
 use crate::plugins::PluginRegistry;
+use crate::session::SessionStore;
 use crate::settings::SettingsStore;
 use crate::store::Store;
 
@@ -14,7 +15,9 @@ pub struct AppState {
     pub settings: Arc<SettingsStore>,
     pub plugins: Arc<PluginRegistry>,
     pub backgrounds: Arc<BackgroundRegistry>,
+    pub sessions: Arc<SessionStore>,
     pub token: Option<Arc<str>>,
+    pub secure_cookies: bool,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
     pub started_at: Instant,
@@ -27,7 +30,9 @@ impl AppState {
         settings: Arc<SettingsStore>,
         plugins: Arc<PluginRegistry>,
         backgrounds: Arc<BackgroundRegistry>,
+        sessions: Arc<SessionStore>,
         token: Option<String>,
+        secure_cookies: bool,
         query_timeout_secs: f64,
         plugin_timeout_secs: f64,
     ) -> Self {
@@ -36,7 +41,9 @@ impl AppState {
             settings,
             plugins,
             backgrounds,
+            sessions,
             token: token.map(Arc::from),
+            secure_cookies,
             query_timeout_secs,
             plugin_timeout_secs,
             started_at: Instant::now(),

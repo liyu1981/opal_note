@@ -82,7 +82,8 @@ src/
   main.rs          startup, logging, graceful shutdown
   config.rs        clap, TOML config, env, config/install-service commands
   state.rs         AppState (Store + auth token)
-  auth.rs          optional bearer-token middleware
+  auth.rs          bearer token + HttpOnly session/CSRF middleware
+  session.rs       in-memory browser sessions
   assets.rs        release rust-embed / debug disk static handler
   routes/          HTTP API; all handlers run DB work via spawn_blocking
   plugins.rs       release embed / debug disk plugin registry + QuickJS runner
@@ -163,6 +164,12 @@ web/
   Any new embedded asset location must be wired through both modes.
 - Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
   in `src/index.css`; do not hard-code new hex colors.
+- Browser auth lives in `web/src/lib/session.ts`: the server token is exchanged
+  for an HttpOnly session cookie, the CSRF token is kept in memory, and the API
+  client sends `x-opalnote-csrf` on mutations. Never persist the bearer token
+  in `localStorage` (only read it once to migrate an old token). `App` gates
+  the router until a session exists and reopens the connection form on 401.
+  Keep static responses' CSP and link-scheme checks (`safeExternalUrl`) intact.
 - The main outlet renders the selected background via `MainBackground` from
   the server background registry. Keep it scoped to the route outlet: outside
   `LeftSidebar`, `TopBar` and `RightPanel`, with view `<main>` backgrounds
@@ -270,6 +277,10 @@ web/
   per-plugin deadline that interrupts JS and bounds Datalog queries. Plugins
   return a generic `{items: [...]}` JSON payload. Do not add filesystem or
   network host APIs.
+- Notebook imports accept ZIP or gzip-compressed tar. Detect the archive by
+  magic bytes, reject unknown formats, cap both compressed and extracted bytes,
+  and normalize entry paths through the same allow-listed folder mapping as ZIP
+  imports. Never extract tar symlinks, hard links or device nodes.
 - Backgrounds are declarative plugins, not sandboxed JS. Built-ins live in
   `backgrounds/builtin/<folder>/background.json`; users add
   `<data-dir>/backgrounds/<folder>/background.json` plus optional assets. The
@@ -384,9 +395,19 @@ web/
 
 ## API contract
 
-Base path `/api`. All routes except `/health` and `/meta` require the bearer
-token when `OPALNOTE_TOKEN` is set. Errors are
+Base path `/api`. `GET /health`, `GET /meta`, and `POST|DELETE /session` are
+public. Other routes accept either `Authorization: Bearer` (API clients) or an
+HttpOnly session cookie when `OPALNOTE_TOKEN` is set; cookie-authenticated
+mutations also require `x-opalnote-csrf`. Errors are
 `{"error":{"code":"...","message":"..."}}`.
+
+Session flow:
+
+```
+POST /api/session {"token":"..."}  # optional token when OPALNOTE_TOKEN is set
+  -> HttpOnly opalnote_session cookie + {csrf_token}
+DELETE /api/session                 # clear the session
+```
 
 Notes are scoped to a notebook and identified by their relative path:
 
@@ -416,8 +437,9 @@ DELETE /api/trash/{id}
 ```
 
 `POST /api/notebooks/{notebook}/notes` accepts `section: "pages" | "journals"`.
-`POST /api/notebooks/import` accepts a multipart `file` ZIP and optional `name`;
-it never overwrites an existing notebook and auto-suffixes conflicting names.
+`POST /api/notebooks/import` accepts a multipart `file` archive (ZIP, `.tar.gz`
+or `.tgz`) and optional `name`; it never overwrites an existing notebook and
+auto-suffixes conflicting names.
 `GET /journals` is a cursor-paginated, newest-first feed. `GET /pages` returns
 one page of all notes (pages and journals) with resolved backlink counts;
 `total` is the filtered row count. `GET /orphans` returns empty pages with no

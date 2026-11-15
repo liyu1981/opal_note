@@ -83,6 +83,23 @@ fn dev_asset(path: &str) -> Option<Vec<u8>> {
     .ok()
 }
 
+/// Content Security Policy for the SPA. Scripts are same-origin only; inline
+/// styles remain allowed because React and CodeMirror use dynamic style
+/// attributes. Google Fonts are explicitly allow-listed for the Settings font
+/// picker, and authenticated image/audio/video blobs come from self or blob:.
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
+script-src 'self'; \
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
+font-src 'self' data: https://fonts.gstatic.com; \
+img-src 'self' data: blob: https:; \
+media-src 'self' data: blob: https:; \
+connect-src 'self'; \
+worker-src 'self' blob:; \
+object-src 'none'; \
+base-uri 'self'; \
+form-action 'self'; \
+frame-ancestors 'none'";
+
 fn asset_response(path: &str, bytes: Vec<u8>) -> Response {
     let mime = mime_guess::from_path(path).first_or_octet_stream();
     let cache = if path == "index.html" {
@@ -96,6 +113,13 @@ fn asset_response(path: &str, bytes: Vec<u8>) -> Response {
         .header(header::CONTENT_TYPE, mime.as_ref())
         .header(header::CACHE_CONTROL, cache)
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header("content-security-policy", CONTENT_SECURITY_POLICY)
+        .header("referrer-policy", "no-referrer")
+        .header("x-frame-options", "DENY")
+        .header(
+            "permissions-policy",
+            "camera=(), microphone=(), geolocation=()",
+        )
         .body(Body::from(bytes))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }

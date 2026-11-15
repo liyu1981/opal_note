@@ -6,7 +6,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { ApiError, storeToken } from "../api/client";
+import { ApiError } from "../api/client";
+import { startSession } from "../lib/session";
 
 interface Props {
   children: ReactNode;
@@ -80,13 +81,23 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 }
 
-function ConnectionForm() {
+export function ConnectionForm({ onConnected }: { onConnected?: () => void } = {}) {
   const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function connect(event: FormEvent) {
+  async function connect(event: FormEvent) {
     event.preventDefault();
-    storeToken(token.trim());
-    window.location.reload();
+    setBusy(true);
+    setError(null);
+    const ok = await startSession(token.trim());
+    if (ok) {
+      onConnected?.();
+      if (!onConnected) window.location.reload();
+      return;
+    }
+    setError("The server rejected that token.");
+    setBusy(false);
   }
 
   return (
@@ -103,17 +114,20 @@ function ConnectionForm() {
         className="mt-1.5 w-full rounded-lg border border-line bg-canvas px-2.5 py-2 font-mono text-[14px] outline-none focus:border-accent"
       />
       <p className="mt-1.5 text-[14px] leading-relaxed text-muted">
-        Stored in this browser only. The server compares it against{" "}
-        <code className="rounded bg-panel px-1 py-0.5 font-mono text-[14px]">
-          OPALNOTE_TOKEN
-        </code>
-        {"."}
+        The token is exchanged for an HttpOnly session cookie and is not stored
+        in this browser&apos;s JavaScript storage.
       </p>
+      {error && (
+        <p className="mt-2 rounded-lg bg-danger/10 px-2.5 py-2 font-mono text-[14px] text-danger">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
-        className="mt-3 rounded-lg bg-accent-strong px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent"
+        disabled={busy}
+        className="mt-3 rounded-lg bg-accent-strong px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent disabled:opacity-40"
       >
-        Connect
+        {busy ? "Connecting…" : "Connect"}
       </button>
     </form>
   );

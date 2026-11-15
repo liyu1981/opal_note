@@ -1,7 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 
-import { ApiError, api, getStoredToken, storeToken } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type {
   BackgroundList,
   Note,
@@ -221,15 +221,6 @@ export const shortcutSequenceAtom = atom("");
 
 /** While recording a shortcut in Settings, global shortcuts are suspended. */
 export const shortcutRecordingAtom = atom(false);
-
-export const tokenAtom = atom(getStoredToken());
-
-export const saveTokenAtom = atom(null, (_get, set, token: string) => {
-  storeToken(token);
-  set(tokenAtom, token);
-  set(revisionAtom, (revision) => revision + 1);
-  set(backgroundsRevisionAtom, (revision) => revision + 1);
-});
 
 export const notebooksAtom = atom(async (get): Promise<Notebook[]> => {
   get(revisionAtom);

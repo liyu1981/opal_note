@@ -46,3 +46,22 @@ export function splitWikilink(inner: string): {
   return { target, label };
 }
 
+
+/** Only open explicit safe schemes or same-origin URLs. */
+export function safeExternalUrl(raw: string): string | null {
+  const value = raw.trim().replace(/^<|>$/gu, "");
+  if (!value) return null;
+  try {
+    const resolved = new URL(value, window.location.origin);
+    if (
+      resolved.protocol === "http:" ||
+      resolved.protocol === "https:" ||
+      resolved.protocol === "mailto:"
+    ) {
+      return resolved.href;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

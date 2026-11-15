@@ -23,6 +23,7 @@ import { languages } from "@codemirror/language-data";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 
 import { api } from "../../api/client";
+import { safeExternalUrl } from "../../lib/markdown";
 import {
   livePreview,
   refreshLivePreview,
@@ -104,7 +105,9 @@ export const LiveMarkdownEditor = forwardRef<
     linkKeys,
     onWikiLink: (target) => onWikiLinkRef.current(target),
     onOpenLink: (url) => {
-      window.open(url, "_blank", "noopener,noreferrer");
+      const safe = safeExternalUrl(url);
+      if (!safe) return;
+      window.open(safe, "_blank", "noopener,noreferrer");
     },
     onTag: (tag) => onTagRef.current(tag),
     readOnly,

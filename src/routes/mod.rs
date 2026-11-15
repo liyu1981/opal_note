@@ -5,6 +5,7 @@ pub mod notebooks;
 pub mod notes;
 pub mod plugins;
 pub mod query;
+pub mod session;
 pub mod settings;
 pub mod trash;
 
@@ -32,7 +33,8 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
     // is required before it has one.
     let public = Router::new()
         .route("/health", get(health::health))
-        .route("/meta", get(health::meta));
+        .route("/meta", get(health::meta))
+        .route("/session", post(session::create).delete(session::clear));
 
     let protected = Router::new()
         .route("/stats", get(health::stats))
