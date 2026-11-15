@@ -207,8 +207,10 @@ export const api = {
   listOrphans: (notebookId: string) =>
     request<PageOverview[]>(`/notebooks/${encode(notebookId)}/orphans`),
 
-  graph: (notebookId: string) =>
-    request<GraphData>(`/notebooks/${encode(notebookId)}/graph`),
+  graph: (notebookId: string, includeTags = false) =>
+    request<GraphData>(
+      `/notebooks/${encode(notebookId)}/graph?include_tags=${includeTags ? "true" : "false"}`,
+    ),
 
   listAssets: (
     notebookId: string,

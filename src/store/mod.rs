@@ -1049,8 +1049,10 @@ impl Store {
         Ok(pages)
     }
 
-    /// Nodes and resolved links for the notebook graph.
-    pub fn graph(&self, notebook_id: &str) -> Result<GraphData> {
+    /// Nodes and resolved links for the notebook graph. When `include_tags`
+    /// is set, tag names are added as nodes connected to every note carrying
+    /// that tag.
+    pub fn graph(&self, notebook_id: &str, include_tags: bool) -> Result<GraphData> {
         self.ensure_synced()?;
         let rows = self.run(
             queries::LIST_ALL_NOTES,
@@ -1087,17 +1089,39 @@ impl Store {
             }
         }
 
-        Ok(GraphData {
-            nodes: notes
-                .into_iter()
-                .map(|note| GraphNode {
-                    id: note.id,
-                    title: note.title,
-                    tags: note.tags,
-                })
-                .collect(),
-            edges,
-        })
+        let mut tag_nodes = BTreeMap::new();
+        if include_tags {
+            for note in &notes {
+                for tag in &note.tags {
+                    let tag_id = format!("tag:{tag}");
+                    tag_nodes.entry(tag.clone()).or_insert_with(|| GraphNode {
+                        id: tag_id.clone(),
+                        title: format!("#{tag}"),
+                        tags: vec![tag.clone()],
+                        kind: "tag".to_string(),
+                    });
+                    if seen.insert((note.id.clone(), tag_id.clone())) {
+                        edges.push(GraphEdge {
+                            source: note.id.clone(),
+                            target: tag_id,
+                        });
+                    }
+                }
+            }
+        }
+
+        let mut nodes: Vec<GraphNode> = notes
+            .into_iter()
+            .map(|note| GraphNode {
+                id: note.id,
+                title: note.title,
+                tags: note.tags,
+                kind: "note".to_string(),
+            })
+            .collect();
+        nodes.extend(tag_nodes.into_values());
+
+        Ok(GraphData { nodes, edges })
     }
 
     pub fn search_notes(
@@ -2808,11 +2832,45 @@ mod tests {
             .create_note(&notebook.id, "Two", "[[One]] and [[Missing]]", &[])
             .unwrap();
 
-        let graph = store.graph(&notebook.id).unwrap();
+        let graph = store.graph(&notebook.id, false).unwrap();
         assert_eq!(graph.nodes.len(), 2);
         assert_eq!(graph.edges.len(), 1);
         assert_eq!(graph.edges[0].source, "pages/Two.md");
         assert_eq!(graph.edges[0].target, "pages/One.md");
+    }
+
+    #[test]
+    fn graph_can_include_tag_nodes() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Tag Graph", "").unwrap().unwrap();
+        store
+            .create_note(&notebook.id, "Tagged", "body #alpha", &["beta".into()])
+            .unwrap();
+
+        let without = store.graph(&notebook.id, false).unwrap();
+        assert!(without.nodes.iter().all(|node| node.kind == "note"));
+        assert!(without
+            .nodes
+            .iter()
+            .all(|node| !node.id.starts_with("tag:")));
+
+        let with_tags = store.graph(&notebook.id, true).unwrap();
+        let tag_ids: Vec<&str> = with_tags
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "tag")
+            .map(|node| node.id.as_str())
+            .collect();
+        assert!(tag_ids.contains(&"tag:alpha"));
+        assert!(tag_ids.contains(&"tag:beta"));
+        assert!(with_tags
+            .edges
+            .iter()
+            .any(|edge| { edge.source == "pages/Tagged.md" && edge.target == "tag:alpha" }));
+        assert!(with_tags
+            .edges
+            .iter()
+            .any(|edge| { edge.source == "pages/Tagged.md" && edge.target == "tag:beta" }));
     }
 
     #[test]

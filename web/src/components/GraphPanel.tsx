@@ -46,16 +46,24 @@ export function GraphPanel({
 }) {
   const revision = useAtomValue(notesRevisionAtom);
   const navigate = useAppNavigate();
+  const openGraphNode = (id: string) => {
+    if (id.startsWith("tag:")) {
+      navigate({ view: "tag", tag: id.slice(4) });
+    } else {
+      navigate({ view: "note", noteId: id });
+    }
+  };
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>(defaultScope);
+  const [includeTags, setIncludeTags] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     api
-      .graph(notebookId)
+      .graph(notebookId, includeTags)
       .then((data) => {
         if (cancelled) return;
         setGraph(data);
@@ -74,7 +82,7 @@ export function GraphPanel({
     return () => {
       cancelled = true;
     };
-  }, [notebookId, revision]);
+  }, [includeTags, notebookId, revision]);
 
   const shown = useMemo(
     () =>
@@ -122,15 +130,31 @@ export function GraphPanel({
               {title ?? "Graph"}
             </h1>
           </div>
-          <div className="text-right">
-            <p className="font-mono text-[14px] text-faint">
-              {shown.nodes.length} {shown.nodes.length === 1 ? "node" : "nodes"}{" "}
-              · {shown.edges.length}{" "}
-              {shown.edges.length === 1 ? "link" : "links"}
-            </p>
-            <p className="mt-1 font-mono text-[14px] text-faint">
-              Click to select · double-click to open
-            </p>
+          <div className="flex items-center gap-3 text-right">
+            <button
+              type="button"
+              onClick={() => setIncludeTags((current) => !current)}
+              aria-pressed={includeTags}
+              className={`rounded-md border px-2 py-1 font-mono text-[13px] transition ${
+                includeTags
+                  ? "border-accent/40 bg-accent-soft text-accent-strong"
+                  : "border-line bg-white/40 text-muted hover:bg-white hover:text-ink"
+              }`}
+              title="Show tags as graph nodes"
+            >
+              Tags
+            </button>
+            <div>
+              <p className="font-mono text-[14px] text-faint">
+                {shown.nodes.length}{" "}
+                {shown.nodes.length === 1 ? "node" : "nodes"} ·{" "}
+                {shown.edges.length}{" "}
+                {shown.edges.length === 1 ? "link" : "links"}
+              </p>
+              <p className="mt-1 font-mono text-[14px] text-faint">
+                Click to select · double-click to open
+              </p>
+            </div>
           </div>
         </div>
         <div className="min-h-0 flex-1 p-3">
@@ -141,7 +165,7 @@ export function GraphPanel({
             width={width}
             height={height}
             fill
-            onOpenNote={(path) => navigate({ view: "note", noteId: path })}
+            onOpenNote={openGraphNode}
           />
         </div>
       </div>
@@ -155,24 +179,39 @@ export function GraphPanel({
           <IconGraph className="h-3 w-3" />
           {local ? "Page graph" : "Notebook graph"}
         </div>
-        {activeNoteId && (
-          <div className="flex rounded-md border border-line bg-white/40 p-0.5">
-            {(["local", "all"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setScope(value)}
-                className={`rounded px-1.5 py-0.5 font-mono text-[14px] uppercase tracking-[0.08em] transition ${
-                  scope === value
-                    ? "bg-panel-strong text-ink"
-                    : "text-faint hover:text-ink-soft"
-                }`}
-              >
-                {value === "local" ? "Local" : "Full"}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-1.5">
+          {activeNoteId && (
+            <div className="flex rounded-md border border-line bg-white/40 p-0.5">
+              {(["local", "all"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setScope(value)}
+                  className={`rounded px-1.5 py-0.5 font-mono text-[14px] uppercase tracking-[0.08em] transition ${
+                    scope === value
+                      ? "bg-panel-strong text-ink"
+                      : "text-faint hover:text-ink-soft"
+                  }`}
+                >
+                  {value === "local" ? "Local" : "Full"}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setIncludeTags((current) => !current)}
+            aria-pressed={includeTags}
+            className={`rounded-md border px-1.5 py-0.5 font-mono text-[14px] uppercase tracking-[0.08em] transition ${
+              includeTags
+                ? "border-accent/40 bg-accent-soft text-accent-strong"
+                : "border-line bg-white/40 text-faint hover:text-ink-soft"
+            }`}
+            title="Show tags as graph nodes"
+          >
+            Tags
+          </button>
+        </div>
       </div>
 
       <p className="font-mono text-[14px] text-faint">
@@ -186,7 +225,7 @@ export function GraphPanel({
         activeNoteId={activeNoteId}
         width={width}
         height={height}
-        onOpenNote={(path) => navigate({ view: "note", noteId: path })}
+        onOpenNote={openGraphNode}
       />
 
       <p className="font-mono text-[14px] leading-relaxed text-faint">
@@ -606,9 +645,11 @@ function GraphCanvas({
                 ? "var(--color-accent-strong)"
                 : node.id === focusId
                   ? "var(--color-accent)"
-                  : node.id.startsWith("journals/")
-                    ? "var(--color-graph-node-journal)"
-                    : "var(--color-graph-node)";
+                  : node.kind === "tag"
+                    ? "var(--color-graph-node-tag)"
+                    : node.id.startsWith("journals/")
+                      ? "var(--color-graph-node-journal)"
+                      : "var(--color-graph-node)";
               return (
                 <g
                   key={node.id}

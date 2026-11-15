@@ -162,6 +162,46 @@ pnpm start
 demand for a plain release
 build. Debug builds skip that embed step and read both directories at runtime.
 
+### Self-updates
+
+Release builds embed their package version, commit hash and **commit time**.
+On startup they check:
+
+```text
+<update-dir>/candidate/
+  opalnote
+  manifest.json
+```
+
+The default update directory is `~/.opalnote/updates`; override it with
+`--update-dir`, `OPALNOTE_UPDATE_DIR`, or `update_dir` in the TOML config.
+Candidate manifests contain:
+
+```json
+{
+  "version": "0.1.0",
+  "commit": "abc1234",
+  "commit_time": 1770000000,
+  "target": "aarch64-unknown-linux-gnu",
+  "sha256": "...",
+  "size": 29384756
+}
+```
+
+A candidate is applied only when its semantic version is newer, or the version
+is equal and its commit time is newer. The binary is validated (target, size,
+optional SHA-256), copied to a temporary file beside the running executable,
+and atomically renamed into place. The running process keeps the old image;
+the new version starts on the next restart. The candidate directory is deleted
+after a successful replacement.
+
+Debug builds skip this by default. Use `--no-self-update` or
+`OPALNOTE_NO_SELF_UPDATE=true` to disable it explicitly. Automatic GitHub
+release detection/download is still a placeholder (`check_remote_update_placeholder`).
+
+`opalnote --version` prints the build version, channel, commit and commit time;
+`GET /api/meta` exposes the same build fields.
+
 ### Importing a Logseq graph
 
 Use the notebook import button in the left sidebar to upload a Logseq-format
@@ -226,6 +266,8 @@ version = 1
 bind = "127.0.0.1:7827"
 data_dir = "./data"
 token = ""
+update_dir = "~/.opalnote/updates"
+no_self_update = false
 query_timeout_secs = 5.0
 plugin_timeout_secs = 5.0
 no_tls = false
@@ -253,6 +295,8 @@ or `--force` to customize it; the command prints the enable commands.
 | `--bind`                   | `OPALNOTE_BIND`               | `127.0.0.1:7827`  | Listen address (`pnpm dev` forces `0.0.0.0:7827`)        |
 | `--data-dir`               | `OPALNOTE_DATA_DIR`           | `./data`          | Root holding `notebooks/`, `index/` and `.trash/`        |
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
+| `--update-dir`             | `OPALNOTE_UPDATE_DIR`         | `~/.opalnote/updates` | Pending self-update candidate directory              |
+| `--no-self-update`         | `OPALNOTE_NO_SELF_UPDATE`     | `false`           | Disable startup self-update checks                       |
 | `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
 | `--plugin-timeout-secs`    | `OPALNOTE_PLUGIN_TIMEOUT_SECS`| `5`               | Per-run QuickJS journal plugin budget                    |
 | `--no-tls`                 | `OPALNOTE_NO_TLS`             | `false`           | Serve plain HTTP instead of HTTPS                        |
@@ -343,8 +387,8 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 The shell follows a Logseq-like split. It opens on the **Home** dashboard:
 today's editable journal card, a Favorites section, the three most recently
 edited pages, a New page action, and a right-hand strip of outstanding todos.
-The top bar carries the omni search bar, back/forward history controls, and a
-Home button on the right.
+The top bar carries the omni search bar with the Home button beside it, plus
+back/forward history controls.
 
 - **Left sidebar** — notebook switcher plus Home, Journals, Pages, Graph,
   Assets and Trash navigation. The pencil action renames the current notebook
@@ -412,7 +456,8 @@ Home button on the right.
   backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
   renders an interactive local/full notebook graph: click a node to highlight
   its links, double-click to open its page, hover to preview links, and switch
-  between the active page's neighborhood and the complete graph. The full graph
+  between the active page's neighborhood and the complete graph. A **Tags**
+  toggle adds tag nodes connected to their pages. The full graph
   follows Logseq's all-pages layout: d3-force for connected pages and a
   deterministic ring of isolated pages around the connected cluster. Connected
   nodes animate under force; drag a node to pull its neighbours, and use
@@ -595,7 +640,7 @@ token in JavaScript storage.
 | GET    | `/notebooks/{id}/notes`                      | `?limit=&offset=` newest first                 |
 | GET    | `/notebooks/{id}/pages`                      | Paged/filtered pages with backlink counts       |
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
-| GET    | `/notebooks/{id}/graph`                      | Nodes and resolved links for the graph         |
+| GET    | `/notebooks/{id}/graph`                      | Nodes/links; `?include_tags=true` adds tag nodes |
 | GET    | `/notebooks/{id}/assets`                     | Paged/filtered asset list                      |
 | GET    | `/notebooks/{id}/assets/{*path}`             | Asset bytes with MIME type                     |
 | DELETE | `/notebooks/{id}/assets/{*path}`             | Move the asset to the trash                    |

@@ -47,7 +47,7 @@ impl AppState {
             query_timeout_secs,
             plugin_timeout_secs,
             started_at: Instant::now(),
-            version: env!("CARGO_PKG_VERSION"),
+            version: crate::build_info::VERSION,
         }
     }
 }

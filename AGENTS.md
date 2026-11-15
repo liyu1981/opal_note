@@ -81,6 +81,8 @@ scripts/           dev orchestration, asset sync, release launcher
 src/
   main.rs          startup, logging, graceful shutdown
   config.rs        clap, TOML config, env, config/install-service commands
+  build_info.rs    compile-time version/commit/commit-time constants
+  update.rs        validated offline self-update + startup replacement
   state.rs         AppState (Store + auth token)
   auth.rs          bearer token + HttpOnly session/CSRF middleware
   session.rs       in-memory browser sessions
@@ -219,8 +221,8 @@ web/
 - The workspace opens on `HomeView` (`homeViewAtom`): today's editable journal
   card, a Favorites section, the three most recently edited pages, a New page
   action, and outstanding todo-plugin items in a sticky right strip. The global top bar hosts the
-  **OmniBar**: normal text searches notes, a leading `#` lists tags, and a
-  leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode. Tag
+  **OmniBar** (with the Home button beside it): normal text searches notes, a
+  leading `#` lists tags, and a leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode. Tag
   views prefill `#tag` in the bar. Do not reintroduce the old centered search
   or command dialogs, and do not put search back into `LeftSidebar` or make
   `notesAtom` query-dependent.
@@ -260,10 +262,12 @@ web/
   Search returns match-centered plain-text excerpts; `OmniBar` highlights
   query terms in titles, excerpts and paths with the `--color-mark` token.
 - Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
-  `GET /notebooks/{id}/graph`. Nodes are all notes; edges only resolved
-  wikilinks. `GraphPanel` defaults to the active note's 1-hop neighborhood with
-  a Full toggle; `fill` mode is the full-page whole-notebook graph. Keep graph
-  data out of the editor's Suspense path.
+  `GET /notebooks/{id}/graph`; `?include_tags=true` adds `tag:` nodes (kind
+  `tag`) connected to their pages. Nodes are notes/tags; edges are only
+  resolved wikilinks or note-tag memberships. `GraphPanel` defaults to the
+  active note's 1-hop neighborhood with a Full toggle and a Tags toggle;
+  `fill` mode is the full-page whole-notebook graph. Keep graph data out of the
+  editor's Suspense path.
 - `GraphCanvas` owns view state: live force simulation, wheel/button zoom,
   background pan, node drag, reset, and single-click selection. Connected
   nodes animate from `createLiveSimulation`; anchors keep the Logseq seed shape,
@@ -281,6 +285,15 @@ web/
   magic bytes, reject unknown formats, cap both compressed and extracted bytes,
   and normalize entry paths through the same allow-listed folder mapping as ZIP
   imports. Never extract tar symlinks, hard links or device nodes.
+- `build.rs` embeds `OPALNOTE_BUILD_VERSION`, `OPALNOTE_BUILD_COMMIT`,
+  `OPALNOTE_BUILD_COMMIT_TIME` (git commit `%ct`) and `OPALNOTE_BUILD_CHANNEL`
+  in every build. Keep the metadata emission before the debug early return.
+- Self-update reads `<update-dir>/candidate/{opalnote,manifest.json}` in release
+  builds. Compare semver first and commit time as the tie-breaker; validate
+  target/size/optional SHA-256; copy beside the current executable and atomically
+  rename; delete the candidate after success. Debug builds and
+  `--no-self-update` skip it. The running process continues; the new binary is
+  used on the next restart. Remote GitHub checks are a placeholder.
 - Backgrounds are declarative plugins, not sandboxed JS. Built-ins live in
   `backgrounds/builtin/<folder>/background.json`; users add
   `<data-dir>/backgrounds/<folder>/background.json` plus optional assets. The
@@ -326,7 +339,7 @@ web/
   `rightPanelOpenAtom`.
 - Graph colors are theme tokens in `src/index.css`:
   `--color-graph-bg`, `--color-graph-node`, `--color-graph-node-journal`,
-  `--color-graph-edge`, `--color-graph-label`. Keep the SVG using these
+  `--color-graph-node-tag`, `--color-graph-edge`, `--color-graph-label`. Keep the SVG using these
   variables rather than hard-coded graph colors; nodes and labels must stay
   readable against the warm graph surface.
 - `graphLayout.ts` follows Logseq's all-pages approach: `d3-force` with
@@ -416,7 +429,7 @@ GET|PATCH|DELETE /api/notebooks/{notebook}/notes/{*path}
 GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
 GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
-GET /api/notebooks/{notebook}/graph
+GET /api/notebooks/{notebook}/graph?include_tags=true
 GET /api/notebooks/{notebook}/assets?limit=&offset=&q=&kind=&sort=&dir=
 GET|DELETE /api/notebooks/{notebook}/assets/{*path}
 GET /api/notebooks/{notebook}/asset?path=

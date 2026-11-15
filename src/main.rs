@@ -1,6 +1,7 @@
 mod assets;
 mod auth;
 mod backgrounds;
+mod build_info;
 mod config;
 mod error;
 mod plugins;
@@ -9,6 +10,7 @@ mod session;
 mod settings;
 mod state;
 mod store;
+mod update;
 
 use std::sync::Arc;
 
@@ -44,6 +46,22 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let args = cli.serve.resolve(cli.config.as_deref())?;
+
+    if !args.no_self_update && !cfg!(debug_assertions) {
+        match update::apply_pending(&args.update_dir) {
+            Ok(Some(update)) => tracing::info!(
+                version = %update.version,
+                commit = %update.commit,
+                commit_time = update.commit_time,
+                "self-update applied; restart to run the new binary"
+            ),
+            Ok(None) => {}
+            Err(err) => tracing::warn!(error = %err, "self-update check failed"),
+        }
+        if let Err(err) = update::check_remote_update_placeholder() {
+            tracing::warn!(error = %err, "remote update check failed");
+        }
+    }
 
     let store = Arc::new(Store::open(&args.data_dir, args.query_timeout_secs)?);
     store.ping()?;

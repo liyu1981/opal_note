@@ -140,9 +140,16 @@ pub async fn pages(
     Ok(Json(pages))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GraphQuery {
+    #[serde(default)]
+    pub include_tags: bool,
+}
+
 pub async fn graph(
     State(state): State<AppState>,
     Path(notebook_id): Path<String>,
+    Query(query): Query<GraphQuery>,
 ) -> ApiResult<Json<GraphData>> {
     let store = state.store.clone();
     let graph = db_call(
@@ -150,7 +157,7 @@ pub async fn graph(
             if !store.notebook_exists(&notebook_id)? {
                 return Ok(None);
             }
-            Ok(Some(store.graph(&notebook_id)?))
+            Ok(Some(store.graph(&notebook_id, query.include_tags)?))
         },
         AppError::Internal,
     )

@@ -24,6 +24,7 @@ type SimNode = SimulationNodeDatum & {
   id: string;
   title: string;
   tags: string[];
+  kind: "note" | "tag";
   degree: number;
   radius: number;
 };
@@ -61,9 +62,12 @@ export function layoutGraph(
     degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
   }
 
-  const radiusFor = (id: string) => {
-    const d = degree.get(id) ?? 0;
-    const base = id.startsWith("journals/") ? 4.4 : 3.8;
+  const radiusFor = (node: GraphNode) => {
+    const d = degree.get(node.id) ?? 0;
+    if (node.kind === "tag") {
+      return Math.min(8, 2.8 + 1.8 * Math.sqrt(d));
+    }
+    const base = node.id.startsWith("journals/") ? 4.4 : 3.8;
     return Math.min(12, base + 3.4 * Math.sqrt(d));
   };
 
@@ -75,8 +79,9 @@ export function layoutGraph(
         id: node.id,
         title: node.title,
         tags: node.tags,
+        kind: node.kind,
         degree: degree.get(node.id) ?? 0,
-        radius: radiusFor(node.id),
+        radius: radiusFor(node),
       });
     } else {
       isolated.push(node);
@@ -133,6 +138,7 @@ export function layoutGraph(
     id: node.id,
     title: node.title,
     tags: node.tags,
+    kind: node.kind,
     degree: node.degree,
     radius: node.radius,
     x: node.x ?? 0,
@@ -165,8 +171,9 @@ export function layoutGraph(
           id: node.id,
           title: node.title,
           tags: node.tags,
+          kind: node.kind,
           degree: 0,
-          radius: radiusFor(node.id),
+          radius: radiusFor(node),
           x: Math.cos(angle) * ringRadius,
           y: Math.sin(angle) * ringRadius,
         });
@@ -237,13 +244,16 @@ export function createLiveSimulation(
         id,
         title: node.title,
         tags: node.tags,
+        kind: node.kind,
         degree: degree.get(id) ?? 0,
         radius: position?.radius ??
-          Math.min(
-            12,
-            (id.startsWith("journals/") ? 4.4 : 3.8) +
-              3.4 * Math.sqrt(degree.get(id) ?? 0),
-          ),
+          (node.kind === "tag"
+            ? Math.min(8, 2.8 + 1.8 * Math.sqrt(degree.get(id) ?? 0))
+            : Math.min(
+                12,
+                (id.startsWith("journals/") ? 4.4 : 3.8) +
+                  3.4 * Math.sqrt(degree.get(id) ?? 0),
+              )),
         x: position?.x ?? width / 2,
         y: position?.y ?? height / 2,
         vx: seededVelocity(id, 1) * 5,

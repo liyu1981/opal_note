@@ -57,6 +57,8 @@ pub struct GraphNode {
     pub id: String,
     pub title: String,
     pub tags: Vec<String>,
+    /// `note` or `tag`.
+    pub kind: String,
 }
 
 /// A resolved link between two existing notes.

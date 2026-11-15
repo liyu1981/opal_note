@@ -22,6 +22,8 @@ const PLACEHOLDER: &str = r#"<!doctype html>
 "#;
 
 fn main() {
+    emit_build_info();
+
     // Debug builds serve web/dist and plugins/builtin from disk at runtime.
     // They do not embed either payload, so frontend/plugin changes only need a
     // server restart, not a Rust rebuild.
@@ -70,6 +72,46 @@ fn main() {
          Run `pnpm --dir web install && pnpm --dir web build` manually, then rebuild.\n\
          To build the Rust side without web assets, set OPALNOTE_SKIP_WEB_BUILD=1."
     );
+}
+
+/// Embed the package version and git commit metadata in every build. The
+/// updater compares the commit time when versions are equal.
+fn emit_build_info() {
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs");
+    println!("cargo:rerun-if-env-changed=GITHUB_SHA");
+    println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
+
+    let git = |args: &[&str]| -> Option<String> {
+        let output = Command::new("git").args(args).output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+
+    let commit = std::env::var("GITHUB_SHA")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| git(&["rev-parse", "HEAD"]))
+        .unwrap_or_else(|| "unknown".to_string());
+    let commit = commit.chars().take(7).collect::<String>();
+    let commit_time = git(&["show", "-s", "--format=%ct", "HEAD"])
+        .or_else(|| std::env::var("SOURCE_DATE_EPOCH").ok())
+        .unwrap_or_else(|| "0".to_string());
+    let channel = if std::env::var("PROFILE").as_deref() == Ok("release") {
+        "release"
+    } else {
+        "dev"
+    };
+
+    println!(
+        "cargo:rustc-env=OPALNOTE_BUILD_VERSION={}",
+        std::env::var("CARGO_PKG_VERSION").unwrap_or_default()
+    );
+    println!("cargo:rustc-env=OPALNOTE_BUILD_COMMIT={commit}");
+    println!("cargo:rustc-env=OPALNOTE_BUILD_COMMIT_TIME={commit_time}");
+    println!("cargo:rustc-env=OPALNOTE_BUILD_CHANNEL={channel}");
 }
 
 /// True when client sources are newer than the last web build.

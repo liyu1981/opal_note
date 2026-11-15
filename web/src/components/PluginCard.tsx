@@ -24,9 +24,6 @@ export function PluginCard({
               {plugin.items.length}
             </span>
           </div>
-          <p className="mt-0.5 font-mono text-[14px] leading-relaxed text-faint">
-            {plugin.description}
-          </p>
         </div>
       </header>
 

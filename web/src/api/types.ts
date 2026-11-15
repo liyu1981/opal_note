@@ -82,6 +82,8 @@ export interface GraphNode {
   id: string;
   title: string;
   tags: string[];
+  /** `note` or `tag`. */
+  kind: "note" | "tag";
 }
 
 export interface GraphEdge {

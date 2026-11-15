@@ -18,7 +18,7 @@ const DEFAULT_PLUGIN_TIMEOUT: f64 = 5.0;
 
 /// Server-first, self-hosted notes with a Datalog-native index.
 #[derive(Debug, Clone, Parser)]
-#[command(name = "opalnote", version, about)]
+#[command(name = "opalnote", version, long_version = crate::build_info::LONG_VERSION, about)]
 pub struct Cli {
     /// Configuration file. Defaults to ~/.opalnote/config.
     #[arg(long, global = true, value_name = "PATH")]
@@ -83,6 +83,14 @@ pub struct ServeArgs {
     #[arg(long)]
     pub token: Option<String>,
 
+    /// Directory containing the pending self-update candidate.
+    #[arg(long, value_name = "PATH")]
+    pub update_dir: Option<PathBuf>,
+
+    /// Do not check or apply a pending self-update on startup.
+    #[arg(long = "no-self-update")]
+    pub no_self_update: bool,
+
     /// Default wall-clock budget for the ad-hoc `/api/query` endpoint, in seconds.
     #[arg(long)]
     pub query_timeout_secs: Option<f64>,
@@ -113,6 +121,8 @@ pub struct ResolvedServeArgs {
     pub bind: String,
     pub data_dir: PathBuf,
     pub token: Option<String>,
+    pub update_dir: PathBuf,
+    pub no_self_update: bool,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
     pub no_tls: bool,
@@ -141,6 +151,10 @@ struct FileConfig {
     data_dir: Option<PathBuf>,
     #[serde(alias = "OPALNOTE_TOKEN")]
     token: Option<String>,
+    #[serde(alias = "OPALNOTE_UPDATE_DIR")]
+    update_dir: Option<PathBuf>,
+    #[serde(alias = "OPALNOTE_NO_SELF_UPDATE")]
+    no_self_update: Option<bool>,
     #[serde(alias = "OPALNOTE_QUERY_TIMEOUT_SECS")]
     query_timeout_secs: Option<f64>,
     #[serde(alias = "OPALNOTE_PLUGIN_TIMEOUT_SECS")]
@@ -160,6 +174,8 @@ struct EnvConfig {
     bind: Option<String>,
     data_dir: Option<PathBuf>,
     token: Option<String>,
+    update_dir: Option<PathBuf>,
+    no_self_update: Option<bool>,
     query_timeout_secs: Option<f64>,
     plugin_timeout_secs: Option<f64>,
     no_tls: Option<bool>,
@@ -187,6 +203,16 @@ impl ServeArgs {
         } else {
             file.dev_cors.unwrap_or(false)
         };
+        let no_self_update = if self.no_self_update {
+            true
+        } else if let Some(value) = env.no_self_update {
+            value
+        } else {
+            file.no_self_update.unwrap_or(false)
+        };
+        let default_update_dir = home_dir()
+            .map(|home| home.join(".opalnote").join("updates"))
+            .unwrap_or_else(|_| PathBuf::from(".opalnote/updates"));
 
         Ok(ResolvedServeArgs {
             bind: self
@@ -201,6 +227,13 @@ impl ServeArgs {
                     .unwrap_or_else(|| PathBuf::from(DEFAULT_DATA_DIR)),
             ),
             token: self.token.or(env.token).or(file.token),
+            update_dir: expand_home(
+                self.update_dir
+                    .or(env.update_dir)
+                    .or(file.update_dir)
+                    .unwrap_or(default_update_dir),
+            ),
+            no_self_update,
             query_timeout_secs: self
                 .query_timeout_secs
                 .or(env.query_timeout_secs)
@@ -235,6 +268,8 @@ impl EnvConfig {
             bind: env::var("OPALNOTE_BIND").ok(),
             data_dir: env::var_os("OPALNOTE_DATA_DIR").map(PathBuf::from),
             token: env::var("OPALNOTE_TOKEN").ok(),
+            update_dir: env::var_os("OPALNOTE_UPDATE_DIR").map(PathBuf::from),
+            no_self_update: env_bool("OPALNOTE_NO_SELF_UPDATE")?,
             query_timeout_secs: env_f64("OPALNOTE_QUERY_TIMEOUT_SECS")?,
             plugin_timeout_secs: env_f64("OPALNOTE_PLUGIN_TIMEOUT_SECS")?,
             no_tls: env_bool("OPALNOTE_NO_TLS")?,
@@ -392,6 +427,11 @@ fn default_config_value() -> Value {
         Value::String(DEFAULT_DATA_DIR.to_string()),
     );
     table.insert("token".to_string(), Value::String(String::new()));
+    table.insert(
+        "update_dir".to_string(),
+        Value::String("~/.opalnote/updates".to_string()),
+    );
+    table.insert("no_self_update".to_string(), Value::Boolean(false));
     table.insert(
         "query_timeout_secs".to_string(),
         Value::Float(DEFAULT_QUERY_TIMEOUT),

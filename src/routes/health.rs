@@ -36,6 +36,9 @@ pub async fn health(State(state): State<AppState>) -> ApiResult<Json<HealthRespo
 pub struct MetaResponse {
     pub name: &'static str,
     pub version: &'static str,
+    pub build_commit: &'static str,
+    pub build_time: i64,
+    pub build_channel: &'static str,
     pub api_version: u32,
     pub auth_required: bool,
     pub engine: &'static str,
@@ -45,6 +48,9 @@ pub async fn meta(State(state): State<AppState>) -> Json<MetaResponse> {
     Json(MetaResponse {
         name: "OpalNote",
         version: state.version,
+        build_commit: crate::build_info::COMMIT,
+        build_time: crate::build_info::commit_time(),
+        build_channel: crate::build_info::CHANNEL,
         api_version: 1,
         auth_required: state.token.is_some(),
         engine: "mnesticdb",
