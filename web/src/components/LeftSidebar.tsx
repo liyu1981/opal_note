@@ -136,7 +136,8 @@ export function LeftSidebar() {
     setImporting(true);
     setError(null);
     const requested =
-      file.name.replace(/\.zip$/iu, "").trim() || "Imported Notebook";
+      file.name.replace(/\.(?:tar\.gz|tgz|zip)$/iu, "").trim() ||
+      "Imported Notebook";
     try {
       const created = await api.importNotebook(file, requested);
       setAdding(false);
@@ -250,7 +251,7 @@ export function LeftSidebar() {
           <input
             ref={importRef}
             type="file"
-            accept=".zip,application/zip"
+            accept=".zip,.tar.gz,.tgz,application/zip,application/gzip,application/x-gzip,application/x-tar"
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -262,8 +263,10 @@ export function LeftSidebar() {
             onClick={() => importRef.current?.click()}
             disabled={locked || importing}
             className="rounded-md border border-transparent p-1 text-faint transition hover:bg-panel-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
-            aria-label="Import notebook ZIP"
-            title={locked ? "Read only" : "Import Logseq ZIP as a new notebook"}
+            aria-label="Import notebook archive"
+            title={locked
+              ? "Read only"
+              : "Import a Logseq ZIP or tar.gz as a new notebook"}
           >
             <IconUpload className={`h-3.5 w-3.5 ${importing ? "animate-pulse" : ""}`} />
           </button>

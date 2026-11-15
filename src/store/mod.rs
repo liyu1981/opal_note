@@ -1547,10 +1547,11 @@ impl Store {
         )?)))
     }
 
-    pub fn import_notebook_zip(&self, requested_name: &str, bytes: &[u8]) -> Result<Notebook> {
+    pub fn import_notebook_archive(&self, requested_name: &str, bytes: &[u8]) -> Result<Notebook> {
         if bytes.len() as u64 > MAX_IMPORT_BYTES {
-            bail!("zip file must be at most {MAX_IMPORT_BYTES} bytes");
+            bail!("archive must be at most {MAX_IMPORT_BYTES} bytes");
         }
+        let format = ArchiveFormat::detect(bytes)?;
         let _guard = self.lock_fs();
         self.sync_all_locked(false)?;
 
@@ -1568,33 +1569,59 @@ impl Store {
         files::ensure_layout(&notebook)?;
 
         let extracted = (|| -> Result<()> {
-            let mut archive =
-                zip::ZipArchive::new(Cursor::new(bytes)).context("opening notebook zip")?;
             let mut imported = 0usize;
             let mut total = 0u64;
-            for index in 0..archive.len() {
-                let mut entry = archive.by_index(index)?;
-                if entry.is_dir() {
-                    continue;
-                }
-                let raw = entry.name().replace('\\', "/");
-                let Some(rel) = normalize_zip_path(&raw) else {
-                    continue;
+            let mut import_entry = |raw: &str, size: u64, reader: &mut dyn std::io::Read| {
+                let Some(rel) = normalize_archive_path(raw) else {
+                    return Ok(());
                 };
-                total = total.saturating_add(entry.size());
+                total = total.saturating_add(size);
                 if total > MAX_IMPORT_BYTES {
-                    bail!("zip contents exceed {MAX_IMPORT_BYTES} bytes");
+                    bail!("archive contents exceed {MAX_IMPORT_BYTES} bytes");
                 }
                 let target = notebook.join(&rel);
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent)?;
                 }
                 let mut output = fs::File::create(&target)?;
-                std::io::copy(&mut entry, &mut output)?;
+                std::io::copy(reader, &mut output)?;
                 imported += 1;
+                Ok(())
+            };
+
+            match format {
+                ArchiveFormat::Zip => {
+                    let mut archive =
+                        zip::ZipArchive::new(Cursor::new(bytes)).context("opening notebook zip")?;
+                    for index in 0..archive.len() {
+                        let mut entry = archive.by_index(index)?;
+                        if entry.is_dir() {
+                            continue;
+                        }
+                        let raw = entry.name().replace('\\', "/");
+                        import_entry(&raw, entry.size(), &mut entry)?;
+                    }
+                }
+                ArchiveFormat::TarGz => {
+                    let decoder = flate2::read::GzDecoder::new(bytes);
+                    let mut archive = tar::Archive::new(decoder);
+                    for entry in archive.entries().context("opening notebook tar.gz")? {
+                        let mut entry = entry.context("reading notebook tar.gz entry")?;
+                        if !entry.header().entry_type().is_file() {
+                            continue;
+                        }
+                        let raw = entry
+                            .path()
+                            .context("reading notebook tar.gz path")?
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        let size = entry.header().size().unwrap_or(0);
+                        import_entry(&raw, size, &mut entry)?;
+                    }
+                }
             }
             if imported == 0 {
-                bail!("zip contains no Logseq pages, journals or assets");
+                bail!("archive contains no Logseq pages, journals or assets");
             }
             Ok(())
         })();
@@ -2234,7 +2261,25 @@ fn col_i64(row: &[DataValue], index: usize) -> i64 {
     row.get(index).and_then(DataValue::get_int).unwrap_or(0)
 }
 
-fn normalize_zip_path(raw: &str) -> Option<String> {
+#[derive(Debug, Clone, Copy)]
+enum ArchiveFormat {
+    Zip,
+    TarGz,
+}
+
+impl ArchiveFormat {
+    fn detect(bytes: &[u8]) -> Result<Self> {
+        if bytes.starts_with(b"PK") {
+            return Ok(Self::Zip);
+        }
+        if bytes.starts_with(&[0x1f, 0x8b]) {
+            return Ok(Self::TarGz);
+        }
+        bail!("archive must be a ZIP or gzip-compressed tar (.tar.gz/.tgz) file")
+    }
+}
+
+fn normalize_archive_path(raw: &str) -> Option<String> {
     let parts = raw
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
@@ -2374,6 +2419,58 @@ mod tests {
 
         let raw = fs::read_to_string(root.join("pages/hello.md")).unwrap();
         assert_eq!(raw, "---\ntags:\n- explicit\n---\nHello #rust");
+    }
+
+    #[test]
+    fn imports_tar_gz_and_rejects_unknown_archives() {
+        let (dir, store) = store();
+
+        let tar_bytes = {
+            let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            let files = [
+                ("graph/pages/Hello.md", b"Hello #tag\n" as &[u8]),
+                ("graph/journals/2023-05-26.md", b"journal entry\n"),
+                ("graph/assets/pixel.txt", b"asset bytes"),
+            ];
+            for (path, body) in files {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(body.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder.append_data(&mut header, path, body).unwrap();
+            }
+            let encoder = builder.into_inner().unwrap();
+            encoder.finish().unwrap()
+        };
+
+        let notebook = store
+            .import_notebook_archive("Tar Graph", &tar_bytes)
+            .unwrap();
+        assert_eq!(notebook.id, "Tar Graph");
+        assert_eq!(notebook.note_count, 2);
+        assert!(dir
+            .path()
+            .join("notebooks/Tar Graph/pages/Hello.md")
+            .is_file());
+        assert!(dir
+            .path()
+            .join("notebooks/Tar Graph/journals/2023-05-26.md")
+            .is_file());
+        assert!(dir
+            .path()
+            .join("notebooks/Tar Graph/assets/pixel.txt")
+            .is_file());
+        assert!(store
+            .get_note("Tar Graph", "pages/Hello.md")
+            .unwrap()
+            .unwrap()
+            .tags
+            .contains(&"tag".to_string()));
+
+        assert!(store
+            .import_notebook_archive("Not an archive", b"plain text")
+            .is_err());
     }
 
     #[test]

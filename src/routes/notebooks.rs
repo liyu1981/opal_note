@@ -62,16 +62,13 @@ pub async fn import(
     let data = data.ok_or_else(|| AppError::bad_request("zip file is required"))?;
     let requested_name = requested_name.trim();
     let name = if requested_name.is_empty() {
-        file_name
-            .trim_end_matches(".zip")
-            .trim_end_matches(".ZIP")
-            .to_string()
+        strip_archive_extension(&file_name)
     } else {
         requested_name.to_string()
     };
     let store = state.store.clone();
     let notebook = db_call(
-        move || store.import_notebook_zip(&name, &data),
+        move || store.import_notebook_archive(&name, &data),
         AppError::Internal,
     )
     .await?;
@@ -179,6 +176,16 @@ pub async fn tags(
 
     tags.map(Json)
         .ok_or_else(|| AppError::not_found("notebook not found"))
+}
+
+fn strip_archive_extension(file_name: &str) -> String {
+    let lower = file_name.to_ascii_lowercase();
+    for suffix in [".tar.gz", ".tgz", ".zip"] {
+        if lower.ends_with(suffix) {
+            return file_name[..file_name.len() - suffix.len()].to_string();
+        }
+    }
+    file_name.to_string()
 }
 
 fn check_description(raw: &str) -> ApiResult<String> {
