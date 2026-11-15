@@ -444,7 +444,7 @@ function NoteEditor({ note }: { note: Note }) {
           : "Saved";
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas px-5 py-4">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent px-5 py-4">
       <div className="mx-auto w-full max-w-4xl pb-16">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -650,7 +650,7 @@ function NoteEditor({ note }: { note: Note }) {
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
+    <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent p-8">
       <div className="max-w-sm text-center">
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-line bg-white/60 text-accent">
           <IconFile className="h-5 w-5" />
@@ -666,7 +666,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 
 function EditorSkeleton() {
   return (
-    <main className="flex min-h-0 flex-1 flex-col bg-canvas px-5 py-4">
+    <main className="flex min-h-0 flex-1 flex-col bg-transparent px-5 py-4">
       <div className="mx-auto w-full max-w-4xl animate-pulse">
         <div className="h-8 w-1/2 rounded bg-panel-strong" />
         <div className="mt-3 h-3 w-32 rounded bg-panel" />

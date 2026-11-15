@@ -139,7 +139,7 @@ export function JournalFeed() {
 
   if (!notebookId) {
     return (
-      <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
+      <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent p-8">
         <p className="max-w-sm text-center font-mono text-[14px] leading-relaxed text-muted">
           Create or select a notebook to open its journal.
         </p>
@@ -148,7 +148,7 @@ export function JournalFeed() {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 bg-canvas">
+    <main className="flex min-h-0 flex-1 bg-transparent">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-4xl px-6 py-6">
         {pages.length === 0 && !loading && !error && (

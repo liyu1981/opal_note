@@ -149,7 +149,7 @@ export function PagesView() {
 
   if (!notebookId) {
     return (
-      <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
+      <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent p-8">
         <p className="max-w-sm text-center font-mono text-[14px] leading-relaxed text-muted">
           Select or create a notebook to browse its pages.
         </p>
@@ -202,7 +202,7 @@ export function PagesView() {
   const showEmpty = !loading && !error && total === 0;
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
       <div className="mx-auto w-full max-w-6xl px-6 py-6">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
           <div className="flex items-center gap-2">

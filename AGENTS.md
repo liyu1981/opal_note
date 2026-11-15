@@ -155,6 +155,12 @@ web/
   Any new embedded asset location must be wired through both modes.
 - Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
   in `src/index.css`; do not hard-code new hex colors.
+- The main outlet has an interactive Dot Grid background (`MainBackground` →
+  `components/backgrounds/DotGrid.tsx`, adapted from React Bits). It must stay
+  scoped to the route outlet: keep it outside `LeftSidebar`, `TopBar` and
+  `RightPanel`, and keep the view `<main>` backgrounds transparent so the grid
+  shows. Dot colours come from `--color-line-strong` /
+  `--color-accent-strong`; never hard-code a replacement palette.
 - The note body is a **live block editor**, not a split preview. Keep source
   marks visible while the cursor is on a block and render them elsewhere.
   Editor internals live in `src/lib/livePreview.ts`,

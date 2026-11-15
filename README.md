@@ -351,7 +351,12 @@ Home button on the right.
   pages as you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the
   live block editor and autosaves. Opening the journal feed creates today's
   empty page automatically when it does not exist.
-- **Center** — the current page, the journal feed, or the Pages directory. The
+- **Center** — every view sits on an interactive **Dot Grid** background
+  adapted from [React Bits](https://reactbits.dev/backgrounds/dot-grid). It is
+  scoped to the route outlet: the left sidebar, right panel and top bar stay
+  outside it. Dots pull toward the cursor and emit a click shockwave; colours
+  come from the `--color-line-strong` and `--color-accent-strong` theme tokens.
+  The current page, the journal feed, or the Pages directory.
   Pages view is a Logseq-style **All pages** table across pages and journals,
   with backlink counts, tags, created/updated timestamps, sortable columns,
   tag filtering, a page filter, table/card modes and server-side pagination.
@@ -609,6 +614,7 @@ web/
   src/router.tsx     TanStack route tree + URL/view synchronization
   src/state/         Jotai atoms
   src/components/    workspace shell, journal feed, pages, graph, panels
+  src/components/backgrounds/  React Bits background components
   src/components/editor/  live CodeMirror editor surface
   src/lib/           navigation, live preview, completion, editor theme
 ```
@@ -648,5 +654,7 @@ web/
 
 Server and client code: MIT.
 
-MnesticDB (`mnestic`) is MPL-2.0; it is linked as a library. SQLite is in the
-public domain.
+The Dot Grid background is adapted from
+[React Bits](https://reactbits.dev/backgrounds/dot-grid) by David Haz, used
+under its MIT + Commons Clause license. MnesticDB (`mnestic`) is MPL-2.0; it is
+linked as a library. SQLite is in the public domain.

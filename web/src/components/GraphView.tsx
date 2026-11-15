@@ -12,7 +12,7 @@ export function GraphView() {
 
   if (!notebookId) {
     return (
-      <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
+      <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent p-8">
         <p className="max-w-sm text-center font-mono text-[14px] leading-relaxed text-muted">
           Select or create a notebook to view its graph.
         </p>
@@ -21,7 +21,7 @@ export function GraphView() {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <main className="flex min-h-0 flex-1 flex-col bg-transparent">
       <GraphPanel
         notebookId={notebookId}
         activeNoteId={null}

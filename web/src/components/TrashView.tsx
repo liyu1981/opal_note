@@ -123,7 +123,7 @@ export function TrashView() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
       <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6">
         <header className="flex flex-wrap items-center gap-2 border-b border-line pb-3">
           <div className="min-w-0 flex-1">

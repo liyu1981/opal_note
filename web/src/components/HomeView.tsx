@@ -180,7 +180,7 @@ export function HomeView() {
 
   if (!notebookId) {
     return (
-      <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
+      <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent p-8">
         <p className="max-w-sm text-center font-mono text-[14px] leading-relaxed text-muted">
           Create or select a notebook to open its home.
         </p>
@@ -189,7 +189,7 @@ export function HomeView() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
       <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-6">
           <section>

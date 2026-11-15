@@ -66,7 +66,7 @@ export function AssetDetailView({ path }: { path: string }) {
 
   if (!notebookId) {
     return (
-      <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-8">
+      <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent p-8">
         <p className="font-mono text-[14px] text-muted">Select a notebook.</p>
       </main>
     );
@@ -114,7 +114,7 @@ export function AssetDetailView({ path }: { path: string }) {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
       <div className="mx-auto w-full max-w-7xl px-6 py-6">
         <header className="flex flex-wrap items-center gap-3 border-b border-line pb-3">
           <button

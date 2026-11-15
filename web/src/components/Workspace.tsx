@@ -3,6 +3,7 @@ import { Outlet } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { LeftSidebar } from "./LeftSidebar";
+import { MainBackground } from "./MainBackground";
 import { RightPanel } from "./RightPanel";
 import { ShortcutHud } from "./ShortcutHud";
 import { SettingsDialog } from "./SettingsDialog";
@@ -83,9 +84,14 @@ export function Workspace() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <div className="flex min-h-0 flex-1">
-          <Suspense fallback={<EditorSkeleton />}>
-            <Outlet />
-          </Suspense>
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            <MainBackground />
+            <div className="relative z-10 flex min-h-0 min-w-0 flex-1">
+              <Suspense fallback={<EditorSkeleton />}>
+                <Outlet />
+              </Suspense>
+            </div>
+          </div>
           {rightOpen && (
             <Suspense fallback={null}>
               <RightPanel />
@@ -116,7 +122,7 @@ function PanelSkeleton() {
 
 function EditorSkeleton() {
   return (
-    <main className="flex min-h-0 flex-1 items-center justify-center bg-canvas">
+    <main className="flex min-h-0 flex-1 items-center justify-center bg-transparent">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent" />
     </main>
   );

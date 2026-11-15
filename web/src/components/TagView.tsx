@@ -145,7 +145,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-canvas">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
       <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-6 py-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="min-w-0 space-y-3">
           {error && (
