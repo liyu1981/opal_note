@@ -276,9 +276,13 @@ web/
   manifest id is `<domain>/<extension>`; built-in ids win and bad folders are
   reported as load errors. Supported kinds are `none`, `dot-grid`, `image`
   (requires `options.asset`), `gradient`, `galaxy`, `grid-scan`,
-  `letter-glitch` and `shape-grid`. Keep asset access inside the
+  `letter-glitch` and `shape-grid`; the default is `OpalNote/grid-scan`.
+  Keep asset access inside the
   registered folder; serve it through `/api/backgrounds/asset`, never a raw
-  filesystem path. Selection is `backgroundId` in sparse settings.
+  filesystem path. Selection is `backgroundId` in sparse settings; per-background
+  speed overrides live in `backgroundOptions[id]`. Grid Scan defaults to a slow
+  10 s sweep with a 5 min delay, and Letter Glitch to 0.25× speed; expose both
+  Grid Scan controls and the Letter Glitch speed in Settings → Background.
 - Native plugins live in `plugins/builtin/OpalNote/<extension>/` and are
   embedded with `rust-embed`; their ids are `OpalNote/<extension>`. Data
   plugins live in `<data-dir>/plugins/<folder>/` and use ids shaped

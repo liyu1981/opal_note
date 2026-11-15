@@ -578,7 +578,7 @@ export const GridScan = ({
     shading: clamp(shading, 0, 1),
     direction: scanDirection,
     duration: clamp(scanDuration, 0.3, 20),
-    delay: clamp(scanDelay, 0, 30),
+    delay: clamp(scanDelay, 0, 600),
     scanWidth: clamp(scanWidth, 0.2, 5),
     trail: clamp(trail, 0, 1),
     glow: clamp(glow, 0, 1.5),

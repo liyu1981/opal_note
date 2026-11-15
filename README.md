@@ -357,12 +357,11 @@ Home button on the right.
   live block editor and autosaves. Opening the journal feed creates today's
   empty page automatically when it does not exist.
 - **Center** — every view sits on a selectable **background**, defaulting to
-  the interactive Dot Grid adapted from
-  [React Bits](https://reactbits.dev/backgrounds/dot-grid). It is scoped to the
-  route outlet: the left sidebar, right panel and top bar stay outside it. Dots
-  pull toward the cursor and emit a click shockwave. Backgrounds are loaded
-  from the built-in registry or `<data-dir>/backgrounds/`; the current page,
-  the journal feed, or the Pages directory.
+  the slow Grid Scan room. Backgrounds are adapted from
+  [React Bits](https://reactbits.dev/backgrounds) and scoped to the route
+  outlet: the left sidebar, right panel and top bar stay outside it. Backgrounds
+  load from the built-in registry or `<data-dir>/backgrounds/`; the current
+  page, the journal feed, or the Pages directory.
   Pages view is a Logseq-style **All pages** table across pages and journals,
   with backlink counts, tags, created/updated timestamps, sortable columns,
   tag filtering, a page filter, table/card modes and server-side pagination.
@@ -500,8 +499,13 @@ are reported in Settings → Background. Supported `kind` values:
   `trail`, `glow`, `twinkle` and `opacity`.
 
 Settings → Background shows a thumbnail preview for every installed background;
-selecting one stores its id as `backgroundId` in the sparse settings. Assets are
-served through the authenticated API.
+selecting one stores its id as `backgroundId` in the sparse settings. Grid Scan
+exposes sweep-duration and delay controls (default 10 s and 5 min) and Letter
+Glitch exposes a glitch-speed control (default 0.25×); overrides live in
+`backgroundOptions`, keyed by background id. Assets are served through the
+authenticated API. Fonts, Code and Background are single-column lists with
+their preview/controls on the right; expandable options appear only for the
+selected background.
 
 ### Client routes
 

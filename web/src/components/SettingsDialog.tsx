@@ -39,6 +39,10 @@ import {
   IconSettings,
   IconX,
 } from "./Icons";
+import {
+  backgroundNumber,
+  mergeBackgroundOptions,
+} from "../lib/backgroundOptions";
 import { BackgroundPreview } from "./BackgroundPreview";
 import { OpalLogo } from "./OpalLogo";
 import {
@@ -244,6 +248,30 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateBackgroundOption(id: string, key: string, value: unknown) {
+    const current = { ...(draft.backgroundOptions[id] ?? {}) };
+    if (value === undefined) delete current[key];
+    else current[key] = value;
+    const backgroundOptions = { ...draft.backgroundOptions };
+    if (Object.keys(current).length > 0) backgroundOptions[id] = current;
+    else delete backgroundOptions[id];
+    const next: AppSettings = { ...draft, backgroundOptions };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
+  function resetBackgroundOptions(id: string) {
+    const backgroundOptions = { ...draft.backgroundOptions };
+    delete backgroundOptions[id];
+    const next: AppSettings = { ...draft, backgroundOptions };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   function updateTrashRetention(days: number) {
     const next: AppSettings = { ...draft, trashRetentionDays: days };
     setDraft(next);
@@ -428,6 +456,8 @@ export function SettingsDialog() {
               <BackgroundTab
                 settings={draft}
                 onChange={updateBackground}
+                onOptionChange={updateBackgroundOption}
+                onResetOptions={resetBackgroundOptions}
                 error={fontError}
               />
             )}
@@ -487,7 +517,7 @@ function CodeTab({
         background stays unchanged.
       </p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="space-y-2">
         {CODE_THEMES.map((theme) => {
           const selected = theme.id === value;
           return (
@@ -496,22 +526,22 @@ function CodeTab({
               type="button"
               onClick={() => onChange(theme.id)}
               aria-pressed={selected}
-              className={`overflow-hidden rounded-lg border bg-white text-left transition ${
+              className={`flex w-full flex-col gap-2 rounded-lg border bg-white px-3 py-2.5 text-left transition sm:flex-row sm:items-center ${
                 selected
                   ? "border-accent ring-1 ring-accent/25"
                   : "border-line hover:border-line-strong"
               }`}
             >
-              <div className="flex items-center justify-between px-3 py-2">
-                <span className="font-sans text-[14px] font-semibold text-ink">
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="truncate font-sans text-[14px] font-semibold text-ink">
                   {theme.label}
                 </span>
                 {selected && (
-                  <IconCheck className="h-3.5 w-3.5 text-accent-strong" />
+                  <IconCheck className="h-3.5 w-3.5 shrink-0 text-accent-strong" />
                 )}
-              </div>
+              </span>
               <pre
-                className="overflow-hidden border-t px-3 py-2.5 font-mono text-[12px] leading-relaxed"
+                className="w-full shrink-0 overflow-hidden rounded border px-2.5 py-1.5 font-mono text-[11px] leading-relaxed sm:w-80"
                 style={{
                   background: theme.background,
                   borderColor: theme.border,
@@ -520,13 +550,10 @@ function CodeTab({
               >
                 <code>
                   <span style={{ color: theme.keyword }}>const</span>{" "}
-                  <span style={{ color: theme.function }}>greet</span> = (
-                  <span style={{ color: theme.property }}>name</span>) =&gt;{" "}
-                  <span style={{ color: theme.string }}>&quot;hello&quot;</span>;
-                  {"\n"}
-                  <span style={{ color: theme.comment }}>
-                    // {theme.label}
-                  </span>
+                  <span style={{ color: theme.function }}>greet</span> ={" "}
+                  <span style={{ color: theme.string }}>&quot;hello&quot;</span>
+                  {"  "}
+                  <span style={{ color: theme.comment }}>// {theme.label}</span>
                 </code>
               </pre>
             </button>
@@ -562,58 +589,66 @@ function FontsTab({
         ))}
       </datalist>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="space-y-2">
         {FONT_ROLES.map((role) => {
           const value = settings.fonts[role.id];
           return (
             <section
               key={role.id}
-              className="rounded-lg border border-line bg-white p-4"
+              className="rounded-lg border border-line bg-white px-4 py-3"
             >
-              <label
-                htmlFor={`font-${role.id}`}
-                className="font-sans text-[14px] font-semibold text-ink"
-              >
-                {role.label}
-              </label>
-              <p className="mt-0.5 font-sans text-[14px] leading-relaxed text-faint">
-                {role.description}
-              </p>
-              <input
-                id={`font-${role.id}`}
-                list="font-presets"
-                value={value.family}
-                onChange={(event) =>
-                  onChange(role.id, { family: event.target.value })
-                }
-                spellCheck={false}
-                autoComplete="off"
-                className="mt-3 w-full rounded border border-line bg-white px-2.5 py-2 font-sans text-[14px] text-ink outline-none transition focus:border-accent"
-              />
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <label className="flex items-center gap-2 font-sans text-[14px] text-muted">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div className="min-w-0 sm:w-48 sm:shrink-0">
+                  <label
+                    htmlFor={`font-${role.id}`}
+                    className="font-sans text-[14px] font-semibold text-ink"
+                  >
+                    {role.label}
+                  </label>
+                  <p className="mt-0.5 font-sans text-[14px] leading-relaxed text-faint">
+                    {role.description}
+                  </p>
+                </div>
+                <div className="min-w-0 flex-1">
                   <input
-                    type="checkbox"
-                    checked={value.google}
+                    id={`font-${role.id}`}
+                    list="font-presets"
+                    value={value.family}
                     onChange={(event) =>
-                      onChange(role.id, { google: event.target.checked })
+                      onChange(role.id, { family: event.target.value })
                     }
-                    className="accent-accent"
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="w-full rounded border border-line bg-white px-2.5 py-2 font-sans text-[14px] text-ink outline-none transition focus:border-accent"
                   />
-                  Load from Google Fonts
-                </label>
-                <span className="font-mono text-[14px] text-faint">Sample</span>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 font-sans text-[14px] text-muted">
+                      <input
+                        type="checkbox"
+                        checked={value.google}
+                        onChange={(event) =>
+                          onChange(role.id, { google: event.target.checked })
+                        }
+                        className="accent-accent"
+                      />
+                      Load from Google Fonts
+                    </label>
+                    <span className="font-mono text-[14px] text-faint">
+                      Sample
+                    </span>
+                  </div>
+                  <p
+                    className="mt-2 truncate font-sans text-[18px] leading-tight text-ink"
+                    style={{
+                      fontFamily: value.family
+                        ? `"${value.family.replace(/["'\\]/gu, " ")}", ${role.fallback}`
+                        : role.fallback,
+                    }}
+                  >
+                    The quick brown fox
+                  </p>
+                </div>
               </div>
-              <p
-                className="mt-3 truncate font-sans text-[18px] leading-tight text-ink"
-                style={{
-                  fontFamily: value.family
-                    ? `"${value.family.replace(/["'\\]/gu, " ")}", ${role.fallback}`
-                    : role.fallback,
-                }}
-              >
-                The quick brown fox
-              </p>
             </section>
           );
         })}
@@ -644,10 +679,14 @@ function FontsTab({
 function BackgroundTab({
   settings,
   onChange,
+  onOptionChange,
+  onResetOptions,
   error,
 }: {
   settings: AppSettings;
   onChange: (id: string) => void;
+  onOptionChange: (id: string, key: string, value: unknown) => void;
+  onResetOptions: (id: string) => void;
   error: string | null;
 }) {
   const refreshBackgrounds = useSetAtom(refreshBackgroundsAtom);
@@ -722,13 +761,18 @@ function BackgroundTab({
           No backgrounds found. The plain canvas fallback is in use.
         </p>
       ) : list ? (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-2">
           {list.backgrounds.map((background) => (
             <BackgroundCard
               key={background.id}
               background={background}
+              options={settings.backgroundOptions[background.id]}
               selected={background.id === settings.backgroundId}
               onSelect={() => onChange(background.id)}
+              onOptionChange={(key, value) =>
+                onOptionChange(background.id, key, value)
+              }
+              onResetOptions={() => onResetOptions(background.id)}
             />
           ))}
         </div>
@@ -774,32 +818,185 @@ function BackgroundTab({
   );
 }
 
-function BackgroundCard({
+function BackgroundTuning({
   background,
-  selected,
-  onSelect,
+  overrides,
+  onChange,
+  onReset,
 }: {
   background: BackgroundInfo;
-  selected: boolean;
-  onSelect: () => void;
+  overrides: Record<string, unknown>;
+  onChange: (key: string, value: number | undefined) => void;
+  onReset: () => void;
+}) {
+  if (background.kind !== "grid-scan" && background.kind !== "letter-glitch") {
+    return null;
+  }
+
+  const options = mergeBackgroundOptions(background, overrides);
+  const hasOverrides = Object.keys(overrides).length > 0;
+
+  if (background.kind === "grid-scan") {
+    const duration = backgroundNumber(options, "scanDuration", 10, 1, 30);
+    const delay = backgroundNumber(options, "scanDelay", 300, 0, 600);
+    return (
+      <div className="space-y-4">
+        <RangeSetting
+          label="Sweep duration"
+          description="Time for one sweep through the room. Higher is slower."
+          value={duration}
+          display={`${duration.toFixed(1)}s`}
+          min={1}
+          max={30}
+          step={0.5}
+          ariaLabel="Grid scan sweep duration"
+          onChange={(value) => onChange("scanDuration", value)}
+        />
+        <RangeSetting
+          label="Delay between sweeps"
+          description="Pause after one sweep finishes before the next starts."
+          value={delay}
+          display={formatDelay(delay)}
+          min={0}
+          max={600}
+          step={5}
+          ariaLabel="Grid scan delay between sweeps"
+          onChange={(value) => onChange("scanDelay", value)}
+        />
+        {hasOverrides && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="font-mono text-[13px] text-muted underline-offset-2 hover:text-ink hover:underline"
+          >
+            Reset to default
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const speed = backgroundNumber(options, "speed", 0.25, 0.05, 2);
+  return (
+    <div className="space-y-3">
+      <RangeSetting
+        label="Glitch speed"
+        description="How quickly the letters scramble and settle. Lower is slower."
+        value={speed}
+        display={`${speed.toFixed(2)}×`}
+        min={0.05}
+        max={2}
+        step={0.05}
+        ariaLabel="Letter glitch speed"
+        onChange={(value) => onChange("speed", value)}
+      />
+      {hasOverrides && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="font-mono text-[13px] text-muted underline-offset-2 hover:text-ink hover:underline"
+        >
+          Reset to default
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RangeSetting({
+  label,
+  description,
+  value,
+  display,
+  min,
+  max,
+  step,
+  ariaLabel,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: number;
+  display: string;
+  min: number;
+  max: number;
+  step: number;
+  ariaLabel: string;
+  onChange: (value: number) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={`overflow-hidden rounded-xl border text-left transition ${
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-sans text-[15px] font-medium text-ink">{label}</p>
+          <p className="mt-0.5 font-mono text-[13px] leading-relaxed text-muted">
+            {description}
+          </p>
+        </div>
+        <span className="shrink-0 font-mono text-[14px] text-ink-soft">
+          {display}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="mt-2 w-full accent-accent"
+        aria-label={ariaLabel}
+      />
+    </div>
+  );
+}
+
+function formatDelay(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = seconds / 60;
+  return Number.isInteger(minutes)
+    ? `${minutes.toFixed(0)} min`
+    : `${minutes.toFixed(1)} min`;
+}
+
+function BackgroundCard({
+  background,
+  options,
+  selected,
+  onSelect,
+  onOptionChange,
+  onResetOptions,
+}: {
+  background: BackgroundInfo;
+  options: Record<string, unknown> | undefined;
+  selected: boolean;
+  onSelect: () => void;
+  onOptionChange: (key: string, value: number | undefined) => void;
+  onResetOptions: () => void;
+}) {
+  const preview = {
+    ...background,
+    options: mergeBackgroundOptions(background, options),
+  };
+  const hasTuning =
+    background.kind === "grid-scan" || background.kind === "letter-glitch";
+
+  return (
+    <section
+      className={`overflow-hidden rounded-xl border transition ${
         selected
           ? "border-accent/50 bg-accent-soft"
           : "border-line bg-paper/60 hover:border-line-strong hover:bg-paper"
       }`}
     >
-      <span className="block h-24 w-full border-b border-line/60">
-        <BackgroundPreview background={background} />
-      </span>
-      <span className="flex items-start gap-2 px-3 py-2.5">
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        className="flex w-full items-center gap-3 px-3 py-3 text-left"
+      >
         <span
-          className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${
+          className={`h-3 w-3 shrink-0 rounded-full border ${
             selected
               ? "border-accent bg-accent"
               : "border-line-strong bg-transparent"
@@ -827,8 +1024,21 @@ function BackgroundCard({
             </span>
           )}
         </span>
-      </span>
-    </button>
+        <span className="h-16 w-28 shrink-0 overflow-hidden rounded-md border border-line bg-canvas">
+          <BackgroundPreview background={preview} />
+        </span>
+      </button>
+      {selected && hasTuning && (
+        <div className="border-t border-line/60 bg-paper/40 px-3 py-3">
+          <BackgroundTuning
+            background={background}
+            overrides={options ?? {}}
+            onChange={onOptionChange}
+            onReset={onResetOptions}
+          />
+        </div>
+      )}
+    </section>
   );
 }
 

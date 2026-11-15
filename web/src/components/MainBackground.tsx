@@ -11,6 +11,7 @@ import {
   backgroundNumber,
   backgroundString,
   backgroundStringArray,
+  mergeBackgroundOptions,
 } from "../lib/backgroundOptions";
 import { DEFAULT_BACKGROUND_ID, settingsAtom } from "../lib/settings";
 import { backgroundsAtom, backgroundsRevisionAtom } from "../state/atoms";
@@ -34,16 +35,25 @@ export function MainBackground() {
     list.backgrounds.find((background) => background.id === settings.backgroundId) ??
     list.backgrounds.find((background) => background.id === DEFAULT_BACKGROUND_ID) ??
     list.backgrounds[0];
+  const background = selected
+    ? {
+        ...selected,
+        options: mergeBackgroundOptions(
+          selected,
+          settings.backgroundOptions[selected.id],
+        ),
+      }
+    : null;
 
   return (
     <div
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-canvas"
       aria-hidden="true"
     >
-      {selected && (
+      {background && (
         <BackgroundLayer
-          key={`${selected.id}:${revision}`}
-          background={selected}
+          key={`${background.id}:${revision}`}
+          background={background}
         />
       )}
     </div>
@@ -207,8 +217,8 @@ function GridScanBackground({ background }: { background: BackgroundInfo }) {
       reflection={backgroundNumber(options, "reflection", 0.2, 0, 1)}
       points={backgroundBoolean(options, "points", true)}
       scanDirection={gridScanDirection(options.scanDirection)}
-      scanDuration={backgroundNumber(options, "scanDuration", 3.2, 0.2, 20)}
-      scanDelay={backgroundNumber(options, "scanDelay", 2.5, 0, 20)}
+      scanDuration={backgroundNumber(options, "scanDuration", 10, 0.2, 60)}
+      scanDelay={backgroundNumber(options, "scanDelay", 300, 0, 600)}
       scanWidth={backgroundNumber(options, "scanWidth", 1, 0.2, 5)}
       trail={backgroundNumber(options, "trail", 0.4, 0, 1)}
       glow={backgroundNumber(options, "glow", 0.25, 0, 1)}
@@ -240,7 +250,7 @@ function LetterGlitchBackground({ background }: { background: BackgroundInfo }) 
       density={backgroundNumber(options, "density", 0.45, 0, 1)}
       baseOpacity={backgroundNumber(options, "baseOpacity", 0.12, 0, 1)}
       glitchAmount={backgroundNumber(options, "glitchAmount", 0.35, 0, 1)}
-      speed={backgroundNumber(options, "speed", 0.8, 0, 5)}
+      speed={backgroundNumber(options, "speed", 0.25, 0, 5)}
       flow={backgroundNumber(options, "flow", 0.3, 0, 2)}
       smooth={backgroundBoolean(options, "smooth", true)}
       interactive={backgroundBoolean(options, "interactive", true)}

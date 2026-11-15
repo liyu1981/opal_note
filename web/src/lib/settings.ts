@@ -43,7 +43,7 @@ export type FontChoice = {
 
 export const DEFAULT_TRASH_RETENTION_DAYS = 30;
 export const MAX_TRASH_RETENTION_DAYS = 3_650;
-export const DEFAULT_BACKGROUND_ID = "OpalNote/dot-grid";
+export const DEFAULT_BACKGROUND_ID = "OpalNote/grid-scan";
 
 export type AppSettings = {
   fonts: Record<FontRole, FontChoice>;
@@ -51,6 +51,7 @@ export type AppSettings = {
   codeTheme: string;
   trashRetentionDays: number;
   backgroundId: string;
+  backgroundOptions: Record<string, Record<string, unknown>>;
   [key: string]: unknown;
 };
 
@@ -65,6 +66,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   codeTheme: DEFAULT_CODE_THEME,
   trashRetentionDays: DEFAULT_TRASH_RETENTION_DAYS,
   backgroundId: DEFAULT_BACKGROUND_ID,
+  backgroundOptions: {},
 };
 
 export const FONT_PRESETS = [
@@ -147,6 +149,8 @@ export function mergeSettings(value: unknown): AppSettings {
       ? root.backgroundId.trim()
       : DEFAULT_BACKGROUND_ID;
 
+  const backgroundOptions = sanitizeBackgroundOptions(root.backgroundOptions);
+
   return {
     ...DEFAULT_SETTINGS,
     ...root,
@@ -155,7 +159,30 @@ export function mergeSettings(value: unknown): AppSettings {
     codeTheme,
     trashRetentionDays,
     backgroundId,
+    backgroundOptions,
   };
+}
+
+function sanitizeBackgroundOptions(
+  value: unknown,
+): Record<string, Record<string, unknown>> {
+  if (!isRecord(value)) return {};
+  const result: Record<string, Record<string, unknown>> = {};
+  for (const [id, raw] of Object.entries(value)) {
+    if (!isRecord(raw)) continue;
+    const options: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(raw)) {
+      if (
+        (typeof item === "number" && Number.isFinite(item)) ||
+        typeof item === "boolean" ||
+        (typeof item === "string" && item.length <= 200)
+      ) {
+        options[key] = item;
+      }
+    }
+    if (Object.keys(options).length > 0) result[id] = options;
+  }
+  return result;
 }
 
 function same(a: unknown, b: unknown): boolean {

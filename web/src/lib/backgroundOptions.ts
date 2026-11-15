@@ -77,3 +77,10 @@ export function backgroundStringArray(
   if (!Array.isArray(value)) return fallback;
   return value.filter((item): item is string => typeof item === "string" && !!item);
 }
+
+export function mergeBackgroundOptions(
+  background: { options: Record<string, unknown> },
+  overrides: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return { ...background.options, ...(overrides ?? {}) };
+}
