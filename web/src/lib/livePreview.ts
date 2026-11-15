@@ -107,19 +107,36 @@ export function livePreview(optionsRef: OptionsRef): Extension {
       decorations: (plugin) => plugin.decorations,
     }),
     EditorView.domEventHandlers({
-      click(event) {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return false;
-        const tagElement = target.closest(".cm-live-tag");
-        if (!tagElement) return false;
-        const tag = tagElement.textContent?.replace(/^#/u, "").trim();
-        if (!tag) return false;
-        event.preventDefault();
-        optionsRef.current.onTag(tag);
-        return true;
+      // A tag is a mark, so CodeMirror would normally replace the target with
+      // a source line when mousedown moves the selection. In reading mode open
+      // it before that happens; while the editor is focused, leave mousedown
+      // alone so the cursor still lands in the text.
+      mousedown(event, view) {
+        if (view.hasFocus && !optionsRef.current.readOnly) return false;
+        return openTagFromEvent(event, optionsRef.current);
+      },
+      click(event, view) {
+        if (view.hasFocus && !optionsRef.current.readOnly) return false;
+        return openTagFromEvent(event, optionsRef.current);
       },
     }),
   ];
+}
+
+function openTagFromEvent(
+  event: MouseEvent,
+  options: LivePreviewOptions,
+): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  const tagElement = target.closest(".cm-live-tag");
+  if (!tagElement) return false;
+  const tag = tagElement.textContent?.replace(/^#/u, "").trim();
+  if (!tag) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  options.onTag(tag);
+  return true;
 }
 
 function buildDecorations(

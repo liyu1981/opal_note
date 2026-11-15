@@ -384,7 +384,8 @@ Home button on the right.
   recoverable. Workspace and navigation commands share a leader
   chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or `S` to focus
   the omni bar, `H` home, `A` all pages, `G` graph, `T` trash, `L`/`R`
-  sidebars, `O` settings, `M` command mode, `N` new page, or `J` today.
+  sidebars, `O` settings, `M` command mode, `N` new page, `J` journals, or
+  `Shift+J` today's journal.
   Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.

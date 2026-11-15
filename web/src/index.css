@@ -387,6 +387,7 @@ select:focus-visible {
 
 .cm-live-tag {
   background: var(--color-accent-soft);
+  cursor: pointer;
   border-radius: 4px;
   color: var(--color-accent-strong);
   font-size: 0.92em;

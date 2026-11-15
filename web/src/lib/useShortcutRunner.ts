@@ -47,6 +47,9 @@ export function useShortcutRunner() {
         case "nav.home":
           navigate({ view: "home" });
           break;
+        case "nav.journal":
+          navigate({ view: "journal" });
+          break;
         case "nav.pages":
           navigate({ view: "pages" });
           break;

@@ -24,6 +24,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     defaultBindings: ["mod+/ h"],
   },
   {
+    id: "nav.journal",
+    label: "Journals",
+    description: "Open the journal feed",
+    group: "Navigation",
+    defaultBindings: ["mod+/ j"],
+  },
+  {
     id: "nav.pages",
     label: "All pages",
     description: "Open the page directory",
@@ -39,7 +46,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   },
   {
     id: "nav.assets",
-    label: "Go to asset page",
+    label: "Asset",
     description: "Open the asset browser",
     group: "Navigation",
     defaultBindings: [],
@@ -105,7 +112,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     label: "Today's journal",
     description: "Open or create today's journal page",
     group: "Workspace",
-    defaultBindings: ["mod+/ j"],
+    defaultBindings: ["mod+/ shift+j"],
   },
   {
     id: "editor.save",
