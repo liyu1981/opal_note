@@ -14,6 +14,7 @@ web/*.tsbuildinfo
 # Runtime data
 /data/
 /certs/
+/artifacts/
 *.db
 *.db-*
 

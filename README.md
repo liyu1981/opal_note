@@ -95,6 +95,11 @@ version plus the first six characters of the commit hash, e.g.
 `0.1.0-a1b2c3`. It is uploaded to the workflow run as a downloadable artifact;
 the workflow does not create a GitHub release.
 
+`scripts/download_github_artifact.sh` lists recent artifacts newest first,
+downloads the selected one with `gh`, and extracts the nested tarball under
+`./artifacts/<artifact-name>/` (relative to the current directory, so it can be
+run from anywhere). Pass `--latest` to skip the prompt or `--help` for options.
+
 ## Quick start
 
 Requirements: Rust (1.85+), Node 22.12+ / 24, pnpm, a C compiler for bundled
