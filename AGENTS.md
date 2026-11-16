@@ -280,7 +280,8 @@ web/
   `GET /notebooks/{id}/graph`; `?include_tags=true` adds `tag:` nodes (kind
   `tag`) connected to their pages. Nodes are notes/tags; edges are only
   resolved wikilinks or note-tag memberships. `GraphPanel` defaults to the
-  active note's 1-hop neighborhood with a Full toggle and a Tags toggle;
+  active note's 1-hop neighborhood with a Full toggle and a Tags toggle that
+  starts enabled;
   `fill` mode is the full-page whole-notebook graph. Keep graph data out of the
   editor's Suspense path.
 - `GraphCanvas` owns view state: live force simulation, wheel/button zoom,
@@ -342,9 +343,11 @@ web/
   endpoint is `GET /notebooks/{id}/plugins` and uses
   `OPALNOTE_PLUGIN_TIMEOUT_SECS`. Plugin results may include an optional `ui`
   descriptor: either a safe `kind` or a versioned declarative schema (`schema:
-  1`, `root`). Supported actions are `openNote`, `openTag`, `openExternal`, and
-  `runCommand`; validate and bound UI depth, node count, strings, URLs, and
-  payload size on both server and client.
+  1`, `root`). Schema nodes include the basic layout primitives plus
+  `markdown` (read-only live editor) and `graph` (notebook graph with optional
+  scope/includeTags/height). Supported actions are `openNote`, `openTag`,
+  `openExternal`, and `runCommand`; validate and bound UI depth, node count,
+  strings, URLs, and payload size on both server and client.
 - Tasks are derived during filesystem sync into the `task` relation from
   markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
   rows in sync with note insert/update/delete and notebook deletion.

@@ -387,6 +387,11 @@ export function HomeView() {
                   key={plugin.id}
                   plugin={plugin}
                   onAction={handlePluginAction}
+                  notebookId={notebookId}
+                  linkKeys={linkKeys}
+                  linkTargets={linkTargets}
+                  onWikiLink={openWiki}
+                  onTag={(tag) => navigate({ view: "tag", tag })}
                 />
               ))}
             </div>

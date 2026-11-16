@@ -7,6 +7,7 @@ import type {
   Health,
   JournalPage,
   JournalPluginResult,
+  Meta,
   Note,
   NoteSummary,
   Notebook,
@@ -142,6 +143,7 @@ function notePath(notebookId: string, path: string): string {
 
 export const api = {
   health: () => request<Health>("/health"),
+  meta: () => request<Meta>("/meta"),
   stats: () => request<Stats>("/stats"),
 
   reindex: () => request<Stats>("/reindex", { method: "POST" }),

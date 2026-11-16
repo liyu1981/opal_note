@@ -68,7 +68,9 @@ export type PluginUiNodeType =
   | "button"
   | "link"
   | "separator"
-  | "empty";
+  | "empty"
+  | "markdown"
+  | "graph";
 
 export interface PluginUiListItem {
   title: string;
@@ -87,6 +89,10 @@ export interface PluginUiNode {
   tone?: PluginUiTone;
   variant?: "default" | "ghost" | "danger";
   emptyText?: string;
+  value?: string;
+  scope?: "local" | "all";
+  includeTags?: boolean;
+  height?: number;
   children?: PluginUiNode[];
   items?: PluginUiListItem[];
   action?: PluginAction;
@@ -201,6 +207,17 @@ export interface Health {
   version: string;
   uptime_secs: number;
   auth_required: boolean;
+}
+
+export interface Meta {
+  name: string;
+  version: string;
+  build_commit: string;
+  build_time: number;
+  build_channel: string;
+  api_version: number;
+  auth_required: boolean;
+  engine: string;
 }
 
 export interface QueryResult {

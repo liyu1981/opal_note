@@ -474,8 +474,12 @@ A plugin can return `ui.schema: 1` with a `root` node. The supported nodes are:
 
 ```text
 card, section, row, heading, text, badge, list,
-button, link, separator, empty
+button, link, separator, empty, markdown, graph
 ```
+
+`markdown` renders a read-only instance of the app's live markdown editor using
+the current notebook. `graph` renders the notebook graph and accepts optional
+`scope` (`local`/`all`), `includeTags`, and `height` (120-480) fields.
 
 The supported actions are:
 

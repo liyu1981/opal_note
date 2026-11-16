@@ -8,7 +8,12 @@ import {
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
-import type { BackgroundInfo, BackgroundList, PluginList } from "../api/types";
+import type {
+  BackgroundInfo,
+  BackgroundList,
+  Meta,
+  PluginList,
+} from "../api/types";
 import { CODE_THEMES } from "../lib/codeThemes";
 import {
   DEFAULT_BACKGROUND_ID,
@@ -18,7 +23,6 @@ import {
   MAX_TRASH_RETENTION_DAYS,
   applySettings,
   settingsAtom,
-  settingsStatusAtom,
   type AppSettings,
   type FontRole,
 } from "../lib/settings";
@@ -120,7 +124,6 @@ export function SettingsDialog() {
   const setOpen = useSetAtom(settingsOpenAtom);
   const settings = useAtomValue(settingsAtom);
   const setSettings = useSetAtom(settingsAtom);
-  const syncStatus = useAtomValue(settingsStatusAtom);
   const recording = useAtomValue(shortcutRecordingAtom);
   const refresh = useSetAtom(refreshAtom);
 
@@ -390,13 +393,6 @@ export function SettingsDialog() {
               {item.label}
             </button>
           ))}
-          <span className="ml-auto self-center font-mono text-[14px] text-faint md:ml-0 md:mt-auto md:self-start md:px-2">
-            {syncStatus === "loading"
-              ? "Loading…"
-              : syncStatus === "error"
-                ? "Offline"
-                : "Square"}
-          </span>
         </aside>
 
         <div className="flex min-h-0 flex-1 flex-col">
@@ -679,7 +675,7 @@ function FontsTab({
           onClick={onReset}
           className="rounded border border-line px-3 py-1.5 font-sans text-[14px] text-muted transition hover:bg-panel hover:text-ink"
         >
-          Reset to Square fonts
+          Reset fonts
         </button>
       </div>
     </div>
@@ -1619,6 +1615,23 @@ function PluginsTab() {
 }
 
 function AboutTab() {
+  const [meta, setMeta] = useState<Meta | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .meta()
+      .then((next) => {
+        if (!cancelled) setMeta(next);
+      })
+      .catch(() => {
+        // Version metadata is optional; keep the About page usable offline.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const features = [
     {
       title: "Markdown first",
@@ -1646,6 +1659,11 @@ function AboutTab() {
             <h3 className="mt-1 font-serif text-[24px] font-semibold leading-none text-ink">
               OpalNote
             </h3>
+            <p className="mt-2 font-mono text-[12px] uppercase tracking-[0.12em] text-faint">
+              Version {meta?.version ?? "…"}
+              {meta?.build_channel ? ` · ${meta.build_channel}` : ""}
+              {meta?.build_commit ? ` · ${meta.build_commit}` : ""}
+            </p>
             <p className="mt-3 max-w-xl font-sans text-[14px] leading-relaxed text-muted">
               A local markdown knowledge vault, built to be self-hosted. Files
               stay on your disk, the index is disposable, and the whole

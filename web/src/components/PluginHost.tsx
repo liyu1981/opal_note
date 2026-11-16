@@ -1,4 +1,8 @@
-import type { ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  type ReactNode,
+} from "react";
 
 import type {
   JournalPluginItem,
@@ -9,13 +13,41 @@ import type {
   PluginUiTone,
 } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
+import type { LinkTarget } from "../lib/livePreview";
+import { GraphPanel } from "./GraphPanel";
 import { IconCheck } from "./Icons";
+import { LiveMarkdownEditor } from "./editor/LiveMarkdownEditor";
 import { PluginCard } from "./PluginCard";
 
 type RendererProps = {
   plugin: JournalPluginResult;
   onAction: (action: PluginAction) => void;
 };
+
+type PluginHostProps = RendererProps & {
+  notebookId?: string;
+  linkKeys?: Set<string>;
+  linkTargets?: LinkTarget[];
+  onWikiLink?: (target: string) => void;
+  onTag?: (tag: string) => void;
+};
+
+type PluginRenderContext = {
+  notebookId?: string;
+  linkKeys: Set<string>;
+  linkTargets: LinkTarget[];
+  onWikiLink: (target: string) => void;
+  onTag: (tag: string) => void;
+};
+
+const EMPTY_LINK_KEYS = new Set<string>();
+const EMPTY_LINK_TARGETS: LinkTarget[] = [];
+const PLUGIN_CONTEXT = createContext<PluginRenderContext>({
+  linkKeys: EMPTY_LINK_KEYS,
+  linkTargets: EMPTY_LINK_TARGETS,
+  onWikiLink: () => {},
+  onTag: () => {},
+});
 
 const KIND_RENDERERS: Record<string, (props: RendererProps) => ReactNode> = {
   "todo-list": ({ plugin, onAction }) => (
@@ -32,17 +64,29 @@ const KIND_RENDERERS: Record<string, (props: RendererProps) => ReactNode> = {
  * Renders a plugin result. Declarative schema UIs are preferred; fixed renderer
  * kinds and the legacy item card keep older plugins working.
  */
-export function PluginHost({ plugin, onAction }: RendererProps) {
+export function PluginHost({
+  plugin,
+  onAction,
+  notebookId,
+  linkKeys = EMPTY_LINK_KEYS,
+  linkTargets = EMPTY_LINK_TARGETS,
+  onWikiLink = () => {},
+  onTag = () => {},
+}: PluginHostProps) {
   if (plugin.error) {
     return <PluginErrorCard plugin={plugin} />;
   }
   if (plugin.ui && "schema" in plugin.ui) {
     return (
-      <PluginSchemaView
-        root={plugin.ui.root}
-        fallbackTitle={plugin.title}
-        onAction={onAction}
-      />
+      <PLUGIN_CONTEXT.Provider
+        value={{ notebookId, linkKeys, linkTargets, onWikiLink, onTag }}
+      >
+        <PluginSchemaView
+          root={plugin.ui.root}
+          fallbackTitle={plugin.title}
+          onAction={onAction}
+        />
+      </PLUGIN_CONTEXT.Provider>
     );
   }
   if (plugin.ui && "kind" in plugin.ui) {
@@ -290,6 +334,17 @@ function PluginNodeView({
           {node.label}
         </button>
       );
+    case "markdown":
+      return <PluginMarkdown value={node.value ?? ""} />;
+    case "graph":
+      return (
+        <PluginGraph
+          title={node.title}
+          scope={node.scope}
+          includeTags={node.includeTags}
+          height={node.height}
+        />
+      );
     case "separator":
       return <div className="border-t border-line/60" />;
     case "empty":
@@ -301,6 +356,65 @@ function PluginNodeView({
     default:
       return null;
   }
+}
+
+function PluginMarkdown({ value }: { value: string }) {
+  const context = useContext(PLUGIN_CONTEXT);
+  if (!context.notebookId) {
+    return (
+      <p className="px-2 py-3 text-center font-mono text-[14px] text-faint">
+        Markdown is unavailable without a notebook.
+      </p>
+    );
+  }
+  return (
+    <div className="note-editor-surface overflow-hidden rounded-lg border border-line bg-paper">
+      <LiveMarkdownEditor
+        value={value}
+        onChange={() => {}}
+        onWikiLink={context.onWikiLink}
+        onTag={context.onTag}
+        notebookId={context.notebookId}
+        notePath=""
+        linkKeys={context.linkKeys}
+        linkTargets={context.linkTargets}
+        readOnly
+        autoHeight
+      />
+    </div>
+  );
+}
+
+function PluginGraph({
+  title,
+  scope,
+  includeTags,
+  height,
+}: {
+  title?: string;
+  scope?: "local" | "all";
+  includeTags?: boolean;
+  height?: number;
+}) {
+  const { notebookId } = useContext(PLUGIN_CONTEXT);
+  if (!notebookId) {
+    return (
+      <p className="px-2 py-3 text-center font-mono text-[14px] text-faint">
+        Graph is unavailable without a notebook.
+      </p>
+    );
+  }
+  return (
+    <GraphPanel
+      notebookId={notebookId}
+      activeNoteId={null}
+      width={320}
+      height={height ?? 220}
+      defaultScope={scope ?? "all"}
+      defaultIncludeTags={includeTags ?? true}
+      title={title}
+    />
+  );
 }
 
 function PluginListItemView({

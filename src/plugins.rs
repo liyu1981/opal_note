@@ -35,6 +35,7 @@ const MAX_UI_BYTES: usize = 64 * 1024;
 const MAX_UI_DEPTH: usize = 8;
 const MAX_UI_NODES: usize = 200;
 const MAX_UI_STRING_CHARS: usize = 2_000;
+const MAX_UI_MARKDOWN_CHARS: usize = 48_000;
 const MAX_UI_LIST_ITEMS: usize = 200;
 const MEMORY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 const STACK_LIMIT_BYTES: usize = 512 * 1024;
@@ -593,6 +594,40 @@ fn validate_ui_node(node: &Value, depth: usize, nodes: &mut usize) -> Result<()>
                     .ok_or_else(|| anyhow!("plugin ui link requires an action"))?,
             )?;
         }
+        "markdown" => {
+            let value = object
+                .get("value")
+                .ok_or_else(|| anyhow!("plugin ui markdown value is required"))?
+                .as_str()
+                .ok_or_else(|| anyhow!("plugin ui markdown value must be a string"))?;
+            if value.chars().count() > MAX_UI_MARKDOWN_CHARS {
+                bail!("plugin ui markdown value is too long");
+            }
+        }
+        "graph" => {
+            validate_optional_ui_string(object, "title")?;
+            if let Some(scope) = object.get("scope") {
+                let scope = scope
+                    .as_str()
+                    .ok_or_else(|| anyhow!("plugin ui graph scope must be a string"))?;
+                if !matches!(scope, "local" | "all") {
+                    bail!("plugin ui graph scope must be local or all");
+                }
+            }
+            if let Some(include_tags) = object.get("includeTags") {
+                if !include_tags.is_boolean() {
+                    bail!("plugin ui graph includeTags must be a boolean");
+                }
+            }
+            if let Some(height) = object.get("height") {
+                let height = height
+                    .as_i64()
+                    .ok_or_else(|| anyhow!("plugin ui graph height must be an integer"))?;
+                if !(120..=480).contains(&height) {
+                    bail!("plugin ui graph height must be 120-480");
+                }
+            }
+        }
         "separator" => {}
         other => bail!("plugin ui node type `{other}` is not supported"),
     }
@@ -873,6 +908,29 @@ mod tests {
             }
         });
         assert!(validate_plugin_ui(&ui).is_ok());
+
+        let host_components = json!({
+            "schema": 1,
+            "root": {
+                "type": "card",
+                "children": [
+                    { "type": "markdown", "value": "# Hello" },
+                    {
+                        "type": "graph",
+                        "scope": "all",
+                        "includeTags": true,
+                        "height": 240
+                    }
+                ]
+            }
+        });
+        assert!(validate_plugin_ui(&host_components).is_ok());
+
+        let bad_graph = json!({
+            "schema": 1,
+            "root": { "type": "graph", "height": 20 }
+        });
+        assert!(validate_plugin_ui(&bad_graph).is_err());
 
         let bad_action = json!({
             "schema": 1,

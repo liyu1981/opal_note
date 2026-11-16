@@ -34,6 +34,7 @@ export function GraphPanel({
   width = 320,
   height = 300,
   defaultScope = "local",
+  defaultIncludeTags = true,
   fill = false,
   title,
 }: {
@@ -42,6 +43,7 @@ export function GraphPanel({
   width?: number;
   height?: number;
   defaultScope?: Scope;
+  defaultIncludeTags?: boolean;
   fill?: boolean;
   title?: string;
 }) {
@@ -58,7 +60,7 @@ export function GraphPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>(defaultScope);
-  const [includeTags, setIncludeTags] = useState(false);
+  const [includeTags, setIncludeTags] = useState(defaultIncludeTags);
 
   useEffect(() => {
     let cancelled = false;

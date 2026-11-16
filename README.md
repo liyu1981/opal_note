@@ -503,7 +503,7 @@ back/forward history controls.
   renders an interactive local/full notebook graph: click a node to highlight
   its links, double-click to open its page, hover to preview links, and switch
   between the active page's neighborhood and the complete graph. A **Tags**
-  toggle adds tag nodes connected to their pages. The full graph
+  toggle adds tag nodes connected to their pages and starts enabled. The full graph
   follows Logseq's all-pages layout: d3-force for connected pages and a
   deterministic ring of isolated pages around the connected cluster. Connected
   nodes animate under force; drag a node to pull its neighbours, and use
@@ -605,10 +605,13 @@ or a declarative schema:
 ```
 
 Supported schema nodes include `card`, `section`, `row`, `heading`, `text`,
-`badge`, `list`, `button`, `link`, `separator`, and `empty`. Actions are
-`openNote`, `openTag`, `openExternal`, and `runCommand`; external URLs are
-restricted to safe schemes. The server validates the UI shape and limits before
-returning it. Unknown kinds fall back to the generic item card.
+`badge`, `list`, `button`, `link`, `separator`, `empty`, `markdown`, and
+`graph`. The `markdown` node renders a read-only live markdown surface using the
+current notebook's links; `graph` renders the notebook graph and accepts an
+optional `scope` (`local`/`all`), `includeTags` boolean, and 120-480px height.
+Actions are `openNote`, `openTag`, `openExternal`, and `runCommand`; external
+URLs are restricted to safe schemes. The server validates the UI shape and
+limits before returning it. Unknown kinds fall back to the generic item card.
 
 ### Backgrounds
 
