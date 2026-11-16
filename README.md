@@ -215,7 +215,9 @@ opalnote update --update-dir ~/.opalnote/updates
 ```
 
 `opalnote update` checks the selected channel, downloads a newer candidate and
-leaves it staged for the next restart. The `release` channel queries GitHub's
+leaves it staged for the next restart. Archives are unpacked into
+`<update-dir>/download/`, which is wiped at the start of each run and again once
+the candidate is staged. The `release` channel queries GitHub's
 public `releases/latest` API over HTTPS and prefers a matching `manifest.json`
 asset. The `dev` channel uses the authenticated `gh` CLI to read the newest
 unexpired `opalnote-*-<arch>` Actions artifact, so the service user needs `gh`

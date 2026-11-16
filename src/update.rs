@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use crate::build_info;
 
 const CANDIDATE_DIR: &str = "candidate";
+const DOWNLOAD_DIR: &str = "download";
 const MANIFEST_FILE: &str = "manifest.json";
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 const BINARY_NAME: &str = if cfg!(windows) {
@@ -51,6 +52,46 @@ pub struct AppliedUpdate {
 
 pub fn candidate_dir(update_dir: &Path) -> PathBuf {
     update_dir.join(CANDIDATE_DIR)
+}
+
+pub fn download_dir(update_dir: &Path) -> PathBuf {
+    update_dir.join(DOWNLOAD_DIR)
+}
+
+/// Recreate the download staging directory.
+///
+/// Downloads are unpacked into `<update-dir>/download/` so the extracted binary
+/// lives next to the candidate instead of a per-process temp directory. The
+/// staging area is wiped at the start of a run and again once the candidate has
+/// been staged.
+fn reset_download_dir(update_dir: &Path) -> Result<PathBuf> {
+    let dir = download_dir(update_dir);
+    if dir.exists() {
+        fs::remove_dir_all(&dir).with_context(|| format!("cleaning up {}", dir.display()))?;
+    }
+    remove_stale_temp_dirs(update_dir);
+    fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Remove leftovers from older builds and interrupted runs that staged their
+/// downloads in per-process `.download-*` / `.candidate-*` directories.
+fn remove_stale_temp_dirs(update_dir: &Path) {
+    let Ok(entries) = fs::read_dir(update_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.starts_with(".download-") && !name.starts_with(".candidate-") {
+            continue;
+        }
+        if entry.path().is_dir() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// Check for a newer candidate and apply it to the current executable.
@@ -169,6 +210,16 @@ pub fn check_remote_update(
         }
     }
 
+    let result = stage_candidate(update_dir, repo, channel);
+    let _ = fs::remove_dir_all(download_dir(update_dir));
+    result
+}
+
+fn stage_candidate(
+    update_dir: &Path,
+    repo: &str,
+    channel: UpdateChannel,
+) -> Result<Option<CandidateManifest>> {
     let found = match channel {
         UpdateChannel::Release => discover_release_candidate(update_dir, repo)?,
         UpdateChannel::Dev => discover_dev_candidate(update_dir, repo)?,
@@ -320,19 +371,19 @@ fn discover_release_candidate(
         asset.name == "manifest.json" || asset.name == format!("manifest-{target}.json")
     });
 
-    let temp = TempDir::new(update_dir, "download")?;
+    let download = reset_download_dir(update_dir)?;
     let archive_name = asset_file_name(&binary_asset.name);
-    let archive = temp.path.join(&archive_name);
+    let archive = download.join(&archive_name);
     download_asset(&binary_asset.browser_download_url, &archive)?;
     if let Some(asset) = manifest_asset {
         download_asset(
             &asset.browser_download_url,
-            &temp.path.join(asset_file_name(&asset.name)),
+            &download.join(asset_file_name(&asset.name)),
         )?;
     }
 
-    let binary = extract_binary(&archive, &temp.path)?;
-    let mut manifest = match manifest_asset.and_then(|_| find_manifest(&temp.path)) {
+    let binary = extract_binary(&archive, &download)?;
+    let mut manifest = match manifest_asset.and_then(|_| find_manifest(&download)) {
         Some(path) => {
             let manifest: CandidateManifest = serde_json::from_reader(
                 File::open(&path).with_context(|| format!("reading {}", path.display()))?,
@@ -430,7 +481,7 @@ fn discover_dev_candidate(
     let Some(run) = artifact.workflow_run else {
         return Ok(None);
     };
-    let temp = TempDir::new(update_dir, "download")?;
+    let download = reset_download_dir(update_dir)?;
     gh(&[
         "run".into(),
         "download".into(),
@@ -440,11 +491,11 @@ fn discover_dev_candidate(
         "--name".into(),
         artifact.name.clone(),
         "--dir".into(),
-        temp.path.display().to_string(),
+        download.display().to_string(),
     ])?;
-    let archive = find_archive(&temp.path)
+    let archive = find_archive(&download)
         .ok_or_else(|| anyhow::anyhow!("downloaded development artifact archive not found"))?;
-    let binary = extract_binary(&archive, &temp.path)?;
+    let binary = extract_binary(&archive, &download)?;
     let manifest = CandidateManifest {
         version,
         commit: if commit.is_empty() {
@@ -755,6 +806,45 @@ mod tests {
         assert!(is_newer(&current, 101, &current, 100));
         assert!(!is_newer(&current, 100, &current, 100));
         assert!(!is_newer(&current, 99, &current, 100));
+    }
+
+    #[test]
+    fn resets_the_download_staging_directory() {
+        let dir = tempdir().unwrap();
+        let updates = dir.path().join("updates");
+        let download = download_dir(&updates);
+        fs::create_dir_all(&download).unwrap();
+        fs::write(download.join("stale.tar.gz"), b"stale").unwrap();
+
+        let fresh = reset_download_dir(&updates).unwrap();
+        assert_eq!(fresh, download);
+        assert!(fresh.is_dir());
+        assert_eq!(fs::read_dir(&fresh).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn stages_a_candidate_from_the_download_directory() {
+        let dir = tempdir().unwrap();
+        let updates = dir.path().join("updates");
+        let download = reset_download_dir(&updates).unwrap();
+        let binary = download.join(BINARY_NAME);
+        fs::write(&binary, b"downloaded binary").unwrap();
+        let manifest = CandidateManifest {
+            version: "9.9.9".to_string(),
+            commit: "abc1234".to_string(),
+            commit_time: 1,
+            target: Some(target_triple()),
+            sha256: Some(sha256_file(&binary).unwrap()),
+            size: Some(13),
+        };
+
+        super::write_candidate(&updates, &binary, &manifest).unwrap();
+        let candidate = candidate_dir(&updates);
+        assert_eq!(
+            fs::read(candidate.join(BINARY_NAME)).unwrap(),
+            b"downloaded binary"
+        );
+        assert!(candidate.join(MANIFEST_FILE).is_file());
     }
 
     #[test]
