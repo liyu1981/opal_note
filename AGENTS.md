@@ -293,10 +293,11 @@ web/
   target/size/optional SHA-256; copy beside the current executable and atomically
   rename; delete the candidate after success. Debug builds and
   `--no-self-update` skip it. The running process continues; the new binary is
-  used on the next restart. Remote checks use authenticated `gh`: stable
-  GitHub releases (with an optional `manifest.json` asset) or the newest
-  unexpired `opalnote-*-<arch>` Actions artifact for the `dev` channel. The
-  startup checker runs in the background and repeats every six hours.
+  used on the next restart. Release discovery uses the public GitHub
+  `releases/latest` API (with an optional `manifest.json` asset); the `dev`
+  channel uses authenticated `gh` and the newest unexpired
+  `opalnote-*-<arch>` Actions artifact. The startup checker runs in the
+  background and repeats every six hours.
 - Backgrounds are declarative plugins, not sandboxed JS. Built-ins live in
   `backgrounds/builtin/<folder>/background.json`; users add
   `<data-dir>/backgrounds/<folder>/background.json` plus optional assets. The

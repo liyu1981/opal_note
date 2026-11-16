@@ -473,6 +473,7 @@ fn read_text(path: &Path, max_bytes: usize) -> Result<String> {
     String::from_utf8(raw).with_context(|| format!("{} is not UTF-8", path.display()))
 }
 
+#[cfg(debug_assertions)]
 fn builtin_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("backgrounds/builtin")
 }

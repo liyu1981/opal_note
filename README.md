@@ -198,11 +198,12 @@ the new version starts on the next restart. The candidate directory is deleted
 after a successful replacement.
 
 Release builds run a background update check at startup and every six hours.
-The `release` channel reads stable GitHub releases and prefers a matching
-`manifest.json` asset; the `dev` channel reads the newest unexpired
-`opalnote-*-<arch>` Actions artifact. Both paths use the authenticated `gh` CLI,
-so the service user must have `gh` on `PATH` and have run `gh auth login`.
-Downloaded candidates are left in place for the next startup to install.
+The `release` channel queries GitHub's public `releases/latest` API over HTTPS
+and prefers a matching `manifest.json` asset. The `dev` channel uses the
+authenticated `gh` CLI to read the newest unexpired `opalnote-*-<arch>` Actions
+artifact, so the service user needs `gh` on `PATH` and must have run
+`gh auth login`. Downloaded candidates are left in place for the next startup
+to install.
 
 Debug builds skip this by default. Use `--no-self-update` or
 `OPALNOTE_NO_SELF_UPDATE=true` to disable it explicitly. Use `--update-channel

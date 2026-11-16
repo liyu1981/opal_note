@@ -246,56 +246,37 @@ fn discover_release_candidate(
     repo: &str,
 ) -> Result<Option<(PathBuf, CandidateManifest)>> {
     #[derive(Deserialize)]
-    struct ReleaseSummary {
-        #[serde(rename = "tagName")]
-        tag_name: String,
-        #[serde(rename = "isPrerelease", default)]
-        is_prerelease: bool,
-        #[serde(rename = "publishedAt", default)]
-        published_at: Option<String>,
-    }
-    #[derive(Deserialize)]
     struct Asset {
         name: String,
+        browser_download_url: String,
     }
     #[derive(Deserialize)]
     struct ReleaseView {
-        #[serde(rename = "tagName")]
         tag_name: String,
-        #[serde(rename = "publishedAt", default)]
+        #[serde(default)]
         published_at: Option<String>,
         #[serde(default)]
         assets: Vec<Asset>,
     }
 
-    let releases: Vec<ReleaseSummary> = gh_json(&[
-        "release".into(),
-        "list".into(),
-        "--repo".into(),
-        repo.into(),
-        "--limit".into(),
-        "30".into(),
-        "--json".into(),
-        "tagName,isPrerelease,publishedAt".into(),
-    ])?;
-    let Some(release) = releases
-        .into_iter()
-        .filter(|release| !release.is_prerelease)
-        .max_by_key(|release| release.published_at.clone())
-    else {
-        tracing::debug!("no stable GitHub releases found");
-        return Ok(None);
+    // The public releases API is enough for discovery; it does not need `gh`
+    // or a GitHub token. The dev channel still uses the authenticated CLI.
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let response = ureq::get(&url)
+        .set("user-agent", "opalnote-updater")
+        .set("accept", "application/vnd.github+json")
+        .call();
+    let response = match response {
+        Ok(response) => response,
+        Err(ureq::Error::Status(404, _)) => {
+            tracing::debug!("no stable GitHub releases found");
+            return Ok(None);
+        }
+        Err(err) => return Err(err.into()),
     };
-
-    let view: ReleaseView = gh_json(&[
-        "release".into(),
-        "view".into(),
-        release.tag_name.clone(),
-        "--repo".into(),
-        repo.into(),
-        "--json".into(),
-        "tagName,publishedAt,assets".into(),
-    ])?;
+    let view: ReleaseView = response
+        .into_json()
+        .with_context(|| format!("parsing release response from {url}"))?;
     let target = target_triple();
     let binary_asset = view
         .assets
@@ -314,37 +295,16 @@ fn discover_release_candidate(
     });
 
     let temp = TempDir::new(update_dir, "download")?;
-    let mut args = vec![
-        "release".to_string(),
-        "download".to_string(),
-        view.tag_name.clone(),
-        "--repo".to_string(),
-        repo.to_string(),
-        "--pattern".to_string(),
-        binary_asset.name.clone(),
-        "--dir".to_string(),
-        temp.path.display().to_string(),
-        "--clobber".to_string(),
-    ];
-    gh(&args)?;
+    let archive_name = asset_file_name(&binary_asset.name);
+    let archive = temp.path.join(&archive_name);
+    download_asset(&binary_asset.browser_download_url, &archive)?;
     if let Some(asset) = manifest_asset {
-        args = vec![
-            "release".to_string(),
-            "download".to_string(),
-            view.tag_name.clone(),
-            "--repo".to_string(),
-            repo.to_string(),
-            "--pattern".to_string(),
-            asset.name.clone(),
-            "--dir".to_string(),
-            temp.path.display().to_string(),
-            "--clobber".to_string(),
-        ];
-        gh(&args)?;
+        download_asset(
+            &asset.browser_download_url,
+            &temp.path.join(asset_file_name(&asset.name)),
+        )?;
     }
 
-    let archive = find_archive(&temp.path)
-        .ok_or_else(|| anyhow::anyhow!("downloaded release archive not found"))?;
     let binary = extract_binary(&archive, &temp.path)?;
     let mut manifest = match manifest_asset.and_then(|_| find_manifest(&temp.path)) {
         Some(path) => {
@@ -357,11 +317,7 @@ fn discover_release_candidate(
         None => CandidateManifest {
             version: view.tag_name.trim_start_matches('v').to_string(),
             commit: String::new(),
-            commit_time: parse_time(
-                view.published_at
-                    .as_deref()
-                    .or(release.published_at.as_deref()),
-            ),
+            commit_time: parse_time(view.published_at.as_deref()),
             target: Some(target.clone()),
             sha256: None,
             size: None,
@@ -378,6 +334,28 @@ fn discover_release_candidate(
     manifest.size = Some(fs::metadata(&binary)?.len());
     manifest.sha256 = Some(sha256_file(&binary)?);
     Ok(Some((binary, manifest)))
+}
+
+fn asset_file_name(name: &str) -> String {
+    name.rsplit('/')
+        .next()
+        .filter(|value| !value.is_empty())
+        .unwrap_or("opalnote-download")
+        .to_string()
+}
+
+fn download_asset(url: &str, destination: &Path) -> Result<()> {
+    let response = ureq::get(url)
+        .set("user-agent", "opalnote-updater")
+        .call()
+        .with_context(|| format!("downloading {url}"))?;
+    let mut reader = response.into_reader();
+    let mut output =
+        File::create(destination).with_context(|| format!("creating {}", destination.display()))?;
+    std::io::copy(&mut reader, &mut output)
+        .with_context(|| format!("writing {}", destination.display()))?;
+    output.sync_all()?;
+    Ok(())
 }
 
 fn discover_dev_candidate(
