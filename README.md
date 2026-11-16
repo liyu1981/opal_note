@@ -467,25 +467,27 @@ beside it, plus back/forward history controls.
   navigation and commands. Type normally to search the server's `note:fts`
   index; type `#` to browse available tags; type `>` to search and run every
   workspace command. Tag pages prefill `#tag`. The old centered search and
-  command dialogs are gone. `Ctrl+M` or leader → `M` opens command mode.
+  command dialogs are gone. `Ctrl+Shift+P` or leader → `M` opens command mode.
 - **Settings** — a large left-tabbed dialog. Fonts are configured by role
   (interface, titles, editor, labels/code); any Google Font can be named and
   loaded over HTTPS. **Code** selects the fenced-code syntax theme; GitHub
   Light is the default. **Background** chooses an installed built-in or user
   background. **Keyboard** lists every workspace shortcut and lets you record a
   replacement chord sequence. **Trash** sets how many days deleted files stay
-  recoverable. Workspace and navigation commands share a leader
-  chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or `S` to focus
-  the omni bar, `T` tag search, `Shift+T` trash, `H` home, `A` all pages,
-  `G` graph, `L`/`R` sidebars, `O` settings, `M` command mode, `N` new page,
-  `J` journals, or `Shift+J` today's journal.
+  recoverable. Workspace and navigation commands share a leader chord
+  (`Cmd+;` on macOS, `Ctrl+;` elsewhere), followed by `F` or `S` to focus the
+  omni bar, `T` tag search, `Shift+T` trash, `H` home, `A` all pages, `G`
+  graph, `L`/`R` sidebars, `O` settings, `M` command mode, `N` new page, `J`
+  journals, or `Shift+J` today's journal. Back/forward use `Ctrl+; [` /
+  `Ctrl+; ]` (`Cmd+; [` / `Cmd+; ]` on macOS). The Keyboard settings tab also
+  lists the native CodeMirror editor bindings.
   Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.
 - **Home** — `/<notebook>/home` is the default dashboard. It shows today's
   editable journal card with a New page button, followed by a main-area plugin list of
   plugin cards. Favorites and Recent pages are built-in client plugin cards;
-  Open todos and other server plugins share the same grid. There is no right
+  Open todos and other server plugins share the same list. There is no right
   plugin strip and no separate plugin section label.
 - **Ghost controls** — action buttons default to a transparent ghost style
   with hairline hover feedback; selected/active controls keep their accent
@@ -498,8 +500,8 @@ beside it, plus back/forward history controls.
 - **Navigation** — TanStack Router browser routes are scoped by notebook name:
   `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
   `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
-  `/<notebook>/page?p=<page>`. Back/forward (default `Cmd+[` / `Cmd+]` or
-  `Alt+Left` / `Alt+Right`, rebindable in Settings → Keyboard) use browser
+  `/<notebook>/page?p=<page>`. Back/forward (default `Cmd+; [` / `Cmd+; ]`
+  or `Ctrl+; [` / `Ctrl+; ]`, rebindable in Settings → Keyboard) use browser
   history, and page URLs can be reloaded or shared directly. Switching notebooks
   updates the URL and opens that notebook's home.
 - **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,

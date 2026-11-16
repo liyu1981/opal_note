@@ -231,7 +231,7 @@ web/
   `builtin/src/plugins/OpalNote/`; Open todos and other server plugins share the same
   list. There is no right plugin strip or plugin section label. The global top bar hosts the
   **OmniBar** (with the Home button beside it): normal text searches notes, a
-  leading `#` lists tags, and a leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
+  leading `#` lists tags, and a leading `>` lists commands. `Ctrl+Shift+P` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
   views prefill `#tag` in the bar. Do not reintroduce the old centered search
   or command dialogs, and do not put search back into `LeftSidebar` or make
   `notesAtom` query-dependent.
@@ -438,10 +438,11 @@ web/
   hover feedback. Selected controls keep `bg-accent-soft`/`bg-panel-strong`,
   and primary/danger buttons use semantic text colors rather than solid fills.
 - New user-visible strings should be plain English; keep the UI quiet and
-  keyboard-friendly (customizable shortcuts; the default leader is `Cmd+/`
-  on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `T` for
-  tag search, `M` for command mode and `O` for settings. Save is
-  `Cmd+S` / `Ctrl+S`).
+  keyboard-friendly (customizable shortcuts; the default leader is `Cmd+;`
+  on macOS and `Ctrl+;` elsewhere, then `F` or `S` for the omni bar, `T` for
+  tag search, `M` for command mode and `O` for settings. Back/forward are
+  `Cmd+; [` / `Cmd+; ]` or `Ctrl+; [` / `Ctrl+; ]`; the keyboard settings tab
+  also lists native CodeMirror editor bindings. Save is `Cmd+S` / `Ctrl+S`).
 
 ### Tests
 

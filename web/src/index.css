@@ -142,7 +142,7 @@ select:focus-visible {
 }
 
 ::selection {
-  background: var(--color-accent-soft);
+  background: color-mix(in srgb, var(--color-accent) 34%, transparent);
 }
 
 * {
@@ -185,9 +185,21 @@ select:focus-visible {
   font-feature-settings: "liga" 0, "calt" 0;
 }
 
-.cm-editor .cm-scroller,
-.cm-editor .cm-content {
+.cm-editor .cm-scroller {
   background: var(--color-paper);
+}
+
+.cm-editor .cm-content {
+  background: transparent;
+}
+
+.cm-editor .cm-content,
+.cm-editor .cm-line,
+.cm-live-wikilink,
+.cm-live-link,
+.cm-live-tag {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .cm-content[contenteditable="false"] {

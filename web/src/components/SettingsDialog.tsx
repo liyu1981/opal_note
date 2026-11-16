@@ -27,6 +27,7 @@ import {
   type FontRole,
 } from "../lib/settings";
 import {
+  EDITOR_SHORTCUTS,
   SHORTCUT_COMMANDS,
   SHORTCUT_GROUPS,
   chordFromEvent,
@@ -1357,6 +1358,43 @@ function ShortcutsTab({
           </div>
         </section>
       ))}
+
+      <section>
+        <h3 className="mb-1 font-mono text-[14px] font-semibold uppercase tracking-[0.12em] text-faint">
+          Markdown editor
+        </h3>
+        <p className="mb-2 font-sans text-[14px] leading-relaxed text-muted">
+          These native editor bindings are handled by CodeMirror and are shown
+          for reference. They are not part of the app command recorder.
+        </p>
+        <div className="overflow-hidden rounded-lg border border-line bg-white">
+          {EDITOR_SHORTCUTS.map((shortcut) => (
+            <div
+              key={shortcut.id}
+              className="flex items-start gap-3 border-b border-line/60 px-3 py-2.5 last:border-b-0"
+            >
+              <div className="min-w-0 flex-1">
+                <span className="font-sans text-[14px] font-medium text-ink">
+                  {shortcut.label}
+                </span>
+                <p className="mt-0.5 font-sans text-[14px] leading-relaxed text-faint">
+                  {shortcut.description}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                {shortcut.bindings.map((binding) => (
+                  <kbd
+                    key={binding}
+                    className="rounded border border-line bg-panel/40 px-2 py-1 font-mono text-[12px] text-ink-soft"
+                  >
+                    {formatBinding(binding)}
+                  </kbd>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {error && (
         <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">

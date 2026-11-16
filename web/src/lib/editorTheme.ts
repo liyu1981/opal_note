@@ -22,7 +22,7 @@ export const noteEditorTheme = EditorView.theme(
       overflow: "auto",
     },
     ".cm-content": {
-      backgroundColor: "var(--color-paper)",
+      backgroundColor: "transparent",
       maxWidth: "820px",
       margin: "0 auto",
       padding: "1.35rem 1.75rem 4rem",
@@ -38,9 +38,11 @@ export const noteEditorTheme = EditorView.theme(
       borderLeftColor: "var(--color-accent-strong)",
       borderLeftWidth: "2px",
     },
-    ".cm-selectionBackground, ::selection": {
+    ".cm-selectionBackground, .cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, ::selection": {
+      background:
+        "color-mix(in srgb, var(--color-accent) 34%, transparent) !important",
       backgroundColor:
-        "color-mix(in srgb, var(--color-accent) 22%, transparent)",
+        "color-mix(in srgb, var(--color-accent) 34%, transparent) !important",
     },
     ".cm-activeLine": {
       backgroundColor: "transparent",

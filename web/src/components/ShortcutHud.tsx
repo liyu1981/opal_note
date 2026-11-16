@@ -21,7 +21,7 @@ export function ShortcutHud() {
 
   return (
     <div
-      className="fixed top-16 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-canvas/95 px-3 py-2 shadow-panel backdrop-blur"
+      className="fixed top-16 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2 shadow-panel backdrop-blur"
       role="status"
       aria-live="polite"
     >

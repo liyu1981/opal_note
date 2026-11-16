@@ -111,10 +111,6 @@ export function livePreview(optionsRef: OptionsRef): Extension {
       // a source line when mousedown moves the selection. In reading mode open
       // it before that happens; while the editor is focused, leave mousedown
       // alone so the cursor still lands in the text.
-      mousedown(event, view) {
-        if (view.hasFocus && !optionsRef.current.readOnly) return false;
-        return openTagFromEvent(event, optionsRef.current);
-      },
       click(event, view) {
         if (view.hasFocus && !optionsRef.current.readOnly) return false;
         return openTagFromEvent(event, optionsRef.current);
@@ -812,6 +808,10 @@ class WikiLinkWidget extends WidgetType {
     super();
   }
 
+  ignoreEvent(): boolean {
+    return false;
+  }
+
   eq(other: WidgetType): boolean {
     return (
       other instanceof WikiLinkWidget &&
@@ -838,7 +838,20 @@ class WikiLinkWidget extends WidgetType {
       event.stopPropagation();
       this.onOpen(this.target);
     };
-    element.addEventListener("mousedown", open);
+    element.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      const down = { x: event.clientX, y: event.clientY };
+      const onUp = (up: MouseEvent) => {
+        if (
+          up.button !== 0 ||
+          Math.hypot(up.clientX - down.x, up.clientY - down.y) > 5
+        ) {
+          return;
+        }
+        open(up);
+      };
+      window.addEventListener("mouseup", onUp, { once: true, capture: true });
+    });
     element.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") open(event);
     });
@@ -853,6 +866,10 @@ class ExternalLinkWidget extends WidgetType {
     private readonly onOpen: (url: string) => void,
   ) {
     super();
+  }
+
+  ignoreEvent(): boolean {
+    return false;
   }
 
   eq(other: WidgetType): boolean {
@@ -876,7 +893,20 @@ class ExternalLinkWidget extends WidgetType {
       event.stopPropagation();
       this.onOpen(this.url);
     };
-    element.addEventListener("mousedown", open);
+    element.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      const down = { x: event.clientX, y: event.clientY };
+      const onUp = (up: MouseEvent) => {
+        if (
+          up.button !== 0 ||
+          Math.hypot(up.clientX - down.x, up.clientY - down.y) > 5
+        ) {
+          return;
+        }
+        open(up);
+      };
+      window.addEventListener("mouseup", onUp, { once: true, capture: true });
+    });
     element.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") open(event);
     });
