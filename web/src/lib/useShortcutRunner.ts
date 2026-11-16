@@ -48,6 +48,10 @@ export function useShortcutRunner() {
           setOmniQuery(">");
           setOmniFocus((request) => request + 1);
           break;
+        case "omni.tags":
+          setOmniQuery("#");
+          setOmniFocus((request) => request + 1);
+          break;
         case "nav.home":
           requestViewFocus("home");
           navigate({ view: "home" });

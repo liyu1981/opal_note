@@ -33,10 +33,13 @@ type JournalCardProps = {
   onTag: (tag: string) => void;
   onSaved?: () => void;
   saveContent?: (body: string) => Promise<Note>;
+  onNavigate?: (direction: "up" | "down") => boolean;
 };
 
 export type JournalCardHandle = {
   focus: () => void;
+  focusStart: () => void;
+  focusEnd: () => void;
 };
 
 export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
@@ -52,6 +55,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
       onTag,
       onSaved,
       saveContent,
+      onNavigate,
     },
     ref,
   ) {
@@ -76,6 +80,8 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
       ref,
       () => ({
         focus: () => editorRef.current?.focus(),
+        focusStart: () => editorRef.current?.focusStart(),
+        focusEnd: () => editorRef.current?.focusEnd(),
       }),
       [],
     );
@@ -236,6 +242,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
             linkTargets={linkTargets}
             readOnly={readOnly}
             autoHeight
+            onNavigate={onNavigate}
           />
         </div>
 

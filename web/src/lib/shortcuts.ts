@@ -56,7 +56,7 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     label: "Trash",
     description: "Browse and restore deleted pages, assets and notebooks",
     group: "Navigation",
-    defaultBindings: ["mod+/ t"],
+    defaultBindings: ["mod+/ shift+t"],
   },
   {
     id: "nav.back",
@@ -92,6 +92,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     description: "Search and run workspace commands",
     group: "Workspace",
     defaultBindings: ["mod+m", "mod+/ m"],
+  },
+  {
+    id: "omni.tags",
+    label: "Tag search",
+    description: "Focus the omni bar to browse tags",
+    group: "Workspace",
+    defaultBindings: ["mod+/ t"],
   },
   {
     id: "ui.settings",

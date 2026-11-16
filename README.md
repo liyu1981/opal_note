@@ -414,8 +414,10 @@ back/forward history controls.
   feed of **editable journal cards** rather than a single page; the feed loads
   the newest seven pages and appends older
   pages as you scroll. Each card edits its own `journals/YYYY-MM-DD.md` with the
-  live block editor and autosaves. Opening the journal feed creates today's
-  empty page automatically when it does not exist.
+  live block editor and autosaves. ArrowDown on a card's last line moves into
+  the next card, and ArrowUp on the first line moves into the previous card;
+  crossing the last loaded card loads the next batch. Opening the journal feed
+  creates today's empty page automatically when it does not exist.
 - **Center** — every view sits on a selectable **background**, defaulting to
   the slow Grid Scan room. Backgrounds are adapted from
   [React Bits](https://reactbits.dev/backgrounds) and scoped to the route
@@ -443,9 +445,9 @@ back/forward history controls.
   replacement chord sequence. **Trash** sets how many days deleted files stay
   recoverable. Workspace and navigation commands share a leader
   chord (`Cmd+/` on macOS, `Ctrl+/` elsewhere), followed by `F` or `S` to focus
-  the omni bar, `H` home, `A` all pages, `G` graph, `T` trash, `L`/`R`
-  sidebars, `O` settings, `M` command mode, `N` new page, `J` journals, or
-  `Shift+J` today's journal.
+  the omni bar, `T` tag search, `Shift+T` trash, `H` home, `A` all pages,
+  `G` graph, `L`/`R` sidebars, `O` settings, `M` command mode, `N` new page,
+  `J` journals, or `Shift+J` today's journal.
   Save is `Cmd+S` / `Ctrl+S`. User overrides are stored as one sparse JSON
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.

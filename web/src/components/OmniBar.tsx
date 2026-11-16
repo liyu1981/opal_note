@@ -146,7 +146,13 @@ export function OmniBar() {
     const input = inputRef.current;
     if (!input) return;
     input.focus();
-    input.select();
+    if (input.value === ">" || input.value === "#") {
+      // Command/tag mode prefills a prefix. Put the caret after it so the
+      // first typed character refines the search instead of replacing it.
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else {
+      input.select();
+    }
     if (query.trim()) setOpen(true);
   }, [focusRequest]);
 

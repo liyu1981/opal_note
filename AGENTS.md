@@ -222,7 +222,7 @@ web/
   card, a Favorites section, the three most recently edited pages, a New page
   action, and outstanding todo-plugin items in a sticky right strip. The global top bar hosts the
   **OmniBar** (with the Home button beside it): normal text searches notes, a
-  leading `#` lists tags, and a leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode. Tag
+  leading `#` lists tags, and a leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
   views prefill `#tag` in the bar. Do not reintroduce the old centered search
   or command dialogs, and do not put search back into `LeftSidebar` or make
   `notesAtom` query-dependent.
@@ -254,8 +254,11 @@ web/
   (7 at a time) and appends older pages on scroll. Journal entries are editable
   `JournalCard`s built on `LiveMarkdownEditor` with per-card debounced
   autosave; keep them editable rather than reverting to a read-only renderer.
-  Opening the feed ensures today's `journals/YYYY-MM-DD.md` exists (unless the
-  presentation lock is active); the sidebar `Today` action opens that page.
+  ArrowDown on a card's last line hands focus to the next card, and ArrowUp on
+  the first line hands it to the previous card; crossing the last loaded card
+  queues and loads the next journal batch. Opening the feed ensures today's
+  `journals/YYYY-MM-DD.md` exists (unless the presentation lock is active); the
+  sidebar `Today` action opens that page.
 - `Pages` opens the All-pages directory (`pagesViewAtom`, `PagesView`), not a
   scroll target. It covers both `pages/` and `journals/` and paginates through
   `GET /notebooks/{id}/pages` (default 20/page, user-selectable 10/20/50/100/200)
@@ -341,8 +344,9 @@ web/
   only the tagged block (plus its indented children), and a page-title jump
   list. Edits are merged back into the full page content by block range. Tag
   clicks everywhere (journal cards, inline editor tags, page tags, right panel,
-  pages table) go through `useAppNavigate`. Keep the tag route as a splat so
-  tags containing `/` remain one logical tag.
+  pages table) go through `useAppNavigate`. Tag cards use the same cross-card
+  arrow-key navigation as journal cards. Keep the tag route as a splat so tags
+  containing `/` remain one logical tag.
 - Sidebar section expansion is persisted in `sidebarSectionsAtom`
   (`opalnote.sidebar-sections.v2`), keyed by section title. Panel
   expand/collapse is persisted separately by `leftPanelOpenAtom` and
@@ -404,8 +408,9 @@ web/
   and primary/danger buttons use semantic text colors rather than solid fills.
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (customizable shortcuts; the default leader is `Cmd+/`
-  on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `M` for
-  command mode and `O` for settings. Save is `Cmd+S` / `Ctrl+S`).
+  on macOS and `Ctrl+/` elsewhere, then `F` or `S` for the omni bar, `T` for
+  tag search, `M` for command mode and `O` for settings. Save is
+  `Cmd+S` / `Ctrl+S`).
 
 ### Tests
 

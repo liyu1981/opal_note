@@ -35,6 +35,8 @@ export function JournalFeed() {
   const generationRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const firstCardRef = useRef<JournalCardHandle>(null);
+  const cardRefs = useRef<Array<JournalCardHandle | null>>([]);
+  const pendingNextPageRef = useRef<number | null>(null);
 
   useViewAutoFocus(
     "journal",
@@ -117,6 +119,18 @@ export function JournalFeed() {
   }, [load, locked, notebookId, refreshNotes]);
 
   useEffect(() => {
+    const target = pendingNextPageRef.current;
+    if (target === null) return;
+    const handle = cardRefs.current[target];
+    if (handle) {
+      pendingNextPageRef.current = null;
+      handle.focusStart();
+    } else if (!loading && !hasMore) {
+      pendingNextPageRef.current = null;
+    }
+  }, [hasMore, loading, pages]);
+
+  useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel || !hasMore || loading || pages.length === 0) return;
     const observer = new IntersectionObserver(
@@ -133,6 +147,26 @@ export function JournalFeed() {
 
   function openPage(page: JournalPage) {
     navigate({ view: "note", noteId: page.id });
+  }
+
+  function focusSibling(index: number, direction: "up" | "down"): boolean {
+    const next = direction === "down" ? index + 1 : index - 1;
+    if (next < 0) return false;
+    if (next >= pages.length) {
+      if (direction === "up" || !hasMore || pages.length === 0) return false;
+      // The feed loads older pages on demand. Queue focus for the first card
+      // in the next batch instead of trapping the caret on the last page.
+      pendingNextPageRef.current = next;
+      if (!loadingRef.current) {
+        void load(pages[pages.length - 1]?.id, false);
+      }
+      return true;
+    }
+    const handle = cardRefs.current[next];
+    if (!handle) return false;
+    if (direction === "down") handle.focusStart();
+    else handle.focusEnd();
+    return true;
   }
 
   function openWiki(target: string) {
@@ -171,7 +205,10 @@ export function JournalFeed() {
           {pages.map((page, index) => (
             <JournalCard
               key={page.id}
-              ref={index === 0 ? firstCardRef : undefined}
+              ref={(node) => {
+                cardRefs.current[index] = node;
+                if (index === 0) firstCardRef.current = node;
+              }}
               page={page}
               notebookId={notebookId}
               linkKeys={linkKeys}
@@ -180,6 +217,7 @@ export function JournalFeed() {
               onOpenPage={openPage}
               onWikiLink={openWiki}
               onTag={(tag) => navigate({ view: "tag", tag })}
+              onNavigate={(direction) => focusSibling(index, direction)}
             />
           ))}
         </div>

@@ -37,6 +37,8 @@ import { slashCommandSource } from "../../lib/slashCommands";
 export type LiveMarkdownEditorHandle = {
   focus: () => void;
   blur: () => void;
+  focusStart: () => void;
+  focusEnd: () => void;
 };
 
 type Props = {
@@ -51,6 +53,9 @@ type Props = {
   readOnly: boolean;
   autoHeight?: boolean;
   autoFocus?: boolean;
+  /** Called when the caret leaves the first/last line. Return true when a
+   * sibling page took focus; false lets CodeMirror handle the key normally. */
+  onNavigate?: (direction: "up" | "down") => boolean;
 };
 
 /**
@@ -81,6 +86,7 @@ export const LiveMarkdownEditor = forwardRef<
     readOnly,
     autoHeight = false,
     autoFocus = false,
+    onNavigate,
   },
   ref,
 ) {
@@ -91,6 +97,7 @@ export const LiveMarkdownEditor = forwardRef<
   const onChangeRef = useRef(onChange);
   const onWikiLinkRef = useRef(onWikiLink);
   const onTagRef = useRef(onTag);
+  const onNavigateRef = useRef(onNavigate);
   const linkTargetsRef = useRef<LinkTarget[]>(linkTargets);
   const initialValueRef = useRef(value);
   const initialReadOnlyRef = useRef(readOnly);
@@ -99,6 +106,7 @@ export const LiveMarkdownEditor = forwardRef<
   onChangeRef.current = onChange;
   onWikiLinkRef.current = onWikiLink;
   onTagRef.current = onTag;
+  onNavigateRef.current = onNavigate;
   linkTargetsRef.current = linkTargets;
 
   const optionsRef = useRef<LivePreviewOptions>({
@@ -127,9 +135,36 @@ export const LiveMarkdownEditor = forwardRef<
     () => ({
       focus: () => viewRef.current?.focus(),
       blur: () => viewRef.current?.contentDOM.blur(),
+      focusStart: () => focusAt("start"),
+      focusEnd: () => focusAt("end"),
     }),
     [],
   );
+
+  function focusAt(edge: "start" | "end") {
+    const view = viewRef.current;
+    if (!view) return;
+    const position = edge === "start" ? 0 : view.state.doc.length;
+    view.focus();
+    view.dispatch({
+      selection: { anchor: position },
+      scrollIntoView: true,
+    });
+    view.dom.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  function atDocumentEdge(
+    view: EditorView,
+    direction: "up" | "down",
+  ): boolean {
+    if (!onNavigateRef.current) return false;
+    const selection = view.state.selection.main;
+    if (!selection.empty) return false;
+    const line = view.state.doc.lineAt(selection.head);
+    if (direction === "up" && line.number !== 1) return false;
+    if (direction === "down" && line.number !== view.state.doc.lines) return false;
+    return onNavigateRef.current(direction);
+  }
 
   useEffect(() => {
     const host = hostRef.current;
@@ -158,6 +193,8 @@ export const LiveMarkdownEditor = forwardRef<
       }),
       keymap.of([
         ...completionKeymap,
+        { key: "ArrowDown", run: (view) => atDocumentEdge(view, "down") },
+        { key: "ArrowUp", run: (view) => atDocumentEdge(view, "up") },
         ...defaultKeymap,
         ...historyKeymap,
         indentWithTab,

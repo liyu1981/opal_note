@@ -53,6 +53,8 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   const [focused, setFocused] = useState<number | null>(null);
   const firstCardRef = useRef<JournalCardHandle>(null);
   const firstFallbackRef = useRef<HTMLButtonElement>(null);
+  const cardRefs = useRef<Array<JournalCardHandle | null>>([]);
+  const fallbackRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useViewAutoFocus(
     "tag",
@@ -100,6 +102,10 @@ export function TagView({ tag: rawTag }: { tag: string }) {
     setPages([]);
     setCards([]);
     setTotal(0);
+    cardRefs.current = [];
+    fallbackRefs.current = [];
+    firstCardRef.current = null;
+    firstFallbackRef.current = null;
     setLoading(true);
     setFocused(null);
     api
@@ -142,6 +148,25 @@ export function TagView({ tag: rawTag }: { tag: string }) {
       cancelled = true;
     };
   }, [notebookId, revision, tag]);
+
+  function focusPage(index: number, edge: "start" | "end"): boolean {
+    const card = cardRefs.current[index];
+    if (card) {
+      if (edge === "start") card.focusStart();
+      else card.focusEnd();
+      return true;
+    }
+    const fallback = fallbackRefs.current[index];
+    if (!fallback) return false;
+    fallback.focus();
+    return true;
+  }
+
+  function focusSibling(index: number, direction: "up" | "down"): boolean {
+    const next = direction === "down" ? index + 1 : index - 1;
+    if (next < 0 || next >= cards.length) return false;
+    return focusPage(next, direction === "down" ? "start" : "end");
+  }
 
   function openWiki(target: string) {
     const needle = normalizeLinkTarget(target);
@@ -196,10 +221,26 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                   <article
                     key={item.page.id}
                     id={`tag-page-${index}`}
+                    ref={(node) => {
+                      fallbackRefs.current[index] =
+                        node?.querySelector<HTMLButtonElement>("button") ?? null;
+                      if (index === 0) {
+                        firstFallbackRef.current = fallbackRefs.current[index];
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+                        return;
+                      }
+                      const direction =
+                        event.key === "ArrowDown" ? "down" : "up";
+                      if (focusSibling(index, direction)) {
+                        event.preventDefault();
+                      }
+                    }}
                     className="scroll-mt-4 rounded-xl border border-line bg-paper p-4"
                   >
                     <button
-                      ref={index === 0 ? firstFallbackRef : undefined}
                       type="button"
                       onClick={() =>
                         navigate({ view: "note", noteId: item.page.id })
@@ -226,7 +267,10 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                   }`}
                 >
                   <JournalCard
-                    ref={index === 0 ? firstCardRef : undefined}
+                    ref={(node) => {
+                      cardRefs.current[index] = node;
+                      if (index === 0) firstCardRef.current = node;
+                    }}
                     page={toJournalPage(item, block.text)}
                     notebookId={notebookId ?? ""}
                     linkKeys={linkKeys}
@@ -237,6 +281,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                     }
                     onWikiLink={openWiki}
                     onTag={openTag}
+                    onNavigate={(direction) => focusSibling(index, direction)}
                     saveContent={(body) =>
                       api.updateNote(notebookId ?? "", item.page.id, {
                         content: replaceTaggedBlock(note.content, block, body),
