@@ -27,7 +27,8 @@ use self::markdown::{
 use self::model::{
     AssetEntry, AssetInfo, AssetList, AssetReference, BacklinkRef, GraphData, GraphEdge, GraphNode,
     JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList, PageOverview, Stats, TagCount,
-    TrashDetail, TrashEntry, TrashList, TrashRestoreResult,
+    TaskList, TaskOverview, TaskStatusCounts, TrashDetail, TrashEntry, TrashList,
+    TrashRestoreResult,
 };
 use self::trash::{TrashDb, TrashRecord};
 
@@ -264,6 +265,53 @@ struct IndexedNote {
     created_at: f64,
 }
 
+/// Sortable columns for the todo directory.
+#[derive(Debug, Clone, Copy)]
+enum TaskSortKey {
+    Task,
+    Page,
+    Status,
+    UpdatedAt,
+}
+
+impl TaskSortKey {
+    fn parse(value: Option<&str>) -> Self {
+        match value.unwrap_or("status") {
+            "task" | "text" => Self::Task,
+            "page" | "title" => Self::Page,
+            "status" => Self::Status,
+            "updated_at" => Self::UpdatedAt,
+            _ => Self::Status,
+        }
+    }
+
+    fn compare(self, left: &TaskOverview, right: &TaskOverview) -> std::cmp::Ordering {
+        match self {
+            Self::Task => left.text.to_lowercase().cmp(&right.text.to_lowercase()),
+            Self::Page => left
+                .note_title
+                .to_lowercase()
+                .cmp(&right.note_title.to_lowercase())
+                .then_with(|| left.line.cmp(&right.line)),
+            Self::Status => task_status_rank(&left.status)
+                .cmp(&task_status_rank(&right.status))
+                .then_with(|| left.updated_at.cmp(&right.updated_at)),
+            Self::UpdatedAt => left.updated_at.cmp(&right.updated_at),
+        }
+    }
+}
+
+/// Display order: work still in flight first, then finished items.
+fn task_status_rank(status: &str) -> u8 {
+    match status {
+        "open" => 0,
+        "doing" => 1,
+        "done" => 2,
+        "cancelled" => 3,
+        _ => 4,
+    }
+}
+
 struct PageRecord {
     path: String,
     title: String,
@@ -284,6 +332,17 @@ pub struct PageListOptions<'a> {
     pub offset: usize,
     pub query: Option<&'a str>,
     pub tag: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub direction: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TaskListOptions<'a> {
+    pub limit: usize,
+    pub offset: usize,
+    /// Comma-separated statuses; empty means every status.
+    pub statuses: Option<&'a str>,
+    pub query: Option<&'a str>,
     pub sort: Option<&'a str>,
     pub direction: Option<&'a str>,
 }
@@ -1047,6 +1106,97 @@ impl Store {
         let mut pages = self.all_page_overviews_locked(notebook_id)?;
         pages.retain(|page| page.is_orphan);
         Ok(pages)
+    }
+
+    /// Tasks derived from markdown checkboxes and Logseq keywords, filtered and
+    /// paginated for the todo directory. `counts` always covers the whole
+    /// notebook so the status filters can show totals.
+    pub fn list_tasks(&self, notebook_id: &str, options: TaskListOptions<'_>) -> Result<TaskList> {
+        let TaskListOptions {
+            limit,
+            offset,
+            statuses,
+            query,
+            sort,
+            direction,
+        } = options;
+        self.ensure_synced()?;
+        let rows = self.run(
+            queries::LIST_NOTEBOOK_TASKS,
+            params([("notebook_id", DataValue::from(notebook_id))]),
+            ScriptMutability::Immutable,
+        )?;
+
+        let mut tasks: Vec<TaskOverview> = rows
+            .rows
+            .iter()
+            .map(|row| {
+                let note_path = col_str(row, 0);
+                let line = col_i64(row, 2);
+                TaskOverview {
+                    id: format!("{note_path}:{line}"),
+                    notebook_id: notebook_id.to_string(),
+                    note_title: col_str(row, 1),
+                    note_path,
+                    line,
+                    text: col_str(row, 3),
+                    status: col_str(row, 4),
+                    updated_at: fmt_ts(col_f64(row, 5)),
+                }
+            })
+            .collect();
+
+        let mut counts = TaskStatusCounts::default();
+        for task in &tasks {
+            match task.status.as_str() {
+                "open" => counts.open += 1,
+                "doing" => counts.doing += 1,
+                "done" => counts.done += 1,
+                "cancelled" => counts.cancelled += 1,
+                _ => {}
+            }
+        }
+
+        let wanted: HashSet<String> = statuses
+            .unwrap_or_default()
+            .split(',')
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+        let needle = query.unwrap_or("").trim().to_lowercase();
+        if !wanted.is_empty() || !needle.is_empty() {
+            tasks.retain(|task| {
+                if !wanted.is_empty() && !wanted.contains(&task.status) {
+                    return false;
+                }
+                needle.is_empty()
+                    || task.text.to_lowercase().contains(&needle)
+                    || task.note_title.to_lowercase().contains(&needle)
+                    || task.note_path.to_lowercase().contains(&needle)
+            });
+        }
+
+        let sort = TaskSortKey::parse(sort);
+        let ascending = matches!(direction, Some("asc"));
+        tasks.sort_by(|left, right| {
+            let ordering = sort.compare(left, right);
+            if ascending {
+                ordering
+            } else {
+                ordering.reverse()
+            }
+        });
+
+        let total = tasks.len() as i64;
+        let offset = offset.min(tasks.len());
+        let end = offset.saturating_add(limit).min(tasks.len());
+        Ok(TaskList {
+            tasks: tasks[offset..end].to_vec(),
+            total,
+            limit,
+            offset,
+            counts,
+        })
     }
 
     /// Nodes and resolved links for the notebook graph. When `include_tags`
@@ -2821,6 +2971,99 @@ mod tests {
             .unwrap();
         assert_eq!(tagged.total, 1);
         assert_eq!(tagged.pages[0].id, "pages/Source.md");
+    }
+
+    #[test]
+    fn task_directory_filters_sorts_and_counts() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Todos", "").unwrap().unwrap();
+        store
+            .create_note(
+                &notebook.id,
+                "Plan",
+                "- [ ] Write docs\n- [x] Ship build\n- [-] Drop spike\n- TODO Review copy\n",
+                &[],
+            )
+            .unwrap();
+        store
+            .create_note(&notebook.id, "Journal", "body\n- [ ] Write tests\n", &[])
+            .unwrap();
+
+        let all = store
+            .list_tasks(
+                &notebook.id,
+                TaskListOptions {
+                    limit: 50,
+                    offset: 0,
+                    statuses: None,
+                    query: None,
+                    sort: Some("task"),
+                    direction: Some("asc"),
+                },
+            )
+            .unwrap();
+        assert_eq!(all.total, 5);
+        assert_eq!(all.counts.open, 3);
+        assert_eq!(all.counts.doing, 0);
+        assert_eq!(all.counts.done, 1);
+        assert_eq!(all.counts.cancelled, 1);
+        assert_eq!(all.tasks[0].text, "Drop spike");
+        assert_eq!(all.tasks[0].id, "pages/Plan.md:3");
+        assert_eq!(all.tasks[0].note_title, "Plan");
+        assert_eq!(all.tasks[0].status, "cancelled");
+
+        let open = store
+            .list_tasks(
+                &notebook.id,
+                TaskListOptions {
+                    limit: 50,
+                    offset: 0,
+                    statuses: Some("open"),
+                    query: None,
+                    sort: Some("task"),
+                    direction: Some("asc"),
+                },
+            )
+            .unwrap();
+        assert_eq!(open.total, 3);
+        assert_eq!(open.tasks.len(), 3);
+        // Counts stay unfiltered so the filter chips can show an overview.
+        assert_eq!(open.counts.done, 1);
+
+        let filtered = store
+            .list_tasks(
+                &notebook.id,
+                TaskListOptions {
+                    limit: 1,
+                    offset: 0,
+                    statuses: Some("open"),
+                    query: Some("Write"),
+                    sort: Some("task"),
+                    direction: Some("asc"),
+                },
+            )
+            .unwrap();
+        assert_eq!(filtered.total, 2);
+        assert_eq!(filtered.tasks.len(), 1);
+        assert_eq!(filtered.tasks[0].text, "Write docs");
+        assert_eq!(filtered.tasks[0].note_path, "pages/Plan.md");
+        assert_eq!(filtered.tasks[0].line, 1);
+
+        let by_title = store
+            .list_tasks(
+                &notebook.id,
+                TaskListOptions {
+                    limit: 50,
+                    offset: 0,
+                    statuses: None,
+                    query: Some("journal"),
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(by_title.total, 1);
+        assert_eq!(by_title.tasks[0].note_title, "Journal");
     }
 
     #[test]

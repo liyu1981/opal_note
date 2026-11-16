@@ -156,6 +156,14 @@ pub const NOTEBOOK_LINK_EDGES: &str = r#"
     notebook_id = $notebook_id
 "#;
 
+pub const LIST_NOTEBOOK_TASKS: &str = r#"
+?[note_path, note_title, line, text, status, updated_at] :=
+    *task{notebook_id, note_path, line, text, status, updated_at},
+    *note{notebook_id, path: note_path, title: note_title},
+    notebook_id = $notebook_id
+:order -updated_at
+"#;
+
 pub const NOTE_INDEX_ROWS: &str = r#"
 ?[path, mtime_ns, size, created_at] :=
     *note{notebook_id, path, mtime_ns, size, created_at},

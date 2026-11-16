@@ -242,19 +242,21 @@ web/
   `notesAtom` query-dependent.
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Home,
-  Journals, Pages, Graph and Assets navigation plus Favorites/Recent sections,
+  Journals, Pages, Todos, Graph and Assets navigation plus Favorites/Recent
+  sections,
   which default collapsed. The right panel is wider and tabbed
   Context / Info / Graph. Keep it that way rather than adding new permanent
   side panels.
 - Omni-bar selections hand focus to the destination view through
   `pendingViewFocusAtom`. Views declare their landing target with
   `useViewAutoFocus` and focus once their content is ready (today's journal,
-  newest journal card, tagged page, note editor, first page row, graph canvas,
-  first asset or the view itself). Note/tag requests carry a route identity so
+  newest journal card, tagged page, note editor, first page/todo row, graph
+  canvas, first asset or the view itself). Note/tag requests carry a route identity so
   an outgoing view cannot consume the incoming view's request.
 - Client routing is TanStack Router with browser history, not hashes. Canonical
   paths are `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
-  `/<notebook>/graph`, `/<notebook>/assets`, `/<notebook>/asset/<path>`,
+  `/<notebook>/tasks`, `/<notebook>/graph`, `/<notebook>/assets`,
+  `/<notebook>/asset/<path>`,
   `/<notebook>/tag/<tag>`, and `/<notebook>/page?p=<note-path-or-title>`, where
   `<notebook>` is the
   URL-encoded notebook name. Unprefixed legacy paths redirect to the selected
@@ -284,6 +286,15 @@ web/
   calls `GET /notebooks/{id}/search` and opens results with `useAppNavigate`.
   Search returns match-centered plain-text excerpts; `OmniBar` highlights
   query terms in titles, excerpts and paths with the `--color-mark` token.
+- `Todos` opens the todo directory (`tasksViewAtom`, `TasksView`), a read-only
+  list over the derived `task` relation with `GET /notebooks/{id}/tasks`
+  (default 20/page, user-selectable sizes, server-side `status`/`q`/`sort`/`dir`).
+  The status filter is a multi-select (open/doing/done/cancelled, default
+  open+doing) persisted in `taskStatusFilterAtom`; `TaskList.counts` always
+  covers the whole notebook so the chips show totals while filtered. Rows open
+  the owning note through `useAppNavigate`; edits stay in the note editor
+  because the list must not race the open editor's autosave. Unknown status
+  values are rejected by the route instead of being passed to Datalog.
 - Graph view (`graphViewAtom`, `GraphView`) and the right-panel Graph tab use
   `GET /notebooks/{id}/graph`; `?include_tags=true` adds `tag:` nodes (kind
   `tag`) connected to their pages. Nodes are notes/tags; edges are only
@@ -445,8 +456,9 @@ web/
 - New user-visible strings should be plain English; keep the UI quiet and
   keyboard-friendly (customizable shortcuts; the default leader is `Cmd+;`
   on macOS and `Ctrl+;` elsewhere, then `F` or `S` for the omni bar, `T` for
-  tag search, `M` for command mode and `O` for settings. Back/forward are
-  `Cmd+; [` / `Cmd+; ]` or `Ctrl+; [` / `Ctrl+; ]`; the keyboard settings tab
+  tag search, `D` for todos, `M` for command mode and `O` for settings.
+  Back/forward are `Cmd+; [` / `Cmd+; ]` or `Ctrl+; [` / `Ctrl+; ]`; the
+  keyboard settings tab
   also lists native CodeMirror editor bindings. Save is `Cmd+S` / `Ctrl+S`).
 
 ### Tests
@@ -480,6 +492,7 @@ Notes are scoped to a notebook and identified by their relative path:
 GET|PATCH|DELETE /api/notebooks/{notebook}/notes/{*path}
 GET /api/notebooks/{notebook}/journals?before=<path>&limit=7
 GET /api/notebooks/{notebook}/pages?limit=&offset=&q=&tag=&sort=&dir=
+GET /api/notebooks/{notebook}/tasks?limit=&offset=&status=&q=&sort=&dir=
 GET /api/notebooks/{notebook}/orphans
 GET /api/notebooks/{notebook}/graph?include_tags=true
 GET /api/notebooks/{notebook}/assets?limit=&offset=&q=&kind=&sort=&dir=
@@ -505,6 +518,9 @@ DELETE /api/trash/{id}
 `POST /api/notebooks/import` accepts a multipart `file` archive (ZIP, `.tar.gz`
 or `.tgz`) and optional `name`; it never overwrites an existing notebook and
 auto-suffixes conflicting names.
+`GET /tasks` lists derived tasks for the todo directory: `status` is a
+comma-separated `open,doing,done,cancelled` filter (unknown values are a 400)
+and the response carries the filtered page plus notebook-wide status counts.
 `GET /journals` is a cursor-paginated, newest-first feed. `GET /pages` returns
 one page of all notes (pages and journals) with resolved backlink counts;
 `total` is the filtered row count. `GET /orphans` returns empty pages with no

@@ -38,6 +38,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     defaultBindings: ["mod+; a"],
   },
   {
+    id: "nav.tasks",
+    label: "Todos",
+    description: "Open the todo directory with the status filter",
+    group: "Navigation",
+    defaultBindings: ["mod+; d"],
+  },
+  {
     id: "nav.graph",
     label: "Graph",
     description: "Open the notebook graph",

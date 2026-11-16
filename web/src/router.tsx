@@ -20,6 +20,7 @@ import { GraphView } from "./components/GraphView";
 import { HomeView } from "./components/HomeView";
 import { JournalFeed } from "./components/JournalFeed";
 import { PagesView } from "./components/PagesView";
+import { TasksView } from "./components/TasksView";
 import { TagView } from "./components/TagView";
 import { TrashView } from "./components/TrashView";
 import { Workspace } from "./components/Workspace";
@@ -31,15 +32,25 @@ import {
   homeViewAtom,
   journalViewAtom,
   pagesViewAtom,
+  tasksViewAtom,
   trashViewAtom,
 } from "./state/atoms";
 
 function useSyncView(
-  view: "home" | "journal" | "pages" | "graph" | "assets" | "asset" | "trash",
+  view:
+    | "home"
+    | "journal"
+    | "pages"
+    | "tasks"
+    | "graph"
+    | "assets"
+    | "asset"
+    | "trash",
 ) {
   const setHome = useSetAtom(homeViewAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
+  const setTasks = useSetAtom(tasksViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
   const setAssets = useSetAtom(assetsViewAtom);
   const setTrash = useSetAtom(trashViewAtom);
@@ -49,6 +60,7 @@ function useSyncView(
     setHome(view === "home");
     setJournal(view === "journal");
     setPages(view === "pages");
+    setTasks(view === "tasks");
     setGraph(view === "graph");
     setAssets(view === "assets" || view === "asset");
     setTrash(view === "trash");
@@ -60,6 +72,7 @@ function useSyncView(
     setHome,
     setJournal,
     setPages,
+    setTasks,
     setTrash,
     view,
   ]);
@@ -78,6 +91,11 @@ function JournalRoute() {
 function PagesRoute() {
   useSyncView("pages");
   return <PagesView />;
+}
+
+function TasksRoute() {
+  useSyncView("tasks");
+  return <TasksView />;
 }
 
 function GraphRoute() {
@@ -122,6 +140,7 @@ function PageRoute() {
   const setHome = useSetAtom(homeViewAtom);
   const setJournal = useSetAtom(journalViewAtom);
   const setPages = useSetAtom(pagesViewAtom);
+  const setTasks = useSetAtom(tasksViewAtom);
   const setGraph = useSetAtom(graphViewAtom);
   const setAssets = useSetAtom(assetsViewAtom);
   const setTrash = useSetAtom(trashViewAtom);
@@ -134,6 +153,7 @@ function PageRoute() {
     setHome(false);
     setJournal(false);
     setPages(false);
+    setTasks(false);
     setGraph(false);
     setAssets(false);
     setTrash(false);
@@ -152,6 +172,7 @@ function PageRoute() {
     setHome,
     setJournal,
     setPages,
+    setTasks,
     setTrash,
   ]);
 
@@ -267,6 +288,12 @@ const pagesRoute = createRoute({
   component: PagesRoute,
 });
 
+const tasksRoute = createRoute({
+  getParentRoute: () => notebookRoute,
+  path: "tasks",
+  component: TasksRoute,
+});
+
 const graphRoute = createRoute({
   getParentRoute: () => notebookRoute,
   path: "graph",
@@ -356,6 +383,22 @@ const legacyPagesRoute = createRoute({
   },
 });
 
+const legacyTasksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tasks",
+  beforeLoad: async () => {
+    const notebook = await pickNotebook();
+    if (notebook) {
+      throw redirect({
+        to: "/$notebook/tasks",
+        params: { notebook: notebook.id },
+        replace: true,
+      });
+    }
+    throw redirect({ to: "/journal", replace: true });
+  },
+});
+
 const legacyGraphRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/graph",
@@ -400,6 +443,7 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     journalRoute,
     pagesRoute,
+    tasksRoute,
     graphRoute,
     assetsRoute,
     assetRoute,
@@ -410,6 +454,7 @@ const routeTree = rootRoute.addChildren([
   legacyJournalRoute,
   legacyTrashRoute,
   legacyPagesRoute,
+  legacyTasksRoute,
   legacyGraphRoute,
   legacyPageRoute,
 ]);

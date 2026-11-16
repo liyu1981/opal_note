@@ -438,8 +438,8 @@ render in the same main-area list. There is no plugin side strip or section
 label. The top bar carries the omni search bar with the Home button
 beside it, plus back/forward history controls.
 
-- **Left sidebar** — notebook switcher plus Home, Journals, Pages, Graph,
-  Assets and Trash navigation. The pencil action renames the current notebook
+- **Left sidebar** — notebook switcher plus Home, Journals, Pages, Todos,
+  Graph, Assets and Trash navigation. The pencil action renames the current notebook
   folder on disk, discards its index rows and reindexes every file under the
   new name, so it warns before starting and shows elapsed reindex time.
   Favorites and Recent
@@ -461,8 +461,14 @@ beside it, plus back/forward history controls.
   with backlink counts, tags, created/updated timestamps, sortable columns,
   tag filtering, a page filter, table/card modes and server-side pagination.
   A **Clean** action lists empty pages with no backlinks and can move them to
-  the server trash after confirmation. Both sidebars start collapsed and can
-  be toggled from the top bar, leaving the writing surface to fill the window.
+  the server trash after confirmation.
+  The **Todos** view lists every task derived from markdown checkboxes and
+  Logseq `TODO`/`DOING`/`DONE`/`CANCELED` keywords across pages and journals.
+  Status chips (open, doing, done, cancelled) filter the list and show
+  notebook-wide totals, a text filter narrows by task or page, sort covers
+  status/task/page/updated, and each row opens the note that holds it. Both
+  sidebars start collapsed and can be toggled from the top bar, leaving the
+  writing surface to fill the window.
   The single-page editor grows with its content and scrolls the page, not an
   inner editor box; journal cards use the same renderer.
 - **Omni bar** — the global header hosts one input for note search, tag
@@ -478,8 +484,8 @@ beside it, plus back/forward history controls.
   replacement chord sequence. **Trash** sets how many days deleted files stay
   recoverable. Workspace and navigation commands share a leader chord
   (`Cmd+;` on macOS, `Ctrl+;` elsewhere), followed by `F` or `S` to focus the
-  omni bar, `T` tag search, `Shift+T` trash, `H` home, `A` all pages, `G`
-  graph, `L`/`R` sidebars, `O` settings, `M` command mode, `N` new page, `J`
+  omni bar, `T` tag search, `Shift+T` trash, `H` home, `A` all pages, `D`
+  todos, `G` graph, `L`/`R` sidebars, `O` settings, `M` command mode, `N` new page, `J`
   journals, or `Shift+J` today's journal. Back/forward use `Ctrl+; [` /
   `Ctrl+; ]` (`Cmd+; [` / `Cmd+; ]` on macOS). The Keyboard settings tab also
   lists the native CodeMirror editor bindings.
@@ -501,7 +507,7 @@ beside it, plus back/forward history controls.
   every page that references the asset.
 - **Navigation** — TanStack Router browser routes are scoped by notebook name:
   `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
-  `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
+  `/<notebook>/tasks`, `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
   `/<notebook>/page?p=<page>`. Back/forward (default `Cmd+; [` / `Cmd+; ]`
   or `Ctrl+; [` / `Ctrl+; ]`, rebindable in Settings → Keyboard) use browser
   history, and page URLs can be reloaded or shared directly. Switching notebooks
@@ -713,6 +719,7 @@ selected background.
 | `/<notebook>/home` | Home dashboard |
 | `/<notebook>/journal` | Journal feed |
 | `/<notebook>/pages` | All-pages table |
+| `/<notebook>/tasks` | Todo directory filtered by status |
 | `/<notebook>/graph` | Full-page notebook graph |
 | `/<notebook>/assets` | Asset browser |
 | `/<notebook>/asset/<path>` | Asset detail and references |
@@ -790,6 +797,7 @@ token in JavaScript storage.
 | DELETE | `/notebooks/{id}`                            | Move notebook folder to `.trash/`              |
 | GET    | `/notebooks/{id}/notes`                      | `?limit=&offset=` newest first                 |
 | GET    | `/notebooks/{id}/pages`                      | Paged/filtered pages with backlink counts       |
+| GET    | `/notebooks/{id}/tasks`                      | Paged/filtered derived tasks with status counts |
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | GET    | `/notebooks/{id}/graph`                      | Nodes/links; `?include_tags=true` adds tag nodes |
 | GET    | `/notebooks/{id}/assets`                     | Paged/filtered asset list                      |

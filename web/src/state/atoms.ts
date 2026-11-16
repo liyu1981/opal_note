@@ -56,6 +56,9 @@ export const journalViewAtom = atom(false);
 /** Dedicated page-directory view. */
 export const pagesViewAtom = atom(false);
 
+/** Dedicated todo-directory view. */
+export const tasksViewAtom = atom(false);
+
 /** Full-page notebook graph view. */
 export const graphViewAtom = atom(false);
 
@@ -77,6 +80,18 @@ export const pagesPageSizeAtom = atomWithStorage<number>(
   20,
 );
 
+/** Rows per page in the todo directory; persisted per browser. */
+export const tasksPageSizeAtom = atomWithStorage<number>(
+  "opalnote.tasks-page-size",
+  20,
+);
+
+/** Status filters selected in the todo directory; persisted per browser. */
+export const taskStatusFilterAtom = atomWithStorage<string[]>(
+  "opalnote.task-status-filter",
+  ["open", "doing"],
+);
+
 /** Expanded/collapsed state for left-sidebar sections, keyed by section title. */
 export const sidebarSectionsAtom = atomWithStorage<Record<string, boolean>>(
   "opalnote.sidebar-sections.v2",
@@ -93,6 +108,7 @@ export const selectNotebookAtom = atom(
     set(homeViewAtom, true);
     set(journalViewAtom, false);
     set(pagesViewAtom, false);
+    set(tasksViewAtom, false);
     set(graphViewAtom, false);
     set(assetsViewAtom, false);
     set(trashViewAtom, false);
@@ -227,6 +243,7 @@ export type ViewFocusTarget =
   | "home"
   | "journal"
   | "pages"
+  | "tasks"
   | "graph"
   | "assets"
   | "asset"

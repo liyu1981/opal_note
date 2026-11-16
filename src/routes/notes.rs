@@ -6,8 +6,10 @@ use serde::Deserialize;
 use crate::error::{ApiResult, AppError};
 use crate::routes::{check_content, check_tags, clamp_limit, clamp_offset, clean_title, db_call};
 use crate::state::AppState;
-use crate::store::model::{GraphData, JournalPage, Note, NoteSummary, PageList, PageOverview};
-use crate::store::{NoteSection, NoteUpdate, PageListOptions};
+use crate::store::model::{
+    GraphData, JournalPage, Note, NoteSummary, PageList, PageOverview, TaskList,
+};
+use crate::store::{NoteSection, NoteUpdate, PageListOptions, TaskListOptions};
 
 fn default_limit() -> usize {
     50
@@ -51,6 +53,21 @@ pub struct PageQuery {
     pub sort: Option<String>,
     pub dir: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct TaskQuery {
+    #[serde(default = "default_page_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+    /// Comma-separated statuses: `open`, `doing`, `done`, `cancelled`.
+    pub status: Option<String>,
+    pub q: Option<String>,
+    pub sort: Option<String>,
+    pub dir: Option<String>,
+}
+
+const TASK_STATUSES: &[&str] = &["open", "doing", "done", "cancelled"];
 
 #[derive(Debug, Deserialize)]
 pub struct JournalQuery {
@@ -165,6 +182,69 @@ pub async fn graph(
     .ok_or_else(|| AppError::not_found("notebook not found"))?;
 
     Ok(Json(graph))
+}
+
+pub async fn tasks(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<TaskQuery>,
+) -> ApiResult<Json<TaskList>> {
+    let limit = clamp_limit(query.limit);
+    let offset = clamp_offset(query.offset);
+    let q = query.q.unwrap_or_default().trim().to_string();
+    let sort = query.sort.unwrap_or_default();
+    let dir = query.dir.unwrap_or_default();
+    let statuses = normalize_task_statuses(query.status.as_deref())?;
+    let store = state.store.clone();
+
+    let tasks = db_call(
+        move || -> anyhow::Result<Option<TaskList>> {
+            if !store.notebook_exists(&notebook_id)? {
+                return Ok(None);
+            }
+            Ok(Some(store.list_tasks(
+                &notebook_id,
+                TaskListOptions {
+                    limit,
+                    offset,
+                    statuses: statuses.as_deref(),
+                    query: (!q.is_empty()).then_some(q.as_str()),
+                    sort: (!sort.is_empty()).then_some(sort.as_str()),
+                    direction: (!dir.is_empty()).then_some(dir.as_str()),
+                },
+            )?))
+        },
+        AppError::Internal,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("notebook not found"))?;
+
+    Ok(Json(tasks))
+}
+
+/// Accept a comma-separated status filter, reject unknown values, and return a
+/// normalized `open,doing` list (`None` when nothing was requested).
+fn normalize_task_statuses(raw: Option<&str>) -> ApiResult<Option<String>> {
+    let raw = raw.unwrap_or("").trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let mut seen: Vec<&str> = Vec::new();
+    for value in raw.split(',') {
+        let value = value.trim().to_lowercase();
+        if value.is_empty() {
+            continue;
+        }
+        let Some(status) = TASK_STATUSES.iter().find(|status| **status == value) else {
+            return Err(AppError::bad_request(format!(
+                "unknown task status `{value}`; use open, doing, done or cancelled"
+            )));
+        };
+        if !seen.contains(status) {
+            seen.push(status);
+        }
+    }
+    Ok((!seen.is_empty()).then(|| seen.join(",")))
 }
 
 pub async fn orphans(

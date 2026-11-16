@@ -17,6 +17,7 @@ import type {
   QueryResult,
   Stats,
   TagCount,
+  TaskList,
   TrashDetail,
   TrashList,
   TrashRestoreResult,
@@ -208,6 +209,29 @@ export const api = {
 
   listOrphans: (notebookId: string) =>
     request<PageOverview[]>(`/notebooks/${encode(notebookId)}/orphans`),
+
+  listTasks: (
+    notebookId: string,
+    params: {
+      limit?: number;
+      offset?: number;
+      status?: string;
+      q?: string;
+      sort?: string;
+      dir?: string;
+    } = {},
+  ) => {
+    const search = new URLSearchParams();
+    search.set("limit", String(params.limit ?? 20));
+    search.set("offset", String(params.offset ?? 0));
+    if (params.status) search.set("status", params.status);
+    if (params.q) search.set("q", params.q);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.dir) search.set("dir", params.dir);
+    return request<TaskList>(
+      `/notebooks/${encode(notebookId)}/tasks?${search.toString()}`,
+    );
+  },
 
   graph: (notebookId: string, includeTags = false) =>
     request<GraphData>(

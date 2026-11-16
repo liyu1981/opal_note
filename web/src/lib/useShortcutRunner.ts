@@ -64,6 +64,10 @@ export function useShortcutRunner() {
           requestViewFocus("pages");
           navigate({ view: "pages" });
           break;
+        case "nav.tasks":
+          requestViewFocus("tasks");
+          navigate({ view: "tasks" });
+          break;
         case "nav.graph":
           requestViewFocus("graph");
           navigate({ view: "graph" });

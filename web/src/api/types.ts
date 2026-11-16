@@ -39,6 +39,39 @@ export interface PageList {
   offset: number;
 }
 
+/** One markdown checkbox / Logseq task row from the todo directory. */
+export interface TaskOverview {
+  /** Stable id, `<note path>:<line>`. */
+  id: string;
+  notebook_id: string;
+  note_path: string;
+  note_title: string;
+  /** 1-based line number inside the note. */
+  line: number;
+  text: string;
+  /** `open`, `doing`, `done` or `cancelled`. */
+  status: TaskStatus;
+  updated_at: string;
+}
+
+export type TaskStatus = "open" | "doing" | "done" | "cancelled";
+
+/** Task totals per status for the whole notebook, ignoring filters. */
+export interface TaskStatusCounts {
+  open: number;
+  doing: number;
+  done: number;
+  cancelled: number;
+}
+
+export interface TaskList {
+  tasks: TaskOverview[];
+  total: number;
+  limit: number;
+  offset: number;
+  counts: TaskStatusCounts;
+}
+
 export interface JournalPluginItem {
   id: string;
   title: string;

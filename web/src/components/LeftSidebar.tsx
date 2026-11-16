@@ -17,6 +17,7 @@ import { RenameNotebookDialog } from "./RenameNotebookDialog";
 import {
   IconArchive,
   IconCalendar,
+  IconCheck,
   IconChevron,
   IconClock,
   IconFile,
@@ -42,6 +43,7 @@ import {
   notebooksAtom,
   pagesViewAtom,
   readOnlyAtom,
+  tasksViewAtom,
   recentsAtom,
   refreshAtom,
   renameNotebookRefsAtom,
@@ -60,6 +62,7 @@ export function LeftSidebar() {
   const homeView = useAtomValue(homeViewAtom);
   const journalView = useAtomValue(journalViewAtom);
   const pagesView = useAtomValue(pagesViewAtom);
+  const tasksView = useAtomValue(tasksViewAtom);
   const graphView = useAtomValue(graphViewAtom);
   const assetsView = useAtomValue(assetsViewAtom);
   const trashView = useAtomValue(trashViewAtom);
@@ -111,6 +114,10 @@ export function LeftSidebar() {
 
   function openPagesView() {
     navigate({ view: "pages" });
+  }
+
+  function openTasksView() {
+    navigate({ view: "tasks" });
   }
 
   function openGraphView() {
@@ -348,6 +355,12 @@ export function LeftSidebar() {
                 label="Pages"
                 active={pagesView}
                 onClick={openPagesView}
+              />
+              <NavItem
+                icon={<IconCheck className="h-3.5 w-3.5" />}
+                label="Todos"
+                active={tasksView}
+                onClick={openTasksView}
               />
               <NavItem
                 icon={<IconGraph className="h-3.5 w-3.5" />}

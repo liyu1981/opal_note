@@ -62,6 +62,7 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
             get(notes::list).post(notes::create),
         )
         .route("/notebooks/{id}/pages", get(notes::pages))
+        .route("/notebooks/{id}/tasks", get(notes::tasks))
         .route("/notebooks/{id}/orphans", get(notes::orphans))
         .route("/notebooks/{id}/graph", get(notes::graph))
         .route("/notebooks/{id}/plugins", get(plugins::journal))

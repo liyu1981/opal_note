@@ -51,6 +51,42 @@ pub struct PageList {
     pub offset: usize,
 }
 
+/// One markdown checkbox / Logseq task row for the todo directory.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaskOverview {
+    /// Stable id, `<note path>:<line>`.
+    pub id: String,
+    pub notebook_id: String,
+    /// Relative path of the page holding the task.
+    pub note_path: String,
+    pub note_title: String,
+    /// 1-based line number inside the note.
+    pub line: i64,
+    pub text: String,
+    /// `open`, `doing`, `done` or `cancelled`.
+    pub status: String,
+    pub updated_at: String,
+}
+
+/// Task totals per status for the whole notebook, ignoring filters.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct TaskStatusCounts {
+    pub open: i64,
+    pub doing: i64,
+    pub done: i64,
+    pub cancelled: i64,
+}
+
+/// One page of the todo directory.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaskList {
+    pub tasks: Vec<TaskOverview>,
+    pub total: i64,
+    pub limit: usize,
+    pub offset: usize,
+    pub counts: TaskStatusCounts,
+}
+
 /// A node in the notebook graph.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GraphNode {
