@@ -1,9 +1,9 @@
 //! Self-update support.
 //!
-//! Remote discovery downloads a binary plus manifest into
-//! `<update-dir>/candidate/`. On startup this module validates and atomically
-//! replaces the current executable. The running process keeps the old inode;
-//! the new version is used on the next restart.
+//! `opalnote update` discovers a binary plus manifest and stages it in
+//! `<update-dir>/candidate/`. `opalnote serve` only validates and applies an
+//! already staged candidate at startup. The running process keeps the old
+//! inode; the new version is used on the next restart.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -192,6 +192,32 @@ pub fn check_remote_update(
         "downloaded self-update candidate"
     );
     Ok(Some(manifest))
+}
+
+/// CLI entry point for `opalnote update`: discover and stage a newer candidate.
+/// This does not replace the running binary; the next server restart applies it.
+pub fn run_update(update_dir: &Path, repo: &str, channel: UpdateChannel) -> Result<()> {
+    let result = check_remote_update(update_dir, repo, channel)?;
+    match result {
+        Some(manifest) => {
+            println!(
+                "Downloaded {} ({}) to {}; restart the server to apply it.",
+                manifest.version,
+                manifest.commit,
+                candidate_dir(update_dir).display()
+            );
+        }
+        None => {
+            println!(
+                "No newer {} update is available for this build.",
+                match channel {
+                    UpdateChannel::Release => "release",
+                    UpdateChannel::Dev => "development",
+                }
+            );
+        }
+    }
+    Ok(())
 }
 
 fn candidate_is_newer(manifest: &CandidateManifest) -> Result<bool> {

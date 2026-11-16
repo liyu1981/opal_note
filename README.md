@@ -201,18 +201,34 @@ and atomically renamed into place. The running process keeps the old image;
 the new version starts on the next restart. The candidate directory is deleted
 after a successful replacement.
 
-Release builds run a background update check at startup and every six hours.
-The `release` channel queries GitHub's public `releases/latest` API over HTTPS
-and prefers a matching `manifest.json` asset. The `dev` channel uses the
-authenticated `gh` CLI to read the newest unexpired `opalnote-*-<arch>` Actions
-artifact, so the service user needs `gh` on `PATH` and must have run
-`gh auth login`. Downloaded candidates are left in place for the next startup
-to install.
+The server does **not** pull updates automatically. It only applies a pending
+candidate from `<update-dir>/candidate/` when `opalnote serve` starts, in
+release builds. Use `--no-self-update` or `OPALNOTE_NO_SELF_UPDATE=true` to
+disable that startup check.
 
-Debug builds skip this by default. Use `--no-self-update` or
-`OPALNOTE_NO_SELF_UPDATE=true` to disable it explicitly. Use `--update-channel
-dev` to follow development artifacts; stable releases use the default
-`release` channel.
+Run the download step explicitly:
+
+```bash
+opalnote update
+opalnote update --update-channel dev
+opalnote update --update-dir ~/.opalnote/updates
+```
+
+`opalnote update` checks the selected channel, downloads a newer candidate and
+leaves it staged for the next restart. The `release` channel queries GitHub's
+public `releases/latest` API over HTTPS and prefers a matching `manifest.json`
+asset. The `dev` channel uses the authenticated `gh` CLI to read the newest
+unexpired `opalnote-*-<arch>` Actions artifact, so the service user needs `gh`
+on `PATH` and must have run `gh auth login`.
+
+This command is designed to run from cron:
+
+```cron
+0 4 * * * /usr/local/bin/opalnote update >> ~/.opalnote/update.log 2>&1
+```
+
+Cron downloads the candidate; the running server is unchanged. The new binary
+starts on the next service restart.
 
 `opalnote --version` prints the build version, channel, commit and commit time;
 `GET /api/meta` exposes the same build fields.
@@ -321,10 +337,10 @@ or `--force` to customize it; the command prints the enable commands.
 | `--bind`                   | `OPALNOTE_BIND`               | `127.0.0.1:7827`  | Listen address (`pnpm dev` forces `0.0.0.0:7827`)        |
 | `--data-dir`               | `OPALNOTE_DATA_DIR`           | `./data`          | Root holding `notebooks/`, `index/` and `.trash/`        |
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
-| `--update-dir`             | `OPALNOTE_UPDATE_DIR`         | `~/.opalnote/updates` | Pending self-update candidate directory              |
-| `--no-self-update`         | `OPALNOTE_NO_SELF_UPDATE`     | `false`           | Disable startup self-update checks                       |
-| `--update-repo`            | `OPALNOTE_UPDATE_REPO`        | `liyu1981/opal_note` | GitHub repository for update discovery               |
-| `--update-channel`         | `OPALNOTE_UPDATE_CHANNEL`     | `release`         | `release` or `dev` update channel                        |
+| `--update-dir`             | `OPALNOTE_UPDATE_DIR`         | `~/.opalnote/updates` | Pending update candidate directory                     |
+| `--no-self-update`         | `OPALNOTE_NO_SELF_UPDATE`     | `false`           | Do not apply a pending candidate on `serve` startup      |
+| `--update-repo`            | `OPALNOTE_UPDATE_REPO`        | `liyu1981/opal_note` | Repository used by `opalnote update`                   |
+| `--update-channel`         | `OPALNOTE_UPDATE_CHANNEL`     | `release`         | `release` or `dev` channel used by `opalnote update`     |
 | `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
 | `--plugin-timeout-secs`    | `OPALNOTE_PLUGIN_TIMEOUT_SECS`| `5`               | Per-run QuickJS journal plugin budget                    |
 | `--no-tls`                 | `OPALNOTE_NO_TLS`             | `false`           | Serve plain HTTP instead of HTTPS                        |

@@ -303,16 +303,18 @@ web/
 - `build.rs` embeds `OPALNOTE_BUILD_VERSION`, `OPALNOTE_BUILD_COMMIT`,
   `OPALNOTE_BUILD_COMMIT_TIME` (git commit `%ct`) and `OPALNOTE_BUILD_CHANNEL`
   in every build. Keep the metadata emission before the debug early return.
-- Self-update reads `<update-dir>/candidate/{opalnote,manifest.json}` in release
-  builds. Compare semver first and commit time as the tie-breaker; validate
-  target/size/optional SHA-256; copy beside the current executable and atomically
-  rename; delete the candidate after success. Debug builds and
-  `--no-self-update` skip it. The running process continues; the new binary is
-  used on the next restart. Release discovery uses the public GitHub
-  `releases/latest` API (with an optional `manifest.json` asset); the `dev`
-  channel uses authenticated `gh` and the newest unexpired
-  `opalnote-*-<arch>` Actions artifact. The startup checker runs in the
-  background and repeats every six hours.
+- Self-update is split into two explicit steps. `opalnote serve` only applies
+  `<update-dir>/candidate/{opalnote,manifest.json}` at startup in release builds;
+  it does not poll GitHub. Compare semver first and commit time as the
+  tie-breaker; validate target/size/optional SHA-256; copy beside the current
+  executable and atomically rename; delete the candidate after success. Debug
+  builds and `--no-self-update` skip the startup apply. The running process
+  continues; the new binary is used on the next restart.
+- `opalnote update` performs discovery and downloads a candidate for the next
+  restart, and is intended for cron. The `release` channel uses the public
+  GitHub `releases/latest` API (with an optional `manifest.json` asset); the
+  `dev` channel uses authenticated `gh` and the newest unexpired
+  `opalnote-*-<arch>` Actions artifact.
 - Backgrounds are declarative plugins, not sandboxed JS. Built-in sources live
   in `builtin/src/backgrounds/<folder>/package.json`, with the final manifest
   in `opal_note` and assets copied into `builtin/backgrounds/<folder>/` by the

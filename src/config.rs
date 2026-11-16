@@ -38,6 +38,8 @@ pub struct Cli {
 pub enum Command {
     /// Run the OpalNote server.
     Serve(ServeArgs),
+    /// Download a newer server binary for the next restart.
+    Update(UpdateArgs),
     /// Write a default config, or upgrade an existing config in place.
     Config(ConfigArgs),
     /// Install a systemd user service for OpalNote.
@@ -75,6 +77,21 @@ pub struct InstallServiceArgs {
 }
 
 #[derive(Debug, Clone, Args, Default)]
+pub struct UpdateArgs {
+    /// Directory where a pending update candidate is staged.
+    #[arg(long, value_name = "PATH")]
+    pub update_dir: Option<PathBuf>,
+
+    /// GitHub repository used for release/dev update discovery.
+    #[arg(long, value_name = "OWNER/REPO")]
+    pub update_repo: Option<String>,
+
+    /// Update channel: `release` or `dev`.
+    #[arg(long, value_name = "CHANNEL")]
+    pub update_channel: Option<String>,
+}
+
+#[derive(Debug, Clone, Args, Default)]
 pub struct ServeArgs {
     /// Address to listen on.
     #[arg(long)]
@@ -95,14 +112,6 @@ pub struct ServeArgs {
     /// Do not check or apply a pending self-update on startup.
     #[arg(long = "no-self-update")]
     pub no_self_update: bool,
-
-    /// GitHub repository used for release/dev update discovery.
-    #[arg(long, value_name = "OWNER/REPO")]
-    pub update_repo: Option<String>,
-
-    /// Update channel: `release` or `dev`.
-    #[arg(long, value_name = "CHANNEL")]
-    pub update_channel: Option<String>,
 
     /// Default wall-clock budget for the ad-hoc `/api/query` endpoint, in seconds.
     #[arg(long)]
@@ -136,8 +145,6 @@ pub struct ResolvedServeArgs {
     pub token: Option<String>,
     pub update_dir: PathBuf,
     pub no_self_update: bool,
-    pub update_repo: String,
-    pub update_channel: String,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
     pub no_tls: bool,
@@ -154,6 +161,13 @@ impl ResolvedServeArgs {
             .filter(|token| !token.is_empty())
             .map(ToOwned::to_owned)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedUpdateArgs {
+    pub update_dir: PathBuf,
+    pub update_repo: String,
+    pub update_channel: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -205,6 +219,37 @@ struct EnvConfig {
     dev_cors: Option<bool>,
 }
 
+fn default_update_dir() -> PathBuf {
+    home_dir()
+        .map(|home| home.join(".opalnote").join("updates"))
+        .unwrap_or_else(|_| PathBuf::from(".opalnote/updates"))
+}
+
+impl UpdateArgs {
+    pub fn resolve(self, config: Option<&Path>) -> Result<ResolvedUpdateArgs> {
+        let file = load_file_config(config)?;
+        let env = EnvConfig::read()?;
+        Ok(ResolvedUpdateArgs {
+            update_dir: expand_home(
+                self.update_dir
+                    .or(env.update_dir)
+                    .or(file.update_dir)
+                    .unwrap_or_else(default_update_dir),
+            ),
+            update_repo: self
+                .update_repo
+                .or(env.update_repo)
+                .or(file.update_repo)
+                .unwrap_or_else(|| "liyu1981/opal_note".to_string()),
+            update_channel: self
+                .update_channel
+                .or(env.update_channel)
+                .or(file.update_channel)
+                .unwrap_or_else(|| "release".to_string()),
+        })
+    }
+}
+
 impl ServeArgs {
     pub fn resolve(self, config: Option<&Path>) -> Result<ResolvedServeArgs> {
         let file = load_file_config(config)?;
@@ -231,10 +276,6 @@ impl ServeArgs {
         } else {
             file.no_self_update.unwrap_or(false)
         };
-        let default_update_dir = home_dir()
-            .map(|home| home.join(".opalnote").join("updates"))
-            .unwrap_or_else(|_| PathBuf::from(".opalnote/updates"));
-
         Ok(ResolvedServeArgs {
             bind: self
                 .bind
@@ -252,19 +293,9 @@ impl ServeArgs {
                 self.update_dir
                     .or(env.update_dir)
                     .or(file.update_dir)
-                    .unwrap_or(default_update_dir),
+                    .unwrap_or_else(default_update_dir),
             ),
             no_self_update,
-            update_repo: self
-                .update_repo
-                .or(env.update_repo)
-                .or(file.update_repo)
-                .unwrap_or_else(|| "liyu1981/opal_note".to_string()),
-            update_channel: self
-                .update_channel
-                .or(env.update_channel)
-                .or(file.update_channel)
-                .unwrap_or_else(|| "release".to_string()),
             query_timeout_secs: self
                 .query_timeout_secs
                 .or(env.query_timeout_secs)
