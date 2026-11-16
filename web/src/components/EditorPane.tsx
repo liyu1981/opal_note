@@ -31,6 +31,7 @@ import {
   type LiveMarkdownEditorHandle,
 } from "./editor/LiveMarkdownEditor";
 import {
+  activeNoteAtom,
   activeNoteIdAtom,
   activeNotebookIdAtom,
   favoritesAtom,
@@ -47,6 +48,24 @@ import {
 
 type SaveStatus = "saved" | "dirty" | "saving" | "error";
 type LinkTarget = { title: string; path: string };
+
+function arraysEqual<T>(left: T[], right: T[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+/** Metadata that needs the notebook's derived lists/backlinks/graph refreshed. */
+function noteMetadataChanged(previous: Note, next: Note): boolean {
+  return (
+    previous.title !== next.title ||
+    !arraysEqual(previous.explicit_tags, next.explicit_tags) ||
+    !arraysEqual(previous.tags, next.tags) ||
+    JSON.stringify(previous.links) !== JSON.stringify(next.links) ||
+    JSON.stringify(previous.backlinks) !== JSON.stringify(next.backlinks)
+  );
+}
 
 export function EditorPane() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
@@ -92,24 +111,30 @@ function ActiveNote() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const noteId = useAtomValue(activeNoteIdAtom);
   const notesRevision = useAtomValue(notesRevisionAtom);
+  const setActiveNote = useSetAtom(activeNoteAtom);
   const key = `${notebookId ?? ""}/${noteId ?? ""}`;
   const [loaded, setLoaded] = useState<ActiveNoteLoad | null>(null);
 
   useEffect(() => {
     if (!notebookId || !noteId) {
       setLoaded({ key, note: null });
+      setActiveNote(null);
       return;
     }
     let cancelled = false;
     api
       .getNote(notebookId, noteId)
       .then((note) => {
-        if (!cancelled) setLoaded({ key, note });
+        if (!cancelled) {
+          setLoaded({ key, note });
+          setActiveNote(note);
+        }
       })
       .catch((cause) => {
         if (cancelled) return;
         if (cause instanceof ApiError && cause.status === 404) {
           setLoaded({ key, note: null });
+          setActiveNote(null);
           return;
         }
         // Keep an already loaded note if a background refresh fails; a
@@ -128,7 +153,7 @@ function ActiveNote() {
     return () => {
       cancelled = true;
     };
-  }, [key, notebookId, noteId, notesRevision]);
+  }, [key, notebookId, noteId, notesRevision, setActiveNote]);
 
   if (loaded?.key === key && loaded.error) {
     return (
@@ -164,6 +189,7 @@ function NoteEditor({ note }: { note: Note }) {
   const toggleFavorite = useSetAtom(toggleFavoriteAtom);
   const recordRecent = useSetAtom(recordRecentAtom);
   const renameNoteRefs = useSetAtom(renameNoteRefsAtom);
+  const setActiveNote = useSetAtom(activeNoteAtom);
 
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
@@ -187,8 +213,13 @@ function NoteEditor({ note }: { note: Note }) {
   const deletedRef = useRef(false);
   const changeVersion = useRef(0);
   const savingRef = useRef(false);
+  const savedNoteRef = useRef(note);
   draftRef.current = { title, content, tagsInput };
   dirtyRef.current = dirty;
+
+  useEffect(() => {
+    savedNoteRef.current = note;
+  }, [note]);
 
   // Link completion and resolution need the notebook's pages. Fetching them
   // here (instead of an async atom) keeps the editor mounted across saves.
@@ -245,7 +276,14 @@ function NoteEditor({ note }: { note: Note }) {
           content: draft.content,
           tags: parseTags(draft.tagsInput),
         })
-        .then(() => refreshNotes())
+        .then((updated) => {
+          if (
+            updated.id !== note.id ||
+            noteMetadataChanged(note, updated)
+          ) {
+            refreshNotes();
+          }
+        })
         .catch(() => {
           // The unmounted view has nowhere to show the failure; the next
           // autosave/edit path will surface it if the user returns.
@@ -274,6 +312,9 @@ function NoteEditor({ note }: { note: Note }) {
         content: draft.content,
         tags: parseTags(draft.tagsInput),
       });
+      const previous = savedNoteRef.current;
+      savedNoteRef.current = updated;
+      setActiveNote(updated);
       if (updated.id !== note.id) {
         navigate({ view: "note", noteId: updated.id }, { replace: true });
       }
@@ -283,8 +324,17 @@ function NoteEditor({ note }: { note: Note }) {
         newPath: updated.id,
         title: updated.title,
       });
-      refreshNotes();
+      // Body-only autosaves must not invalidate the notebook list, sidebar or
+      // right panel. Only structural metadata changes need a reindex refresh.
+      if (
+        updated.id !== previous.id ||
+        noteMetadataChanged(previous, updated)
+      ) {
+        refreshNotes();
+      }
       if (changeVersion.current === version) {
+        setTitle(updated.title);
+        setTagsInput(tagList(updated.explicit_tags));
         setDirty(false);
         setStatus("saved");
       } else {
@@ -319,8 +369,9 @@ function NoteEditor({ note }: { note: Note }) {
   // sanitize a character) and frontmatter tags (inline #tags stay derived).
   useEffect(() => {
     if (!dirty && status === "saved") {
-      setTitle(note.title);
-      setTagsInput(tagList(note.explicit_tags));
+      const canonical = savedNoteRef.current;
+      setTitle(canonical.title);
+      setTagsInput(tagList(canonical.explicit_tags));
     }
   }, [note.title, note.explicit_tags, dirty, status]);
 

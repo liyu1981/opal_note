@@ -8,6 +8,7 @@ import { IconFile, IconLink, IconTag } from "./Icons";
 import { GraphPanel } from "./GraphPanel";
 import {
   activeNoteAtom,
+  activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
   statsAtom,
@@ -19,7 +20,9 @@ type Tab = "context" | "info" | "graph";
 export function RightPanel() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notebook = useAtomValue(activeNotebookAtom);
-  const note = useAtomValue(activeNoteAtom);
+  const activeNoteId = useAtomValue(activeNoteIdAtom);
+  const cachedNote = useAtomValue(activeNoteAtom);
+  const note = cachedNote?.id === activeNoteId ? cachedNote : null;
   const tags = useAtomValue(tagsAtom);
   const stats = useAtomValue(statsAtom);
   const navigate = useAppNavigate();

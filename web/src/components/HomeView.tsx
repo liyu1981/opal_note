@@ -229,7 +229,6 @@ export function HomeView() {
                 }
                 onWikiLink={openWiki}
                 onTag={(tag) => navigate({ view: "tag", tag })}
-                onSaved={refreshNotes}
               />
             ) : (
               <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">

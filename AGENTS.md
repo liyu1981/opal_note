@@ -129,6 +129,9 @@ web/
 - Reads call `Store::ensure_synced`; writes hold `fs_lock` for the whole
   read-modify-write. Do not call public store methods while holding the lock —
   use the `*_locked` internals.
+- Ordinary note autosaves merge the returned `Note` into local state. Do not
+  bump `notesRevisionAtom` for body-only saves: only title/tag/link/backlink
+  changes need the notebook-derived lists and graph refreshed.
 - Note paths must resolve inside `pages/`/`journals/` via
   `files::resolve_note_path`; reject traversal and escapes.
 - Notes are titled by filename stem. Renames move files. Deletes move pages,

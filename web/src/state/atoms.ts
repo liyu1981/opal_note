@@ -302,18 +302,9 @@ export const notesAtom = atom(async (get): Promise<NoteSummary[]> => {
   }
 });
 
-export const activeNoteAtom = atom(async (get): Promise<Note | null> => {
-  get(notesRevisionAtom);
-  const notebookId = get(activeNotebookIdAtom);
-  const id = get(activeNoteIdAtom);
-  if (!notebookId || !id) return null;
-  try {
-    return await api.getNote(notebookId, id);
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) return null;
-    throw error;
-  }
-});
+/** The active note shown in the right panel. The editor owns loading and
+ * writes the authoritative note here, so ordinary saves do not refetch it. */
+export const activeNoteAtom = atom<Note | null>(null);
 
 export const statsAtom = atom(async (get): Promise<Stats> => {
   get(notesRevisionAtom);
