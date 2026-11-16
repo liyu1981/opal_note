@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
@@ -6,8 +6,9 @@ import type { JournalPage, JournalPluginResult, Note } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate, todayKey, ensureJournalPage } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
-import { JournalCard } from "./JournalCard";
+import { JournalCard, type JournalCardHandle } from "./JournalCard";
 import { PluginCard } from "./PluginCard";
 import { IconCalendar, IconFile, IconPlus, IconStar } from "./Icons";
 import {
@@ -49,6 +50,7 @@ export function HomeView() {
   const refresh = useSetAtom(refreshAtom);
   const refreshNotes = useSetAtom(refreshNotesAtom);
   const navigate = useAppNavigate();
+  const todayCardRef = useRef<JournalCardHandle>(null);
 
   const [today, setToday] = useState<JournalPage | null>(null);
   const [loadingToday, setLoadingToday] = useState(true);
@@ -56,6 +58,12 @@ export function HomeView() {
   const [todos, setTodos] = useState<JournalPluginResult | null>(null);
   const [todosError, setTodosError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  useViewAutoFocus(
+    "home",
+    () => todayCardRef.current?.focus(),
+    Boolean(today),
+  );
 
   const noteByPath = useMemo(
     () => new Map(notes.map((note) => [note.id, note])),
@@ -210,6 +218,7 @@ export function HomeView() {
               </p>
             ) : today ? (
               <JournalCard
+                ref={todayCardRef}
                 page={today}
                 notebookId={notebookId}
                 linkKeys={linkKeys}

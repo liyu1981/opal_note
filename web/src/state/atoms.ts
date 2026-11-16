@@ -213,11 +213,47 @@ export const readOnlyAtom = atom(false);
 
 export const settingsOpenAtom = atom(false);
 
+/** Selected Settings tab; `Keyboard help` opens this on `shortcuts`. */
+export const settingsTabAtom = atom("fonts");
+
 /** Incremented by the Save shortcut; the active note editor consumes it. */
 export const saveRequestAtom = atom(0);
 
 /** Pending multi-key shortcut sequence, shown in the shortcut HUD. */
 export const shortcutSequenceAtom = atom("");
+
+export type ViewFocusTarget =
+  | "view"
+  | "home"
+  | "journal"
+  | "pages"
+  | "graph"
+  | "assets"
+  | "asset"
+  | "trash"
+  | "note"
+  | "tag";
+
+export type ViewFocusRequest = {
+  id: number;
+  target: ViewFocusTarget;
+  /** Optional route identity (note path, tag, …) so an outgoing view cannot
+   * consume a request meant for the incoming one. */
+  identity?: string;
+};
+
+let nextViewFocusId = 0;
+
+export function createViewFocusRequest(
+  target: ViewFocusTarget,
+  identity?: string,
+): ViewFocusRequest {
+  nextViewFocusId += 1;
+  return { id: nextViewFocusId, target, identity };
+}
+
+/** One-shot focus handoff from navigation to the destination view. */
+export const pendingViewFocusAtom = atom<ViewFocusRequest | null>(null);
 
 /** While recording a shortcut in Settings, global shortcuts are suspended. */
 export const shortcutRecordingAtom = atom(false);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
@@ -6,6 +6,7 @@ import type { PageList, PageOverview } from "../api/types";
 import { compactTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -64,6 +65,7 @@ export function PagesView() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [orphansOpen, setOrphansOpen] = useState(false);
+  const firstRowRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 220);
@@ -139,6 +141,12 @@ export function PagesView() {
 
   const pages = data?.pages ?? [];
   const total = data?.total ?? 0;
+
+  useViewAutoFocus(
+    "pages",
+    () => firstRowRef.current?.focus(),
+    pages.length > 0,
+  );
   const offset = data?.offset ?? page * pageSize;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
@@ -406,7 +414,7 @@ export function PagesView() {
                 </tr>
               </thead>
               <tbody>
-                {pages.map((item) => {
+                {pages.map((item, index) => {
                   const journal = item.id.startsWith("journals/");
                   return (
                     <tr
@@ -415,6 +423,7 @@ export function PagesView() {
                     >
                       <td className="py-2 pl-4 pr-3">
                         <button
+                          ref={index === 0 ? firstRowRef : undefined}
                           type="button"
                           onClick={() => openPage(item)}
                           className="inline-flex max-w-full items-center gap-2 text-left font-sans text-[14px] text-ink-soft transition hover:text-accent-strong"
@@ -455,7 +464,7 @@ export function PagesView() {
           </div>
         ) : (
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {pages.map((item) => {
+            {pages.map((item, index) => {
               const journal = item.id.startsWith("journals/");
               return (
                 <article
@@ -463,6 +472,7 @@ export function PagesView() {
                   className="rounded-xl border border-line bg-paper p-3 transition hover:border-line-strong hover:bg-paper/80"
                 >
                   <button
+                    ref={index === 0 ? firstRowRef : undefined}
                     type="button"
                     onClick={() => openPage(item)}
                     className="flex w-full items-start gap-2 text-left"

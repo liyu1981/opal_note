@@ -4,12 +4,13 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { api } from "../api/client";
 import type { JournalPage } from "../api/types";
 import { ensureJournalPage } from "../lib/journal";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAppNavigate } from "../lib/appNavigation";
 import {
   noteLinkKeys,
   normalizeLinkTarget,
 } from "../lib/markdown";
-import { JournalCard } from "./JournalCard";
+import { JournalCard, type JournalCardHandle } from "./JournalCard";
 import {
   activeNotebookIdAtom,
   notesAtom,
@@ -33,6 +34,13 @@ export function JournalFeed() {
   const loadingRef = useRef(false);
   const generationRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const firstCardRef = useRef<JournalCardHandle>(null);
+
+  useViewAutoFocus(
+    "journal",
+    () => firstCardRef.current?.focus(),
+    pages.length > 0,
+  );
 
   const linkTargets = notes.map((note) => ({
     title: note.title,
@@ -160,9 +168,10 @@ export function JournalFeed() {
         )}
 
         <div className="mt-4 space-y-3">
-          {pages.map((page) => (
+          {pages.map((page, index) => (
             <JournalCard
               key={page.id}
+              ref={index === 0 ? firstCardRef : undefined}
               page={page}
               notebookId={notebookId}
               linkKeys={linkKeys}

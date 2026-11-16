@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
@@ -13,6 +13,7 @@ import { formatBytes } from "../lib/assets";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
 import { settingsAtom } from "../lib/settings";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { readOnlyAtom, refreshAtom } from "../state/atoms";
 import {
   IconArrowLeft,
@@ -52,6 +53,9 @@ export function TrashView() {
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [selected, setSelected] = useState<TrashEntry | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+
+  useViewAutoFocus("trash", () => mainRef.current?.focus());
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -123,7 +127,11 @@ export function TrashView() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
+    <main
+      ref={mainRef}
+      tabIndex={-1}
+      className="min-h-0 flex-1 overflow-y-auto bg-transparent outline-none"
+    >
       <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6">
         <header className="flex flex-wrap items-center gap-2 border-b border-line pb-3">
           <div className="min-w-0 flex-1">

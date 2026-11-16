@@ -5,6 +5,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { api } from "../api/client";
 import { ensureJournal } from "./journal";
 import { useAppNavigate } from "./appNavigation";
+import { useViewFocusRequest } from "./useViewFocus";
 import {
   activeNotebookIdAtom,
   leftPanelOpenAtom,
@@ -15,6 +16,7 @@ import {
   rightPanelOpenAtom,
   saveRequestAtom,
   settingsOpenAtom,
+  settingsTabAtom,
 } from "../state/atoms";
 
 /**
@@ -29,10 +31,12 @@ export function useShortcutRunner() {
   const setOmniFocus = useSetAtom(omniFocusRequestAtom);
   const setOmniQuery = useSetAtom(omniQueryAtom);
   const setSettingsOpen = useSetAtom(settingsOpenAtom);
+  const setSettingsTab = useSetAtom(settingsTabAtom);
   const setLeftOpen = useSetAtom(leftPanelOpenAtom);
   const setRightOpen = useSetAtom(rightPanelOpenAtom);
   const setSaveRequest = useSetAtom(saveRequestAtom);
   const refresh = useSetAtom(refreshAtom);
+  const requestViewFocus = useViewFocusRequest();
 
   return useCallback(
     (id: string) => {
@@ -45,21 +49,27 @@ export function useShortcutRunner() {
           setOmniFocus((request) => request + 1);
           break;
         case "nav.home":
+          requestViewFocus("home");
           navigate({ view: "home" });
           break;
         case "nav.journal":
+          requestViewFocus("journal");
           navigate({ view: "journal" });
           break;
         case "nav.pages":
+          requestViewFocus("pages");
           navigate({ view: "pages" });
           break;
         case "nav.graph":
+          requestViewFocus("graph");
           navigate({ view: "graph" });
           break;
         case "nav.assets":
+          requestViewFocus("assets");
           navigate({ view: "assets" });
           break;
         case "nav.trash":
+          requestViewFocus("trash");
           navigate({ view: "trash" });
           break;
         case "nav.back":
@@ -77,11 +87,16 @@ export function useShortcutRunner() {
         case "ui.settings":
           setSettingsOpen(true);
           break;
+        case "ui.help":
+          setSettingsTab("shortcuts");
+          setSettingsOpen(true);
+          break;
         case "page.new":
           if (notebookId && !locked) {
             void api
               .createNote(notebookId, { title: "Untitled", content: "" })
               .then((note) => {
+                requestViewFocus("note", note.id);
                 navigate({ view: "note", noteId: note.id });
                 refresh();
               })
@@ -98,6 +113,7 @@ export function useShortcutRunner() {
           if (notebookId && !locked) {
             void ensureJournal(notebookId)
               .then((note) => {
+                requestViewFocus("note", note.id);
                 navigate({ view: "note", noteId: note.id });
                 refresh();
               })
@@ -120,11 +136,13 @@ export function useShortcutRunner() {
       navigate,
       notebookId,
       refresh,
+      requestViewFocus,
       router,
       setLeftOpen,
       setRightOpen,
       setSaveRequest,
       setSettingsOpen,
+      setSettingsTab,
       setOmniFocus,
       setOmniQuery,
     ],

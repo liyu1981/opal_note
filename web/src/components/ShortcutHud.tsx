@@ -1,11 +1,17 @@
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 
 import { formatBinding } from "../lib/shortcuts";
-import { shortcutSequenceAtom } from "../state/atoms";
+import {
+  settingsOpenAtom,
+  settingsTabAtom,
+  shortcutSequenceAtom,
+} from "../state/atoms";
 import { IconX } from "./Icons";
 
 export function ShortcutHud() {
   const [sequence, setSequence] = useAtom(shortcutSequenceAtom);
+  const setSettingsOpen = useSetAtom(settingsOpenAtom);
+  const setSettingsTab = useSetAtom(settingsTabAtom);
   if (!sequence) return null;
 
   const label = sequence
@@ -34,6 +40,20 @@ export function ShortcutHud() {
       >
         <IconX className="h-3 w-3" />
         Esc
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setSequence("");
+          setSettingsTab("shortcuts");
+          setSettingsOpen(true);
+        }}
+        className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 font-mono text-[14px] text-muted transition hover:bg-panel hover:text-ink"
+        aria-label="Open keyboard shortcuts"
+        title="Keyboard shortcuts"
+      >
+        ?
+        Help
       </button>
     </div>
   );

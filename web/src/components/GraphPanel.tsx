@@ -24,6 +24,7 @@ import {
 } from "./Icons";
 import { notesRevisionAtom } from "../state/atoms";
 import { useAppNavigate } from "../lib/appNavigation";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 
 type Scope = "local" | "all";
 
@@ -304,6 +305,8 @@ function GraphCanvas({
   const [view, setView] = useState<ViewTransform>({ x: 0, y: 0, k: 1 });
   const [hovered, setHovered] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(activeNoteId);
+
+  useViewAutoFocus("graph", () => svgRef.current?.focus(), fill);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -593,7 +596,8 @@ function GraphCanvas({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${size.width} ${size.height}`}
-        className="block h-full w-full cursor-grab active:cursor-grabbing"
+        tabIndex={0}
+        className="block h-full w-full cursor-grab outline-none active:cursor-grabbing"
         role="application"
         aria-label="Notebook link graph"
         onPointerDown={startPan}

@@ -11,6 +11,7 @@ import {
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAssetBlob } from "../lib/useAssetBlob";
 import {
   activeNotebookIdAtom,
@@ -33,6 +34,9 @@ export function AssetDetailView({ path }: { path: string }) {
   const [info, setInfo] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+
+  useViewAutoFocus("asset", () => mainRef.current?.focus());
 
   useEffect(() => {
     if (!notebookId || !path) {
@@ -114,7 +118,11 @@ export function AssetDetailView({ path }: { path: string }) {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-transparent">
+    <main
+      ref={mainRef}
+      tabIndex={-1}
+      className="min-h-0 flex-1 overflow-y-auto bg-transparent outline-none"
+    >
       <div className="mx-auto w-full max-w-7xl px-6 py-6">
         <header className="flex flex-wrap items-center gap-3 border-b border-line pb-3">
           <button

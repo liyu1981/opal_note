@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { useAtomValue } from "jotai";
 
 import { api } from "../api/client";
@@ -6,6 +6,7 @@ import type { AssetEntry, AssetKind, AssetList } from "../api/types";
 import { assetKindLabel, downloadAsset, formatBytes } from "../lib/assets";
 import { relativeTime } from "../lib/format";
 import { useAppNavigate } from "../lib/appNavigation";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAssetBlob } from "../lib/useAssetBlob";
 import {
   activeNotebookIdAtom,
@@ -45,6 +46,13 @@ export function AssetsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const firstItemRef = useRef<HTMLButtonElement>(null);
+
+  useViewAutoFocus(
+    "assets",
+    () => firstItemRef.current?.focus(),
+    Boolean(data?.assets.length),
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -210,9 +218,10 @@ export function AssetsView() {
           </p>
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {data?.assets.map((asset) => (
+            {data?.assets.map((asset, index) => (
               <AssetCard
                 key={asset.path}
+                openRef={index === 0 ? firstItemRef : undefined}
                 notebookId={notebookId}
                 asset={asset}
                 locked={locked}
@@ -265,6 +274,7 @@ export function AssetsView() {
 }
 
 function AssetCard({
+  openRef,
   notebookId,
   asset,
   locked,
@@ -272,6 +282,7 @@ function AssetCard({
   onDownload,
   onRename,
 }: {
+  openRef?: Ref<HTMLButtonElement>;
   notebookId: string;
   asset: AssetEntry;
   locked: boolean;
@@ -286,6 +297,7 @@ function AssetCard({
   return (
     <article className="group relative overflow-hidden rounded-xl border border-line bg-paper transition hover:border-line-strong">
       <button
+        ref={openRef}
         type="button"
         data-solid
         onClick={onOpen}

@@ -19,6 +19,7 @@ import {
 } from "../lib/shortcuts";
 import { settingsAtom } from "../lib/settings";
 import { useShortcutRunner } from "../lib/useShortcutRunner";
+import { useViewFocusRequest } from "../lib/useViewFocus";
 import {
   activeNotebookIdAtom,
   notesRevisionAtom,
@@ -35,6 +36,7 @@ export function OmniBar() {
   const settings = useAtomValue(settingsAtom);
   const navigate = useAppNavigate();
   const run = useShortcutRunner();
+  const requestViewFocus = useViewFocusRequest();
 
   const [tags, setTags] = useState<TagCount[]>([]);
   const [results, setResults] = useState<NoteSummary[]>([]);
@@ -173,18 +175,20 @@ export function OmniBar() {
     (note: NoteSummary) => {
       setQuery("");
       setOpen(false);
+      requestViewFocus("note", note.id);
       navigate({ view: "note", noteId: note.id });
     },
-    [navigate, setQuery],
+    [navigate, requestViewFocus, setQuery],
   );
 
   const openTag = useCallback(
     (tag: string) => {
       setQuery(`#${tag}`);
       setOpen(false);
+      requestViewFocus("tag", tag);
       navigate({ view: "tag", tag });
     },
-    [navigate, setQuery],
+    [navigate, requestViewFocus, setQuery],
   );
 
   function executeCommand(command: ShortcutCommand) {

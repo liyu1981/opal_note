@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { BackgroundInfo, BackgroundList, PluginList } from "../api/types";
@@ -51,6 +51,7 @@ import {
   refreshAtom,
   refreshBackgroundsAtom,
   settingsOpenAtom,
+  settingsTabAtom,
   shortcutRecordingAtom,
 } from "../state/atoms";
 
@@ -123,7 +124,7 @@ export function SettingsDialog() {
   const recording = useAtomValue(shortcutRecordingAtom);
   const refresh = useSetAtom(refreshAtom);
 
-  const [tab, setTab] = useState<Tab>("fonts");
+  const [tab, setTab] = useAtom(settingsTabAtom);
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [fontStatus, setFontStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [fontError, setFontError] = useState<string | null>(null);

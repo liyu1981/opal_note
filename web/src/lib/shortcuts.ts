@@ -101,6 +101,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     defaultBindings: ["mod+/ o"],
   },
   {
+    id: "ui.help",
+    label: "Keyboard help",
+    description: "Open Settings on the Keyboard shortcuts tab",
+    group: "Workspace",
+    defaultBindings: ["mod+/ ?"],
+  },
+  {
     id: "page.new",
     label: "New page",
     description: "Create an empty page in the current notebook",
@@ -218,7 +225,9 @@ export function chordFromEvent(event: KeyboardEvent): string | null {
   if (mac && event.ctrlKey) parts.push("ctrl");
   if (!mac && event.metaKey) parts.push("meta");
   if (event.altKey) parts.push("alt");
-  if (event.shiftKey) parts.push("shift");
+  // `?` and similar shifted punctuation are recorded as the glyph itself,
+  // so the documented leader chord can be written as `mod+/ ?`.
+  if (event.shiftKey && key !== "?") parts.push("shift");
   parts.push(key);
   return parts.join("+");
 }

@@ -14,6 +14,7 @@ import { parseTags, relativeTime, tagList, wordCount } from "../lib/format";
 import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import { bindingLabel } from "../lib/shortcuts";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { settingsAtom } from "../lib/settings";
 import {
   IconCheck,
@@ -175,6 +176,12 @@ function NoteEditor({ note }: { note: Note }) {
   const [targetNotes, setTargetNotes] = useState<NoteSummary[]>([]);
 
   const editorRef = useRef<LiveMarkdownEditorHandle>(null);
+  useViewAutoFocus(
+    "note",
+    () => editorRef.current?.focus(),
+    true,
+    note.id,
+  );
   const draftRef = useRef({ title, content, tagsInput });
   const dirtyRef = useRef(dirty);
   const deletedRef = useRef(false);

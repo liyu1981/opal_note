@@ -232,6 +232,12 @@ web/
   which default collapsed. The right panel is wider and tabbed
   Context / Info / Graph. Keep it that way rather than adding new permanent
   side panels.
+- Omni-bar selections hand focus to the destination view through
+  `pendingViewFocusAtom`. Views declare their landing target with
+  `useViewAutoFocus` and focus once their content is ready (today's journal,
+  newest journal card, tagged page, note editor, first page row, graph canvas,
+  first asset or the view itself). Note/tag requests carry a route identity so
+  an outgoing view cannot consume the incoming view's request.
 - Client routing is TanStack Router with browser history, not hashes. Canonical
   paths are `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
   `/<notebook>/graph`, `/<notebook>/assets`, `/<notebook>/asset/<path>`,

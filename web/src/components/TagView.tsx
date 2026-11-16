@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { JournalPage, Note, PageOverview } from "../api/types";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
+import { useViewAutoFocus } from "../lib/useViewFocus";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import {
   activeNoteIdAtom,
@@ -18,7 +19,7 @@ import {
   trashViewAtom,
 } from "../state/atoms";
 import { IconCalendar, IconFile } from "./Icons";
-import { JournalCard } from "./JournalCard";
+import { JournalCard, type JournalCardHandle } from "./JournalCard";
 
 type TagPage = {
   page: PageOverview;
@@ -50,6 +51,18 @@ export function TagView({ tag: rawTag }: { tag: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState<number | null>(null);
+  const firstCardRef = useRef<JournalCardHandle>(null);
+  const firstFallbackRef = useRef<HTMLButtonElement>(null);
+
+  useViewAutoFocus(
+    "tag",
+    () => {
+      if (firstCardRef.current) firstCardRef.current.focus();
+      else firstFallbackRef.current?.focus();
+    },
+    cards.length > 0,
+    tag,
+  );
 
   const linkTargets = useMemo(
     () => notes.map((note) => ({ title: note.title, path: note.id })),
@@ -82,6 +95,11 @@ export function TagView({ tag: rawTag }: { tag: string }) {
     }
 
     let cancelled = false;
+    // Drop the previous tag's rows before loading the new tag. Otherwise an
+    // outgoing tag can satisfy the focus handoff with stale cards.
+    setPages([]);
+    setCards([]);
+    setTotal(0);
     setLoading(true);
     setFocused(null);
     api
@@ -181,6 +199,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                     className="scroll-mt-4 rounded-xl border border-line bg-paper p-4"
                   >
                     <button
+                      ref={index === 0 ? firstFallbackRef : undefined}
                       type="button"
                       onClick={() =>
                         navigate({ view: "note", noteId: item.page.id })
@@ -207,6 +226,7 @@ export function TagView({ tag: rawTag }: { tag: string }) {
                   }`}
                 >
                   <JournalCard
+                    ref={index === 0 ? firstCardRef : undefined}
                     page={toJournalPage(item, block.text)}
                     notebookId={notebookId ?? ""}
                     linkKeys={linkKeys}
