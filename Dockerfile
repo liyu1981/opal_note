@@ -40,4 +40,4 @@ ENV OPALNOTE_DATA_DIR=/data \
 
 VOLUME ["/data"]
 EXPOSE 7827
-ENTRYPOINT ["opalnote"]
+ENTRYPOINT ["opalnote", "serve"]

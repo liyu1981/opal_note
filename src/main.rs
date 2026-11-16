@@ -35,17 +35,19 @@ async fn main() -> anyhow::Result<()> {
     init_tracing();
     let cli = Cli::parse();
 
-    if let Some(command) = cli.command {
-        match command {
-            Command::Config(args) => config::run_config(args, cli.config.as_deref())?,
-            Command::InstallService(args) => {
-                config::run_install_service(args, cli.config.as_deref())?
-            }
+    let serve = match cli.command {
+        Command::Serve(args) => args,
+        Command::Config(args) => {
+            config::run_config(args, cli.config.as_deref())?;
+            return Ok(());
         }
-        return Ok(());
-    }
+        Command::InstallService(args) => {
+            config::run_install_service(args, cli.config.as_deref())?;
+            return Ok(());
+        }
+    };
 
-    let args = cli.serve.resolve(cli.config.as_deref())?;
+    let args = serve.resolve(cli.config.as_deref())?;
 
     if !args.no_self_update && !cfg!(debug_assertions) {
         match update::apply_pending(&args.update_dir) {

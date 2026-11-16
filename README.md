@@ -155,7 +155,7 @@ printed `https://` URL. Use `pnpm certs` to regenerate certificates or
 pnpm build
 pnpm start
 # or run the artifact directly with certificates:
-./target/release/opalnote --data-dir ./data --bind 0.0.0.0:7827 \
+./target/release/opalnote serve --data-dir ./data --bind 0.0.0.0:7827 \
   --tls-cert certs/localhost.pem --tls-key certs/localhost-key.pem
 ```
 
@@ -245,7 +245,7 @@ come from filenames, and the sample graph's
 | ------------------- | ---------------------------------------------------------------- |
 | `pnpm dev`          | build, then watch + rebuild + restart on `0.0.0.0:7827`           |
 | `pnpm build`        | build web → sync assets → release binary                          |
-| `pnpm start`        | run `target/release/opalnote` (pass server args after `--`)       |
+| `pnpm start`        | run `opalnote serve` (pass server args after `--`)                |
 | `pnpm build:web`    | client bundle only                                               |
 | `pnpm build:server` | release binary only (expects a current `web/dist`)                |
 | `pnpm typecheck`    | TypeScript check                                                 |
@@ -292,6 +292,15 @@ tls_cert = "certs/localhost.pem"
 tls_key = "certs/localhost-key.pem"
 dev_cors = false
 ```
+
+Server command:
+
+```bash
+opalnote serve --data-dir ./data --bind 127.0.0.1:7827
+```
+
+Running `opalnote` with no subcommand prints the CLI help. The serving flags
+listed below belong to `opalnote serve`.
 
 Config commands:
 

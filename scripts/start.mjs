@@ -11,7 +11,8 @@ if (!existsSync(binary)) {
 }
 
 step("Starting the release binary");
-const args = forwardedArgs();
+const extra = forwardedArgs();
+const args = extra[0] === "serve" ? extra : ["serve", ...extra];
 console.log(`  ${path.relative(ROOT, binary)} ${args.join(" ")}\n`);
 
 const child = spawn(binary, args, {

@@ -18,21 +18,26 @@ const DEFAULT_PLUGIN_TIMEOUT: f64 = 5.0;
 
 /// Server-first, self-hosted notes with a Datalog-native index.
 #[derive(Debug, Clone, Parser)]
-#[command(name = "opalnote", version, long_version = crate::build_info::LONG_VERSION, about)]
+#[command(
+    name = "opalnote",
+    version,
+    long_version = crate::build_info::LONG_VERSION,
+    about,
+    arg_required_else_help = true
+)]
 pub struct Cli {
     /// Configuration file. Defaults to ~/.opalnote/config.
     #[arg(long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
 
     #[command(subcommand)]
-    pub command: Option<Command>,
-
-    #[command(flatten)]
-    pub serve: ServeArgs,
+    pub command: Command,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    /// Run the OpalNote server.
+    Serve(ServeArgs),
     /// Write a default config, or upgrade an existing config in place.
     Config(ConfigArgs),
     /// Install a systemd user service for OpalNote.
@@ -422,7 +427,7 @@ pub fn run_install_service(args: InstallServiceArgs, global_config: Option<&Path
          [Service]\n\
          Type=simple\n\
          WorkingDirectory={data}\n\
-         ExecStart={binary} --config {config} --data-dir {data}\n\
+         ExecStart={binary} --config {config} serve --data-dir {data}\n\
          Restart=on-failure\n\
          RestartSec=3\n\
          Environment=RUST_LOG=opalnote=info,tower_http=warn\n\

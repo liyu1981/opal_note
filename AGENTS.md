@@ -40,7 +40,7 @@ Production is a **single binary** with the built web client embedded via
 pnpm dev               # build, then watch web/src, builtin/src and src
 pnpm build             # built-ins + web build → asset sync → release binary
 pnpm build:builtins    # regenerate builtin/plugins and builtin/backgrounds
-pnpm start             # run target/release/opalnote
+pnpm start             # run opalnote serve
 pnpm test              # cargo test + web typecheck
 pnpm check             # cargo check + web typecheck
 pnpm --dir web build   # web assets only (oj when available, else Vite)

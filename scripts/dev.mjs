@@ -30,7 +30,7 @@ const STOP_TIMEOUT_MS = 4000;
 
 const binary = serverBinary(false);
 const extra = forwardedArgs();
-const args = [];
+const args = ["serve"];
 // Defaults first, but let anything passed after `--` win (clap rejects a
 // duplicated flag rather than overriding).
 if (flagValue(extra, "--bind") === null) args.push("--bind", bind);
