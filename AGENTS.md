@@ -109,6 +109,7 @@ web/
   src/router.tsx   TanStack route tree and URL/view synchronization
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
   src/components/  workspace shell, home/plugin cards, pages, graph, assets, panels
+  src/plugins/builtin/  client-side built-in Home plugin modules
   src/components/editor/  CodeMirror live editor + link completion
   src/lib/         app navigation, settings, live preview, graph layout
 ```
@@ -225,8 +226,10 @@ web/
   height container with an internal `.cm-scroller` scrollbar. Journal cards
   use the same auto-height renderer and the same `--note-ch` hanging indent.
 - The workspace opens on `HomeView` (`homeViewAtom`): today's editable journal
-  card, a Favorites section, the three most recently edited pages, a New page
-  action, and outstanding todo-plugin items in a sticky right strip. The global top bar hosts the
+  card with a New page action, followed by a main-area plugin list. Favorites
+  and Recent pages are client-side built-in plugins under
+  `web/src/plugins/builtin/`; Open todos and other server plugins share the same
+  list. There is no right plugin strip or plugin section label. The global top bar hosts the
   **OmniBar** (with the Home button beside it): normal text searches notes, a
   leading `#` lists tags, and a leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
   views prefill `#tag` in the bar. Do not reintroduce the old centered search
@@ -353,9 +356,12 @@ web/
   rows in sync with note insert/update/delete and notebook deletion.
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
-  the todo-kind/legacy fallback. Home renders every plugin result; the journal
-  feed no longer has a plugin rail. Plugin saves refresh
-  `journalPluginsRevisionAtom` so widget data updates after checkbox edits.
+  the todo-kind/legacy fallback. Home renders every server plugin result plus
+  client-side Favorites and Recent plugins from `web/src/plugins/builtin/`.
+  `HomePluginContext` exposes notes, favorites, browser recents, link data, and
+  navigation actions to those built-in plugins. The journal feed has no plugin
+  rail. Plugin saves refresh `journalPluginsRevisionAtom` so widget data updates
+  after checkbox edits.
 - `AssetsView` browses the notebook `assets/` folder with server-side search,
   kind filters, sorting and pagination. `AssetDetailView` provides image
   zoom/pan, video/audio players, download/rename actions, and reference

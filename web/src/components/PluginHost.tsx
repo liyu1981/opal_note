@@ -161,13 +161,15 @@ function PluginItemButton({
     : null;
   const content = (
     <>
-      <span
-        className={`mt-0.5 h-3 w-3 shrink-0 rounded border ${
-          item.status === "doing"
-            ? "border-accent bg-accent-soft"
-            : "border-line-strong bg-white/60"
-        }`}
-      />
+      {item.status && (
+        <span
+          className={`mt-0.5 h-3 w-3 shrink-0 rounded border ${
+            item.status === "doing"
+              ? "border-accent bg-accent-soft"
+              : "border-line-strong bg-white/60"
+          }`}
+        />
+      )}
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 font-mono text-[14px] leading-snug text-ink-soft">
           {item.title}
@@ -430,13 +432,15 @@ function PluginListItemView({
     : detail;
   const content = (
     <>
-      <span
-        className={`mt-0.5 h-3 w-3 shrink-0 rounded border ${
-          item.status === "doing"
-            ? "border-accent bg-accent-soft"
-            : "border-line-strong bg-white/60"
-        }`}
-      />
+      {item.status && (
+        <span
+          className={`mt-0.5 h-3 w-3 shrink-0 rounded border ${
+            item.status === "doing"
+              ? "border-accent bg-accent-soft"
+              : "border-line-strong bg-white/60"
+          }`}
+        />
+      )}
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 font-mono text-[14px] leading-snug text-ink-soft">
           {item.title}

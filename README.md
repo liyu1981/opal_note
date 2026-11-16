@@ -429,10 +429,12 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 ### Workspace layout
 
 The shell follows a Logseq-like split. It opens on the **Home** dashboard:
-today's editable journal card, a Favorites section, the three most recently
-edited pages, a New page action, and a right-hand strip of outstanding todos.
-The top bar carries the omni search bar with the Home button beside it, plus
-back/forward history controls.
+today's editable journal card followed by a vertical list of plugin cards.
+Favorites and the three most recently edited pages are client-side built-in
+plugins under `web/src/plugins/builtin/`; server plugins such as Open todos
+render in the same main-area list. There is no plugin side strip or section
+label. The top bar carries the omni search bar with the Home button
+beside it, plus back/forward history controls.
 
 - **Left sidebar** — notebook switcher plus Home, Journals, Pages, Graph,
   Assets and Trash navigation. The pencil action renames the current notebook
@@ -481,8 +483,10 @@ back/forward history controls.
   object on the server and cached in IndexedDB for fast startup. An **About** tab shows the
   Opal mark, the project philosophy, and the GitHub source link.
 - **Home** — `/<notebook>/home` is the default dashboard. It shows today's
-  editable journal card, Favorites, the top three recently edited pages with a
-  New page button, and outstanding todo-plugin items in a sticky right strip.
+  editable journal card with a New page button, followed by a main-area plugin list of
+  plugin cards. Favorites and Recent pages are built-in client plugin cards;
+  Open todos and other server plugins share the same grid. There is no right
+  plugin strip and no separate plugin section label.
 - **Ghost controls** — action buttons default to a transparent ghost style
   with hairline hover feedback; selected/active controls keep their accent
   surface, and destructive actions use danger text on hover.
@@ -512,12 +516,15 @@ back/forward history controls.
   using the same resolved-link data, filling the available workspace. Drag the
   canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,
   and reset the view. It participates in normal back/forward history.
-- **Home plugin strip** — the Home dashboard renders every registered plugin
-  result in its right-hand strip. Plugins run server-side in QuickJS, use
+- **Home plugin list** — the Home dashboard renders every registered server
+  plugin result in the main-area list. Plugins run server-side in QuickJS, use
   read-only Datalog, and return JSON items plus an optional declarative UI. The
   built-in todos plugin lists open tasks across the notebook; clicking one
-  opens its page. Settings → Plugins shows installed plugins and reloads the
-  data plugin folder.
+  opens its page. Favorites and Recent pages are client-side built-in plugins
+  under `web/src/plugins/builtin/`; they receive the current notebook, notes,
+  favorites, browser recents, link data and navigation actions through
+  `HomePluginContext`. Settings → Plugins shows installed server plugins and
+  reloads the data plugin folder.
 - **Tag view** — `/<notebook>/tag/<tag>` shows every page carrying `#tag` as
   editable cards containing only the tagged block, with a page-title list for
   fast jumping. Clicking a tag in a journal card, page, pages table, right
@@ -861,6 +868,7 @@ web/
   src/router.tsx     TanStack route tree + URL/view synchronization
   src/state/         Jotai atoms
   src/components/    workspace shell, journal feed, pages, graph, panels
+  src/plugins/builtin/  client-side built-in Home plugins
   src/components/backgrounds/  React Bits renderer implementations
   src/components/editor/  live CodeMirror editor surface
   src/lib/           navigation, live preview, completion, editor theme
