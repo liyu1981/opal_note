@@ -111,6 +111,7 @@ web/
   src/components/  workspace shell, home/plugin cards, pages, graph, assets, panels
   src/plugins/types.ts  shared client plugin context/types
   src/components/editor/  CodeMirror live editor + link completion
+  src/components/agent/   ReAgent chat mounted in the right panel (lazy)
   src/lib/         app navigation, settings, live preview, graph layout
 ```
 
@@ -248,10 +249,26 @@ web/
 - The workspace has collapsible left/right panels (`leftPanelOpenAtom`,
   `rightPanelOpenAtom`), **default collapsed**. The left sidebar owns Home,
   Journals, Pages, Todos, Graph and Assets navigation plus Favorites/Recent
-  sections,
-  which default collapsed. The right panel is wider and tabbed
-  Context / Info / Graph. Keep it that way rather than adding new permanent
-  side panels.
+  sections, which default collapsed. The right panel is wider and tabbed
+  Agent / Context / Info / Graph (Agent first and selected by default) and can
+  be resized by dragging its left edge, which is capped at half the viewport
+  and persisted in `rightPanelWidthAtom` (`RIGHT_PANEL_MIN_WIDTH` 320px,
+  double-click or Home resets). Keep it that way rather than adding new
+  permanent side panels.
+- The right panel's **Agent** tab lazy-loads `@liyu1981/reagent`
+  (`src/components/agent/AgentPanel.tsx`), so `pi-ai`, `pi-agent-core` and
+  radix stay out of the main bundle. The agent loop runs in the browser:
+  provider keys live in `localStorage`, conversations in IndexedDB under
+  `storagePrefix="opalnote"`, and nothing is proxied through the server. It is
+  notebook-independent, so the panel still renders (agent tab only) when no
+  notebook is selected. ReAgent ships Tailwind utilities, so `src/index.css`
+  imports `@liyu1981/reagent/styles.css` and adds
+  `@source "../node_modules/@liyu1981/reagent/dist"`; its shadcn-style tokens
+  (`--background`, `--card`, `--border`, `--muted-foreground`, …) are mapped
+  onto the OpalNote palette in `:root`. `muted`/`accent`/`primary`/`secondary`
+  collide with OpalNote theme keys: OpalNote's `@theme` definitions win, and
+  `.agent-surface` re-points `--color-muted` so the agent's `bg-muted` chips
+  stay light without turning `text-muted` copy pale.
 - Omni-bar selections hand focus to the destination view through
   `pendingViewFocusAtom`. Views declare their landing target with
   `useViewAutoFocus` and focus once their content is ready (today's journal,

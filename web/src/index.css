@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@liyu1981/reagent/styles.css";
 @import "@fontsource/inter/300.css";
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
@@ -8,6 +9,9 @@
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/600.css";
+
+/* ReAgent ships Tailwind utilities; include its dist in the source scan. */
+@source "../node_modules/@liyu1981/reagent/dist";
 
 @font-face {
   font-family: "Google Sans";
@@ -66,6 +70,43 @@
 
   --shadow-panel:
     0 1px 2px rgb(17 24 39 / 0.05), 0 8px 24px -20px rgb(17 24 39 / 0.2);
+}
+
+/*
+ * ReAgent (`@liyu1981/reagent`) design tokens, mapped onto the OpalNote
+ * palette. The agent panel and its portalled dialogs read these runtime
+ * variables; `--background`, `--card` and friends are its theming contract.
+ */
+:root {
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-paper);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-paper);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-primary);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-secondary);
+  --secondary-foreground: #ffffff;
+  --muted: var(--color-panel);
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-accent);
+  --accent-foreground: #ffffff;
+  --destructive: var(--color-danger);
+  --border: var(--color-line);
+  --input: var(--color-line-strong);
+  --ring: var(--color-accent);
+  --radius: 0.5rem;
+}
+
+/*
+ * `bg-muted`/`text-muted` share one theme key: OpalNote uses `text-muted` for
+ * muted copy, while the agent uses `bg-muted` for subtle surfaces. Re-point the
+ * muted color inside the agent mount so both stay readable.
+ */
+.agent-surface {
+  --color-muted: var(--color-panel);
+  --muted: var(--color-panel);
 }
 
 html,

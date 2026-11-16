@@ -1,5 +1,15 @@
-import { useState, type ReactNode } from "react";
-import { useAtomValue } from "jotai";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { useAtom, useAtomValue } from "jotai";
 
 import type { Note, TagCount } from "../api/types";
 import { fullTime, wordCount } from "../lib/format";
@@ -11,13 +21,32 @@ import {
   activeNoteIdAtom,
   activeNotebookAtom,
   activeNotebookIdAtom,
+  RIGHT_PANEL_DEFAULT_WIDTH,
+  RIGHT_PANEL_MIN_WIDTH,
+  rightPanelWidthAtom,
   statsAtom,
   tagsAtom,
 } from "../state/atoms";
 
-type Tab = "context" | "info" | "graph";
+type Tab = "context" | "agent" | "info" | "graph";
+
+/** The agent bundle (pi-ai, radix, …) only loads when its tab is first opened. */
+const AgentPanel = lazy(() =>
+  import("./agent/AgentPanel").then((module) => ({
+    default: module.AgentPanel,
+  })),
+);
 
 const TAG_PREVIEW_LIMIT = 12;
+
+/** The panel may grow to half the viewport; below the minimum it stops shrinking. */
+function maxPanelWidth(viewportWidth: number): number {
+  return Math.max(RIGHT_PANEL_MIN_WIDTH, Math.floor(viewportWidth * 0.5));
+}
+
+function clampPanelWidth(width: number, maxWidth: number): number {
+  return Math.min(Math.max(Math.round(width), RIGHT_PANEL_MIN_WIDTH), maxWidth);
+}
 
 export function RightPanel() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
@@ -28,22 +57,142 @@ export function RightPanel() {
   const tags = useAtomValue(tagsAtom);
   const stats = useAtomValue(statsAtom);
   const navigate = useAppNavigate();
-  const [tab, setTab] = useState<Tab>("context");
+  const [tab, setTab] = useState<Tab>("agent");
+  const [storedWidth, setStoredWidth] = useAtom(rightPanelWidthAtom);
+  const [viewport, setViewport] = useState(() => window.innerWidth);
+  const [dragging, setDragging] = useState(false);
+  // Live width while dragging; persisted once on pointer-up so a drag does not
+  // write to localStorage on every pointer move.
+  const [draftWidth, setDraftWidth] = useState<number | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startWidth: number;
+    next: number;
+  } | null>(null);
 
-  if (!notebookId) return null;
+  // Track the viewport so a shrunken window (or a width saved on a large
+  // monitor) still leaves room for the main pane.
+  useEffect(() => {
+    const onResize = () => setViewport(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
-  const tabs: Array<{ id: Tab; label: string; count?: number }> = [
-    {
-      id: "context",
-      label: "Context",
-      count: note ? note.backlinks.length : undefined,
+  useEffect(() => {
+    if (!dragging) return;
+    const previous = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.userSelect = previous;
+    };
+  }, [dragging]);
+
+  const maxWidth = maxPanelWidth(viewport);
+  const width = clampPanelWidth(draftWidth ?? storedWidth, maxWidth);
+
+  const onHandlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      dragRef.current = {
+        startX: event.clientX,
+        startWidth: width,
+        next: width,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDragging(true);
     },
-    { id: "info", label: "Info" },
-    { id: "graph", label: "Graph" },
-  ];
+    [width],
+  );
+
+  const onHandlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      drag.next = drag.startWidth + (drag.startX - event.clientX);
+      setDraftWidth(drag.next);
+    },
+    [],
+  );
+
+  const endDrag = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+      setStoredWidth(clampPanelWidth(drag.next, maxWidth));
+      setDraftWidth(null);
+      setDragging(false);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [maxWidth, setStoredWidth],
+  );
+
+  const onHandleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const step = event.shiftKey ? 64 : 16;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setStoredWidth((current) => clampPanelWidth(current + step, maxWidth));
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setStoredWidth((current) => clampPanelWidth(current - step, maxWidth));
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setStoredWidth(RIGHT_PANEL_DEFAULT_WIDTH);
+      }
+    },
+    [maxWidth, setStoredWidth],
+  );
+
+  // The agent does not belong to a notebook, so it stays reachable from an
+  // empty workspace; the notebook tabs only exist once one is selected.
+  const tabs: Array<{ id: Tab; label: string; count?: number }> = notebookId
+    ? [
+        { id: "agent", label: "Agent" },
+        {
+          id: "context",
+          label: "Context",
+          count: note ? note.backlinks.length : undefined,
+        },
+        { id: "info", label: "Info" },
+        { id: "graph", label: "Graph" },
+      ]
+    : [{ id: "agent", label: "Agent" }];
+  const activeTab: Tab = tabs.some((item) => item.id === tab)
+    ? tab
+    : (tabs[0]?.id ?? "agent");
 
   return (
-    <aside className="flex w-96 shrink-0 flex-col border-l border-line bg-panel/25">
+    <aside
+      className="relative flex shrink-0 flex-col border-l border-line bg-panel/25"
+      style={{ width: `${width}px` }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize right panel"
+        aria-valuenow={width}
+        aria-valuemin={RIGHT_PANEL_MIN_WIDTH}
+        aria-valuemax={maxWidth}
+        tabIndex={0}
+        title="Drag to resize · double-click to reset"
+        onPointerDown={onHandlePointerDown}
+        onPointerMove={onHandlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+        onDoubleClick={() => setStoredWidth(RIGHT_PANEL_DEFAULT_WIDTH)}
+        onKeyDown={onHandleKeyDown}
+        className={`absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none outline-none transition ${
+          dragging
+            ? "bg-accent/40"
+            : "hover:bg-accent/20 focus-visible:bg-accent/30"
+        }`}
+      />
+
       <div className="flex shrink-0 border-b border-line px-2 pt-2">
         {tabs.map((item) => (
           <button
@@ -51,7 +200,7 @@ export function RightPanel() {
             type="button"
             onClick={() => setTab(item.id)}
             className={`relative flex items-center gap-1 px-2.5 pb-2 pt-1 font-sans text-[14px] font-semibold uppercase tracking-[0.12em] transition ${
-              tab === item.id
+              activeTab === item.id
                 ? "text-ink"
                 : "text-faint hover:text-ink-soft"
             }`}
@@ -62,15 +211,21 @@ export function RightPanel() {
                 {item.count}
               </span>
             )}
-            {tab === item.id && (
+            {activeTab === item.id && (
               <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent" />
             )}
           </button>
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {tab === "context" && (
+      <div
+        className={
+          activeTab === "agent"
+            ? "min-h-0 flex-1 overflow-hidden"
+            : "min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        }
+      >
+        {activeTab === "context" && (
           <ContextTab
             note={note}
             notebookDescription={notebook?.description ?? ""}
@@ -80,7 +235,19 @@ export function RightPanel() {
           />
         )}
 
-        {tab === "info" && (
+        {activeTab === "agent" && (
+          <Suspense
+            fallback={
+              <p className="px-4 py-6 text-center font-mono text-[14px] text-faint">
+                Loading agent…
+              </p>
+            }
+          >
+            <AgentPanel />
+          </Suspense>
+        )}
+
+        {activeTab === "info" && (
           <div className="space-y-5">
             <section>
               <SectionLabel icon={<IconFile className="h-3 w-3" />}>
@@ -122,7 +289,7 @@ export function RightPanel() {
           </div>
         )}
 
-        {tab === "graph" && (
+        {activeTab === "graph" && notebookId && (
           <GraphPanel
             notebookId={notebookId}
             activeNoteId={note?.id ?? null}

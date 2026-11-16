@@ -131,6 +131,16 @@ export const rightPanelOpenAtom = atomWithStorage<boolean>(
   false,
 );
 
+/** Default width in px; the panel can be dragged from 320px up to half the viewport. */
+export const RIGHT_PANEL_MIN_WIDTH = 320;
+export const RIGHT_PANEL_DEFAULT_WIDTH = 420;
+
+/** Persisted right-panel width in px (clamped on render). */
+export const rightPanelWidthAtom = atomWithStorage<number>(
+  "opalnote.right-panel-width",
+  RIGHT_PANEL_DEFAULT_WIDTH,
+);
+
 export const favoritesAtom = atomWithStorage<Record<string, NoteRef[]>>(
   "opalnote.favorites",
   {},

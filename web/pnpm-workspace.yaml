@@ -1,2 +1,8 @@
+allowBuilds:
+  # Transitive deps of @earendil-works/pi-ai. Their lifecycle scripts are not
+  # needed for the browser build, so deny them explicitly instead of leaving
+  # pnpm in the "ignored build scripts" error state.
+  '@google/genai': false
+  protobufjs: false
 minimumReleaseAgeExclude:
   - vite@8.3.8

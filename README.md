@@ -512,8 +512,16 @@ beside it, plus back/forward history controls.
   or `Ctrl+; [` / `Ctrl+; ]`, rebindable in Settings → Keyboard) use browser
   history, and page URLs can be reloaded or shared directly. Switching notebooks
   updates the URL and opens that notebook's home.
-- **Right sidebar** — wider, tabbed **Context** (tags, outgoing links,
-  backlinks), **Info** (path and timestamps), and **Graph**. The Graph tab
+- **Right sidebar** — wider, tabbed **Agent**, **Context** (tags, outgoing
+  links, backlinks), **Info** (path and timestamps), and **Graph**. Drag its
+  left edge to resize it (up to half the window); the width is remembered, and
+  double-clicking the handle restores the default. The
+  Agent tab embeds [`@liyu1981/reagent`](https://www.npmjs.com/package/@liyu1981/reagent),
+  an in-app AI chat whose agent loop runs entirely in the browser: provider
+  keys live in `localStorage`, conversations in IndexedDB, and nothing is
+  proxied through the OpalNote server. Configure an OpenRouter key or a local
+  OpenAI-compatible endpoint (Ollama, LM Studio, vLLM) in the agent's own
+  Settings view; the tab works without a notebook selected. The Graph tab
   renders an interactive local/full notebook graph: click a node to highlight
   its links, double-click to open its page, hover to preview links, and switch
   between the active page's neighborhood and the complete graph. A **Tags**
@@ -906,6 +914,7 @@ web/
   src/plugins/types.ts  shared client plugin context/types
   src/components/backgrounds/  React Bits renderer implementations
   src/components/editor/  live CodeMirror editor surface
+  src/components/agent/   @liyu1981/reagent chat mounted in the right panel
   src/lib/           navigation, live preview, completion, editor theme
 ```
 
