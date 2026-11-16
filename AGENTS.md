@@ -177,8 +177,13 @@ web/
   for an HttpOnly session cookie, the CSRF token is kept in memory, and the API
   client sends `x-opalnote-csrf` on mutations. Never persist the bearer token
   in `localStorage` (only read it once to migrate an old token). `App` gates
-  the router until a session exists and reopens the connection form on 401.
-  Keep static responses' CSP and link-scheme checks (`safeExternalUrl`) intact.
+  the router until a session exists; a 401 during that bootstrap opens the
+  token form (`ConnectionForm`). A 401 after the app was connected calls
+  `markSessionExpired()` and shows the blocking `SessionExpiredDialog`
+  ("Session expired — refresh the page"), because the browser cannot mint a
+  new session without the server token; the ErrorBoundary uses the same copy
+  for atom-level 401s instead of asking for a token. Keep static responses'
+  CSP and link-scheme checks (`safeExternalUrl`) intact.
 - The main outlet renders the selected background via `MainBackground` from
   the server background registry. Keep it scoped to the route outlet: outside
   `LeftSidebar`, `TopBar` and `RightPanel`, with view `<main>` backgrounds

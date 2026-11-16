@@ -8,6 +8,7 @@ type SessionResponse = {
 
 let csrfToken: string | null = null;
 let bootstrap: Promise<boolean> | null = null;
+let expired = false;
 
 function readLegacyToken(): string {
   try {
@@ -43,6 +44,7 @@ async function postSession(token?: string): Promise<boolean> {
       return false;
     }
     csrfToken = data.csrf_token;
+    expired = false;
     clearLegacyToken();
     return true;
   } catch {
@@ -53,6 +55,10 @@ async function postSession(token?: string): Promise<boolean> {
 
 /** Create a session once per page load, migrating a legacy localStorage token. */
 export function ensureSession(): Promise<boolean> {
+  // After an expiry only an explicit `startSession` or a page reload may
+  // reconnect; otherwise background retries could quietly heal the tab while
+  // the "session expired" dialog is asking for a refresh.
+  if (expired) return Promise.resolve(false);
   if (csrfToken) return Promise.resolve(true);
   if (!bootstrap) {
     bootstrap = postSession(readLegacyToken());
@@ -68,6 +74,23 @@ export async function startSession(token?: string): Promise<boolean> {
   return ok;
 }
 
+/**
+ * The server rejected us after the app had a session: the cookie expired (for
+ * example after a long idle tab) or the server restarted and forgot it. The
+ * browser cannot mint a new session without the server token, so the UI has to
+ * ask for a page refresh instead of leaving every request failing.
+ */
+export function markSessionExpired(): void {
+  resetSession();
+  expired = true;
+  window.dispatchEvent(new Event("opalnote:unauthorized"));
+}
+
+/** True after a session was rejected; cleared when a new session is created. */
+export function sessionExpired(): boolean {
+  return expired;
+}
+
 export async function endSession(): Promise<void> {
   try {
     await fetch(SESSION_ENDPOINT, {
@@ -78,6 +101,7 @@ export async function endSession(): Promise<void> {
     // Clearing local state below is still useful offline.
   }
   resetSession();
+  expired = false;
   clearLegacyToken();
 }
 

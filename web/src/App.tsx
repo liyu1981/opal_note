@@ -2,13 +2,18 @@ import { Suspense, useEffect, useState } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 
 import { ConnectionForm, ErrorBoundary } from "./components/ErrorBoundary";
-import { ensureSession } from "./lib/session";
+import { SessionExpiredDialog } from "./components/SessionExpiredDialog";
+import { ensureSession, sessionExpired } from "./lib/session";
 import { router } from "./router";
 
 export default function App() {
   const [session, setSession] = useState<"loading" | "ready" | "required">(
     "loading",
   );
+  // Set when a request is rejected after the app was connected. The only
+  // recovery is a page reload, so this shows a blocking dialog instead of
+  // swapping the whole workspace for the token form.
+  const [expired, setExpired] = useState(sessionExpired());
 
   useEffect(() => {
     let cancelled = false;
@@ -16,7 +21,7 @@ export default function App() {
       if (!cancelled) setSession(ok ? "ready" : "required");
     });
     function onUnauthorized() {
-      setSession("required");
+      setExpired(true);
     }
     window.addEventListener("opalnote:unauthorized", onUnauthorized);
     return () => {
@@ -47,11 +52,14 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <Suspense fallback={<BootScreen />}>
-        <RouterProvider router={router} />
-      </Suspense>
-    </ErrorBoundary>
+    <>
+      <ErrorBoundary>
+        <Suspense fallback={<BootScreen />}>
+          <RouterProvider router={router} />
+        </Suspense>
+      </ErrorBoundary>
+      {expired && <SessionExpiredDialog />}
+    </>
   );
 }
 

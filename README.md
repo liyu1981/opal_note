@@ -783,7 +783,10 @@ Public: `GET /health`, `GET /meta`, `POST /session`, `DELETE /session`.
 HttpOnly `opalnote_session` cookie and returns a CSRF token. Cookie-authenticated
 `POST`/`PATCH`/`PUT`/`DELETE` requests must send `x-opalnote-csrf`; API clients
 can keep using `Authorization: Bearer`. The browser never stores the bearer
-token in JavaScript storage.
+token in JavaScript storage. If the session cookie expires while a tab is
+open (long idle, or the server restarted), the UI shows a blocking
+**Session expired** dialog asking for a page refresh instead of leaving every
+request failing.
 
 | Method | Path                                         | Purpose                                        |
 | ------ | -------------------------------------------- | ---------------------------------------------- |

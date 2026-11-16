@@ -23,7 +23,11 @@ import type {
   TrashRestoreResult,
 } from "./types";
 
-import { ensureSession, getCsrfToken, resetSession } from "../lib/session";
+import {
+  ensureSession,
+  getCsrfToken,
+  markSessionExpired,
+} from "../lib/session";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -69,10 +73,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    if (response.status === 401) {
-      resetSession();
-      window.dispatchEvent(new Event("opalnote:unauthorized"));
-    }
+    if (response.status === 401) markSessionExpired();
     let code = "http_error";
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -110,10 +111,7 @@ async function requestBlob(path: string): Promise<Blob> {
     );
   }
   if (!response.ok) {
-    if (response.status === 401) {
-      resetSession();
-      window.dispatchEvent(new Event("opalnote:unauthorized"));
-    }
+    if (response.status === 401) markSessionExpired();
     let code = "http_error";
     let message = `${response.status} ${response.statusText}`;
     try {

@@ -7,7 +7,8 @@ import {
 } from "react";
 
 import { ApiError } from "../api/client";
-import { startSession } from "../lib/session";
+import { sessionExpired, startSession } from "../lib/session";
+import { SessionExpiredPanel } from "./SessionExpiredDialog";
 
 interface Props {
   children: ReactNode;
@@ -39,6 +40,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
     const error = this.state.error;
     const needsConnection = error instanceof ApiError && error.status === 401;
+
+    // A session that expires while the app is running cannot be renewed without
+    // the server token; ask for a reload instead of showing the token form.
+    if (needsConnection && sessionExpired()) {
+      return <SessionExpiredPanel />;
+    }
 
     return (
       <div className="flex h-full items-center justify-center bg-canvas p-6">
