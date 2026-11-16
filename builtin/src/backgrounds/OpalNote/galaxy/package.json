@@ -1,0 +1,33 @@
+{
+  "name": "@opalnote/background-galaxy",
+  "version": "1.0.0",
+  "description": "A slow drift through a twinkling starfield, drawn in ink for the light canvas.",
+  "private": true,
+  "opal_note": {
+    "id": "OpalNote/galaxy",
+    "title": "Galaxy",
+    "description": "A slow drift through a twinkling starfield, drawn in ink for the light canvas.",
+    "kind": "galaxy",
+    "options": {
+      "lightMode": true,
+      "transparent": true,
+      "starColors": [],
+      "density": 2,
+      "glowIntensity": 0.7,
+      "starSize": 1.2,
+      "flareIntensity": 1,
+      "twinkleIntensity": 0.25,
+      "starSpeed": 0.08,
+      "speed": 0.25,
+      "rotationSpeed": 0.01,
+      "layers": 4,
+      "direction": "forward",
+      "mouseInteraction": true,
+      "mouseRepulsion": true,
+      "repulsionStrength": 0.8,
+      "clickWarp": true,
+      "intro": true,
+      "opacity": 0.9
+    }
+  }
+}

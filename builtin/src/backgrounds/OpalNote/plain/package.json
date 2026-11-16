@@ -1,0 +1,13 @@
+{
+  "name": "@opalnote/background-plain",
+  "version": "1.0.0",
+  "description": "A quiet solid canvas with no background effect.",
+  "private": true,
+  "opal_note": {
+    "id": "OpalNote/plain",
+    "title": "Plain",
+    "description": "A quiet solid canvas with no background effect.",
+    "kind": "none",
+    "options": {}
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@opalnote/background-dot-grid",
+  "version": "1.0.0",
+  "description": "An interactive grid of dots that pulls toward the cursor and ripples on click.",
+  "private": true,
+  "opal_note": {
+    "id": "OpalNote/dot-grid",
+    "title": "Dot Grid",
+    "description": "An interactive grid of dots that pulls toward the cursor and ripples on click.",
+    "kind": "dot-grid",
+    "options": {
+      "dotSize": 2.5,
+      "gap": 20,
+      "proximity": 150,
+      "strength": 0.8,
+      "bounce": 0.5,
+      "tension": 0.35,
+      "returnDuration": 0.9,
+      "shockRadius": 280,
+      "shockStrength": 3.5,
+      "swell": 0.9,
+      "stretch": 0.4,
+      "glow": 0.35,
+      "fade": 0.25,
+      "opacity": 0.85
+    }
+  }
+}

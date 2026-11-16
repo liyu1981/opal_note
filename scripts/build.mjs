@@ -3,7 +3,9 @@ import path from "node:path";
 
 import {
   ROOT,
+  buildBuiltins,
   buildWeb,
+  ensureRootDependencies,
   ensureWebDependencies,
   run,
   serverBinary,
@@ -11,7 +13,9 @@ import {
   syncServerAssets,
 } from "./lib.mjs";
 
+ensureRootDependencies();
 ensureWebDependencies();
+buildBuiltins();
 buildWeb();
 await syncServerAssets();
 

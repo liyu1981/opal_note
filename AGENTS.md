@@ -37,8 +37,9 @@ Production is a **single binary** with the built web client embedded via
 ## Commands
 
 ```bash
-pnpm dev               # build, then watch web/src + src and rebuild/restart
-pnpm build             # web build → asset sync → release binary (embedded assets)
+pnpm dev               # build, then watch web/src, builtin/src and src
+pnpm build             # built-ins + web build → asset sync → release binary
+pnpm build:builtins    # regenerate builtin/plugins and builtin/backgrounds
 pnpm start             # run target/release/opalnote
 pnpm test              # cargo test + web typecheck
 pnpm check             # cargo check + web typecheck
@@ -50,9 +51,9 @@ The root `package.json` is the only task runner. Do not add a Makefile,
 justfile, or shell-script entry points — add a script there and, if
 orchestration is needed, a Node entry under `scripts/`.
 
-`pnpm dev` is a **single command**: it builds the client and runs the debug
-server (bound to `0.0.0.0:7827`), then watches `web/src`/`web/public`/web config
-files, `plugins/builtin`, `backgrounds/builtin`, and
+`pnpm dev` is a **single command**: it builds the generated built-ins, builds
+the client, runs the debug server (bound to `0.0.0.0:7827`), then watches
+`web/src`/`web/public`/web config files, `builtin/src`, and
 `src`/`Cargo.toml`/`Cargo.lock`/`build.rs`.
 Changes are debounced (220 ms). Client and built-in plugin changes restart the
 server without a Rust rebuild; Rust source/config changes rebuild the binary.
@@ -62,11 +63,12 @@ when `oj` is on `PATH` and otherwise falls back to `vite build`;
 There is no separate Vite dev server or HMR — reload the browser tab for a new
 client bundle.
 
-Debug builds read `web/dist`, `plugins/builtin` and `backgrounds/builtin` from
-disk at runtime. Release
-builds embed both via `rust-embed`; `build.rs` only builds `web/dist` for release
-builds. Set `OPALNOTE_SKIP_WEB_BUILD=1` to compile a release without Node (a
-placeholder page is embedded if no bundle exists).
+Debug builds read `web/dist`, `builtin/plugins` and `builtin/backgrounds` from
+disk at runtime. Release builds embed all three via `rust-embed`; `build.rs`
+builds `web/dist` on demand for release builds. `pnpm build:builtins` regenerates
+the built-in outputs; `pnpm build:builtins:check` verifies them. Set
+`OPALNOTE_SKIP_WEB_BUILD=1` to compile a release without Node (a placeholder
+page is embedded if no bundle exists).
 
 `.github/workflows/dev-build.yml` is manually triggered and builds an arm64
 development artifact from the selected commit. Its version is `Cargo.toml`'s
@@ -77,7 +79,7 @@ it is uploaded to the workflow run rather than creating a GitHub release.
 
 ```
 package.json       dev / build / start / test scripts (the only task runner)
-scripts/           dev orchestration, asset sync, release launcher
+scripts/           dev orchestration, builtin bundling, asset sync, release launcher
 src/
   main.rs          startup, logging, graceful shutdown
   config.rs        clap, TOML config, env, config/install-service commands
@@ -98,8 +100,9 @@ src/
     trash.rs       separate trash metadata database + retention records
     markdown.rs    wikilinks, tags, frontmatter, summaries + unit tests
     model.rs       API-facing serde models
-plugins/builtin/ native plugin folders embedded with rust-embed
-backgrounds/builtin/ built-in background manifests and assets (rust-embed)
+builtin/src/       built-in package sources and assets
+builtin/plugins/   generated plugin manifests/scripts embedded with rust-embed
+builtin/backgrounds/ generated background manifests/assets (rust-embed)
 web/
   package.json     build + typecheck only (no dev server)
   src/api/         typed fetch client + shared types
@@ -163,7 +166,7 @@ web/
   reindex) use `refreshAtom`; note content/title/tag saves use
   `refreshNotesAtom`. Do not call global refresh from the autosave path.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
-- Release builds embed `web/dist`, `plugins/builtin` and `backgrounds/builtin`
+- Release builds embed `web/dist`, `builtin/plugins` and `builtin/backgrounds`
   via `rust-embed`; debug
   builds read them from disk. `scripts/lib.mjs` owns the web build/sync step.
   Any new embedded asset location must be wired through both modes.
@@ -310,9 +313,11 @@ web/
   channel uses authenticated `gh` and the newest unexpired
   `opalnote-*-<arch>` Actions artifact. The startup checker runs in the
   background and repeats every six hours.
-- Backgrounds are declarative plugins, not sandboxed JS. Built-ins live in
-  `backgrounds/builtin/<folder>/background.json`; users add
-  `<data-dir>/backgrounds/<folder>/background.json` plus optional assets. The
+- Backgrounds are declarative plugins, not sandboxed JS. Built-in sources live
+  in `builtin/src/backgrounds/<folder>/package.json`, with the final manifest
+  in `opal_note` and assets copied into `builtin/backgrounds/<folder>/` by the
+  build tool. Users add `<data-dir>/backgrounds/<folder>/background.json` plus
+  optional assets. The
   manifest id is `<domain>/<extension>`; built-in ids win and bad folders are
   reported as load errors. Supported kinds are `none`, `dot-grid`, `image`
   (requires `options.asset`), `gradient`, `galaxy`, `grid-scan`,
@@ -323,11 +328,13 @@ web/
   speed overrides live in `backgroundOptions[id]`. Grid Scan defaults to a slow
   10 s sweep with a 5 min delay, and Letter Glitch to 0.25× speed; expose both
   Grid Scan controls and the Letter Glitch speed in Settings → Background.
-- Native plugins live in `plugins/builtin/OpalNote/<extension>/` and are
-  embedded with `rust-embed`; their ids are `OpalNote/<extension>`. Data
-  plugins live in `<data-dir>/plugins/<folder>/` and use ids shaped
-  `<domain>/<extension>`. Each folder needs `plugin.json` (`id`, `title`,
-  `description`) and `plugin.js`. Built-in ids win over data plugins;
+- Built-in plugin sources live in `builtin/src/plugins/<domain>/<extension>/`.
+  Each package has a `package.json`; `opal_note` holds the final manifest and
+  `opal_note_build` holds the esbuild entry/target/minify settings. Source
+  modules default-export a function returning `{ items, ui? }`. The build tool
+  writes `builtin/plugins/<id>/plugin.json` and the final IIFE `plugin.js`.
+  Data plugins live in `<data-dir>/plugins/<folder>/` with final
+  `plugin.json`/`plugin.js` files. Built-in ids win over data plugins;
   conflicting data folders are reported as load errors. The registry loads at startup and can rescan via
   `POST /api/plugins/reload`; `GET /api/plugins` lists metadata. The journal
   endpoint is `GET /notebooks/{id}/plugins` and uses

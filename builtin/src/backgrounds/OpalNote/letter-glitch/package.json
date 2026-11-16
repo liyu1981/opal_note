@@ -1,0 +1,34 @@
+{
+  "name": "@opalnote/background-letter-glitch",
+  "version": "1.0.0",
+  "description": "Quiet rows of monospace characters that occasionally scramble and settle.",
+  "private": true,
+  "opal_note": {
+    "id": "OpalNote/letter-glitch",
+    "title": "Letter Glitch",
+    "description": "Quiet rows of monospace characters that occasionally scramble and settle.",
+    "kind": "letter-glitch",
+    "options": {
+      "lightMode": true,
+      "glitchColors": [
+        "var(--color-ink)",
+        "var(--color-accent-strong)"
+      ],
+      "baseColor": "var(--color-ink)",
+      "fontSize": 14,
+      "spacing": 0.6,
+      "density": 0.28,
+      "baseOpacity": 0.08,
+      "glitchAmount": 0.2,
+      "speed": 0.25,
+      "flow": 0.3,
+      "smooth": true,
+      "edgeFade": 0.5,
+      "centerFade": 0.35,
+      "interactive": true,
+      "cursorRadius": 120,
+      "clickEffect": "tear",
+      "intro": true
+    }
+  }
+}

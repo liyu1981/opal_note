@@ -1,7 +1,7 @@
 //! Background registry.
 //!
 //! Backgrounds are declarative plugins: a folder holds `background.json` and
-//! optional assets. Built-in backgrounds live in `backgrounds/builtin/` and
+//! optional assets. Built-in backgrounds live in `builtin/backgrounds/` and
 //! are embedded into release builds; user backgrounds live in
 //! `<data-dir>/backgrounds/`. The client renders supported `kind` values and
 //! fetches image assets through the authenticated API.
@@ -42,7 +42,7 @@ const SUPPORTED_KINDS: &[&str] = &[
 
 #[cfg(not(debug_assertions))]
 #[derive(RustEmbed)]
-#[folder = "backgrounds/builtin/"]
+#[folder = "builtin/backgrounds/"]
 struct BuiltinBackgroundAssets;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -267,7 +267,7 @@ fn load_builtin_backgrounds() -> Result<Vec<BackgroundDefinition>> {
             &folder,
             manifest,
             BackgroundSource::Builtin,
-            Some(format!("backgrounds/builtin/{folder}")),
+            Some(format!("builtin/backgrounds/{folder}")),
         )?;
         let definition = BackgroundDefinition {
             info,
@@ -475,7 +475,7 @@ fn read_text(path: &Path, max_bytes: usize) -> Result<String> {
 
 #[cfg(debug_assertions)]
 fn builtin_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("backgrounds/builtin")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("builtin/backgrounds")
 }
 
 #[cfg(not(debug_assertions))]

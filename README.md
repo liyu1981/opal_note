@@ -117,22 +117,23 @@ pnpm dev
 
 `pnpm dev` is deliberately not a Vite dev-server + API split. It:
 
-1. installs the web dependencies on first run;
-2. builds the client bundle;
-3. starts the debug server;
-4. watches client, server and built-in plugin sources.
+1. installs the root and web dependencies on first run;
+2. builds the generated built-in plugins and backgrounds;
+3. builds the client bundle;
+4. starts the debug server;
+5. watches client, server and built-in sources.
 
-Debug builds deliberately **do not embed** `web/dist`, `plugins/builtin` or
-`backgrounds/builtin`.
-The debug server reads both directly from disk, so Rust only needs rebuilding
-when Rust source/config changes.
+Debug builds deliberately **do not embed** `web/dist`, `builtin/plugins` or
+`builtin/backgrounds`.
+The debug server reads all three directly from disk, so Rust only needs
+rebuilding when Rust source/config changes.
 
 Changes are debounced for 220 ms, then coalesced:
 
 - a change under `web/src`, `web/public`, or a web config file rebuilds the
   client and restarts the server;
-- a change under `plugins/builtin` or `backgrounds/builtin` restarts the server
-  without compiling Rust;
+- a change under `builtin/src` rebuilds the generated built-ins and restarts
+  the server without compiling Rust;
 - a change under `src`, `Cargo.toml`, `Cargo.lock`, or `build.rs` rebuilds the
   binary and restarts the server;
 - a failed build leaves the current server running and waits for the next edit.
@@ -158,11 +159,14 @@ pnpm start
   --tls-cert certs/localhost.pem --tls-key certs/localhost-key.pem
 ```
 
-`pnpm build` runs the same web build + asset sync, then
-`cargo build --release --locked`. Release builds embed `web/dist` and
-`plugins/builtin` and `backgrounds/builtin`; `build.rs` builds `web/dist` on
-demand for a plain release
-build. Debug builds skip that embed step and read both directories at runtime.
+`pnpm build` builds the generated built-ins, then the web client and asset
+sync, then `cargo build --release --locked`. Release builds embed `web/dist`,
+`builtin/plugins` and `builtin/backgrounds`; `build.rs` builds `web/dist` on
+demand for a plain release build. Debug builds skip that embed step and read
+all three directories at runtime.
+
+Use `pnpm build:builtins` to regenerate the built-in outputs and
+`pnpm build:builtins:check` to verify they match `builtin/src`.
 
 ### Self-updates
 
@@ -496,22 +500,52 @@ back/forward history controls.
 
 ### Plugins
 
-Plugins are small JavaScript widgets with a JSON manifest:
+Plugins are small JavaScript widgets with a JSON manifest.
+
+Built-in source packages live under:
 
 ```
-plugins/builtin/OpalNote/todos/plugin.json   # embedded in the binary
-plugins/builtin/OpalNote/todos/plugin.js
-<data-dir>/plugins/<folder>/plugin.json      # loaded at startup / on reload
-<data-dir>/plugins/<folder>/plugin.js
+builtin/src/plugins/OpalNote/todos/package.json
+builtin/src/plugins/OpalNote/todos/src/index.js
 ```
 
-`plugin.json` contains an `id` shaped `<domain>/<extension>` (`OpalNote/todos`
-for built-ins, e.g. `Acme/my-widget` for a data plugin), plus `title` and
-`description`. `plugin.js` is an IIFE that returns
-`JSON.stringify({ items: [...], ui?: ... })`; it can call the read-only
-`__query(script, params)` bridge and read `__notebook_id`. Built-in ids take
-precedence: a data plugin with the same id is rejected and reported in Settings
-→ Plugins. Reloading does not require a server restart.
+The source package has normal `name`/`version`/`description` fields, the final
+manifest under `opal_note`, and bundling configuration under
+`opal_note_build`:
+
+```json
+{
+  "name": "@opalnote/plugin-todos",
+  "version": "1.0.0",
+  "description": "Open tasks across the notebook.",
+  "private": true,
+  "type": "module",
+  "opal_note": {
+    "id": "OpalNote/todos",
+    "title": "Open todos",
+    "description": "Tasks not marked done or cancelled across this notebook."
+  },
+  "opal_note_build": {
+    "entry": "src/index.js",
+    "target": "es2020",
+    "minify": true
+  }
+}
+```
+
+`pnpm build:builtins` bundles source plugins with esbuild and writes the final
+release folders:
+
+```
+builtin/plugins/OpalNote/todos/plugin.json
+builtin/plugins/OpalNote/todos/plugin.js
+```
+
+The final `plugin.js` remains the IIFE expression format consumed by QuickJS.
+Source plugins default-export a function and return `{ items, ui? }`; the
+bundler serializes it. Built-in ids take precedence over data plugins, which
+live under `<data-dir>/plugins/<folder>/` with the same final file names.
+Reloading does not require a server restart.
 
 The optional `ui` object can be a safe renderer kind:
 
@@ -554,10 +588,12 @@ returning it. Unknown kinds fall back to the generic item card.
 ### Backgrounds
 
 Backgrounds are declarative plugins: a JSON manifest plus optional assets.
-Built-ins are embedded; user folders are scanned at startup and on reload:
+Built-in source packages live under `builtin/src/backgrounds/<id>/`; their
+`package.json` contains the final manifest in `opal_note`. The build tool copies
+assets and writes:
 
 ```
-backgrounds/builtin/OpalNote/dot-grid/background.json  # embedded
+builtin/backgrounds/OpalNote/dot-grid/background.json  # generated + embedded
 <data-dir>/backgrounds/<folder>/background.json        # user
 <data-dir>/backgrounds/<folder>/<asset>                # user image, etc.
 ```
@@ -789,8 +825,9 @@ src/
     markdown.rs      wikilinks, tags, frontmatter, summaries
     queries.rs       every CozoScript statement
     model.rs         API models
-plugins/builtin/     native plugin folders embedded in release builds
-backgrounds/builtin/ built-in background manifests and assets
+builtin/src/        plugin/background package sources (package.json + assets)
+builtin/plugins/    generated plugin manifests and scripts (embedded)
+builtin/backgrounds/ generated background manifests/assets (embedded)
 web/
   src/api/           typed client + types
   src/router.tsx     TanStack route tree + URL/view synchronization

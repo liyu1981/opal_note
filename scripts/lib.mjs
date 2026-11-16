@@ -65,10 +65,21 @@ export function ensureDevCerts(args) {
   run("node", ["scripts/certs.mjs"]);
 }
 
+export function ensureRootDependencies() {
+  if (existsSync(path.join(ROOT, "node_modules", "esbuild"))) return;
+  step("Installing built-in build dependencies");
+  run("pnpm", ["install", "--frozen-lockfile"]);
+}
+
 export function ensureWebDependencies() {
   if (existsSync(path.join(WEB_DIR, "node_modules"))) return;
   step("Installing web dependencies");
   run("pnpm", ["--dir", "web", "install", "--frozen-lockfile"]);
+}
+
+export function buildBuiltins() {
+  step("Building built-in plugins and backgrounds");
+  run("node", ["scripts/build-builtins.mjs"]);
 }
 
 export function buildWeb() {

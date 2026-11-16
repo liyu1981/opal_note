@@ -24,9 +24,9 @@ const PLACEHOLDER: &str = r#"<!doctype html>
 fn main() {
     emit_build_info();
 
-    // Debug builds serve web/dist and plugins/builtin from disk at runtime.
-    // They do not embed either payload, so frontend/plugin changes only need a
-    // server restart, not a Rust rebuild.
+    // Debug builds serve web/dist, builtin/plugins and builtin/backgrounds
+    // from disk at runtime. They do not embed any of them, so frontend or
+    // built-in changes only need a server restart, not a Rust rebuild.
     if std::env::var("PROFILE").as_deref() == Ok("debug") {
         return;
     }
@@ -35,7 +35,9 @@ fn main() {
     println!("cargo:rerun-if-changed=web/src");
     println!("cargo:rerun-if-changed=web/index.html");
     println!("cargo:rerun-if-changed=web/package.json");
-    println!("cargo:rerun-if-changed=backgrounds/builtin");
+    println!("cargo:rerun-if-changed=builtin/src");
+    println!("cargo:rerun-if-changed=builtin/plugins");
+    println!("cargo:rerun-if-changed=builtin/backgrounds");
     println!("cargo:rerun-if-env-changed=OPALNOTE_SKIP_WEB_BUILD");
 
     let dist = Path::new("web/dist");

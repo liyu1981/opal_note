@@ -4,7 +4,7 @@
 //! query host. There is no filesystem/network host API. The runtime is dropped
 //! after one execution; a deadline interrupts JS and bounds each query.
 //!
-//! Built-in plugins live in `plugins/builtin/<id>/` and are embedded into the
+//! Built-in plugins live in `builtin/plugins/<id>/` and are embedded into the
 //! binary. User plugins live in `<data-dir>/plugins/<id>/`. A data plugin with
 //! the same id as a built-in is rejected so the embedded layer always wins.
 
@@ -41,7 +41,7 @@ const STACK_LIMIT_BYTES: usize = 512 * 1024;
 
 #[cfg(not(debug_assertions))]
 #[derive(RustEmbed)]
-#[folder = "plugins/builtin/"]
+#[folder = "builtin/plugins/"]
 struct BuiltinPluginAssets;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -263,7 +263,7 @@ fn load_builtin_plugins() -> Result<Vec<PluginDefinition>> {
             manifest,
             script,
             PluginSource::Builtin,
-            Some(format!("plugins/builtin/{folder}")),
+            Some(format!("builtin/plugins/{folder}")),
         )?);
     }
     Ok(plugins)
@@ -298,7 +298,7 @@ fn builtin_plugin_paths() -> Result<Vec<String>> {
         Ok(())
     }
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/builtin");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("builtin/plugins");
     let mut paths = Vec::new();
     walk(&root, &root, &mut paths)?;
     paths.sort();
@@ -317,7 +317,7 @@ fn read_builtin_plugin(path: &str) -> Result<Vec<u8>> {
 fn read_builtin_plugin(path: &str) -> Result<Vec<u8>> {
     fs::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("plugins/builtin")
+            .join("builtin/plugins")
             .join(path),
     )
     .with_context(|| format!("reading built-in plugin file `{path}`"))

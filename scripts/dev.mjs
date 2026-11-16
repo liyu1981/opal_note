@@ -5,8 +5,10 @@ import path from "node:path";
 
 import {
   ROOT,
+  buildBuiltins,
   buildWeb,
   ensureDevCerts,
+  ensureRootDependencies,
   ensureWebDependencies,
   flagValue,
   forwardedArgs,
@@ -44,7 +46,9 @@ const noTls =
 const scheme = noTls ? "http" : "https";
 
 ensureDevCerts(extra);
+ensureRootDependencies();
 ensureWebDependencies();
+buildBuiltins();
 buildWeb();
 await syncServerAssets();
 
@@ -165,6 +169,11 @@ async function runPending() {
     ok = tryRun("cargo", ["build"]) && ok;
   }
 
+  if (restartOnly) {
+    step("Built-in sources changed — rebuilding generated assets");
+    ok = tryRun("node", ["scripts/build-builtins.mjs"]) && ok;
+  }
+
   if (ok && !shuttingDown && (rebuildClient || rebuildServer || restartOnly)) {
     await restartServer();
   } else if (!ok) {
@@ -231,8 +240,7 @@ function startWatchers() {
   step("Watching for changes");
   console.log("  client: web/src, web/public, web config files");
   console.log("  server: src, Cargo.toml, Cargo.lock, build.rs");
-  console.log("  plugins: plugins/builtin (restart only)");
-  console.log("  backgrounds: backgrounds/builtin (restart only)");
+  console.log("  builtins: builtin/src (rebuild and restart)");
   console.log("  debounce: 220 ms · Ctrl+C to stop\n");
 
   addWatcher("web/src", true, () => mark("client"));
@@ -242,8 +250,7 @@ function startWatchers() {
   });
 
   addWatcher("src", true, () => mark("server"));
-  addWatcher("plugins/builtin", true, () => mark("runtime"));
-  addWatcher("backgrounds/builtin", true, () => mark("runtime"));
+  addWatcher("builtin/src", true, () => mark("runtime"));
   addWatcher(".", false, (name) => {
     if (name && SERVER_CONFIG_FILES.has(path.basename(name))) mark("server");
   });

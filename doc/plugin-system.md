@@ -66,7 +66,7 @@ one result per plugin. The client currently renders only the built-in
 ```mermaid
 flowchart TB
     subgraph Sources["Plugin sources"]
-        Builtin["Built-in folders<br/>plugins/builtin/&lt;domain&gt;/&lt;extension&gt;/"]
+        Builtin["Built-in folders<br/>builtin/plugins/&lt;domain&gt;/&lt;extension&gt;/"]
         Data["Data folders<br/>&lt;data-dir&gt;/plugins/&lt;folder&gt;/"]
     end
 
@@ -112,6 +112,26 @@ flowchart TB
     Card --> Note
 ```
 
+## Built-in source and generation
+
+Built-in plugin and background sources live under `builtin/src/`. Each package
+has a `package.json`; plugins put the final manifest in `opal_note` and use
+`opal_note_build` for the esbuild entry, target and minify setting.
+
+`pnpm build:builtins` generates:
+
+```text
+builtin/plugins/<id>/plugin.json
+builtin/plugins/<id>/plugin.js
+builtin/backgrounds/<id>/background.json
+builtin/backgrounds/<id>/<assets>
+```
+
+The generated directories are what Rust embeds (release) or reads from disk
+(debug). `pnpm build:builtins:check` verifies that generated output is current.
+The final `plugin.js` remains an IIFE expression returning a JSON string; only
+the source package format and build step are new.
+
 ## 2. Loading the registry
 
 ### 2.1 Entry point
@@ -129,21 +149,21 @@ The registry is stored in `AppState` and is shared by all requests.
 Built-ins live under:
 
 ```text
-plugins/builtin/<domain>/<extension>/plugin.json
-plugins/builtin/<domain>/<extension>/plugin.js
+builtin/plugins/<domain>/<extension>/plugin.json
+builtin/plugins/<domain>/<extension>/plugin.js
 ```
 
 Current built-in:
 
 ```text
-plugins/builtin/OpalNote/todos
+builtin/plugins/OpalNote/todos
 ```
 
 Loading differs by build:
 
-- **Release build:** `rust-embed` embeds `plugins/builtin/`. The binary does not
+- **Release build:** `rust-embed` embeds `builtin/plugins/`. The binary does not
   need the folder on disk.
-- **Debug build:** files are read from `CARGO_MANIFEST_DIR/plugins/builtin`
+- **Debug build:** files are read from `CARGO_MANIFEST_DIR/builtin/plugins`
   at runtime. The dev watcher restarts the server when this folder changes.
 
 Built-in ids always win.
@@ -315,7 +335,7 @@ still run.
 
 ## 4. Built-in todos plugin
 
-`plugins/builtin/OpalNote/todos/plugin.js`:
+`builtin/plugins/OpalNote/todos/plugin.js`:
 
 - queries the `*task` relation joined with `*note`
 - filters `status != "done"` and `status != "cancelled"`
@@ -586,7 +606,7 @@ src/routes/plugins.rs              API handlers
 src/state.rs                       PluginRegistry in AppState
 src/main.rs                        registry startup
 src/config.rs                      plugin_timeout_secs / env / CLI
-plugins/builtin/OpalNote/todos/    built-in todos plugin
+builtin/plugins/OpalNote/todos/    built-in todos plugin
 web/src/api/client.ts              journalPlugins / listPlugins / reloadPlugins
 web/src/api/types.ts               plugin response types
 web/src/state/atoms.ts             journalPluginsRevisionAtom

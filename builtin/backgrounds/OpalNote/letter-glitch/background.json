@@ -5,7 +5,10 @@
   "kind": "letter-glitch",
   "options": {
     "lightMode": true,
-    "glitchColors": ["var(--color-ink)", "var(--color-accent-strong)"],
+    "glitchColors": [
+      "var(--color-ink)",
+      "var(--color-accent-strong)"
+    ],
     "baseColor": "var(--color-ink)",
     "fontSize": 14,
     "spacing": 0.6,
