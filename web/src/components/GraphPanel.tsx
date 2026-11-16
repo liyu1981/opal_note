@@ -17,6 +17,7 @@ import {
   type PositionedNode,
 } from "../lib/graphLayout";
 import {
+  IconFit,
   IconGraph,
   IconMinus,
   IconPlus,
@@ -160,7 +161,7 @@ export function GraphPanel({
             </div>
           </div>
         </div>
-        <div className="min-h-0 flex-1 p-3">
+        <div className="flex min-h-0 flex-1 p-3">
           <GraphCanvas
             nodes={shown.nodes}
             edges={shown.edges}
@@ -562,6 +563,11 @@ function GraphCanvas({
     zoomAt(px, py, event.deltaY < 0 ? 1.12 : 1 / 1.12);
   }
 
+  function fitCurrentView() {
+    autoFitRef.current = false;
+    setView(fitView(positions, size.width, size.height));
+  }
+
   function resetView() {
     autoFitRef.current = true;
     const live = simulationRef.current;
@@ -590,7 +596,7 @@ function GraphCanvas({
       ref={hostRef}
       className={
         fill
-          ? "relative min-h-0 flex-1 touch-none select-none overflow-hidden rounded-xl border border-line bg-graph-bg"
+          ? "relative h-full min-h-0 w-full touch-none select-none overflow-hidden rounded-xl border border-line bg-graph-bg"
           : "relative touch-none select-none overflow-hidden rounded-xl border border-line bg-graph-bg"
       }
       style={fill ? undefined : { height }}
@@ -729,6 +735,15 @@ function GraphCanvas({
           title="Zoom out"
         >
           <IconMinus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={fitCurrentView}
+          className="rounded p-1 text-muted transition hover:bg-panel hover:text-ink"
+          aria-label="Fit graph to view"
+          title="Fit graph to view"
+        >
+          <IconFit className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
