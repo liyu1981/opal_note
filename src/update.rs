@@ -1,6 +1,6 @@
-//! Offline self-update support.
+//! Self-update support.
 //!
-//! A future downloader (GitHub releases) writes a binary plus manifest into
+//! Remote discovery downloads a binary plus manifest into
 //! `<update-dir>/candidate/`. On startup this module validates and atomically
 //! replaces the current executable. The running process keeps the old inode;
 //! the new version is used on the next restart.
@@ -8,8 +8,11 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -131,10 +134,455 @@ pub fn apply_pending_to(update_dir: &Path, target: &Path) -> Result<Option<Appli
     }))
 }
 
-/// Placeholder for the future GitHub release check/downloader.
-pub fn check_remote_update_placeholder() -> Result<Option<CandidateManifest>> {
-    tracing::debug!("remote update detection is not implemented yet");
-    Ok(None)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateChannel {
+    Release,
+    Dev,
+}
+
+impl UpdateChannel {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" | "release" | "stable" => Ok(Self::Release),
+            "dev" | "development" | "artifact" => Ok(Self::Dev),
+            other => bail!("unknown update channel `{other}`; use release or dev"),
+        }
+    }
+}
+
+/// Discover and stage a newer candidate from GitHub. The user is responsible
+/// for authenticating `gh`; no tokens are read or stored by OpalNote.
+pub fn check_remote_update(
+    update_dir: &Path,
+    repo: &str,
+    channel: UpdateChannel,
+) -> Result<Option<CandidateManifest>> {
+    let _lock = UpdateLock::acquire(update_dir)?;
+
+    if let Some(existing) = read_candidate_manifest(update_dir)? {
+        if candidate_is_newer(&existing)? {
+            tracing::debug!(
+                version = %existing.version,
+                "using the already downloaded update candidate"
+            );
+            return Ok(Some(existing));
+        }
+    }
+
+    let found = match channel {
+        UpdateChannel::Release => discover_release_candidate(update_dir, repo)?,
+        UpdateChannel::Dev => discover_dev_candidate(update_dir, repo)?,
+    };
+    let Some((binary, manifest)) = found else {
+        return Ok(None);
+    };
+    if !candidate_is_newer(&manifest)? {
+        tracing::info!(
+            version = %manifest.version,
+            channel = ?channel,
+            "latest GitHub candidate is not newer"
+        );
+        return Ok(None);
+    }
+    write_candidate(update_dir, &binary, &manifest)?;
+    tracing::info!(
+        version = %manifest.version,
+        commit = %manifest.commit,
+        channel = ?channel,
+        "downloaded self-update candidate"
+    );
+    Ok(Some(manifest))
+}
+
+fn candidate_is_newer(manifest: &CandidateManifest) -> Result<bool> {
+    let current_version =
+        semver::Version::parse(build_info::VERSION).context("parsing the running build version")?;
+    let candidate_version = semver::Version::parse(manifest.version.trim_start_matches('v'))
+        .context("parsing the update candidate version")?;
+    Ok(is_newer(
+        &candidate_version,
+        manifest.commit_time,
+        &current_version,
+        build_info::commit_time(),
+    ))
+}
+
+fn read_candidate_manifest(update_dir: &Path) -> Result<Option<CandidateManifest>> {
+    let path = candidate_dir(update_dir).join(MANIFEST_FILE);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    if fs::metadata(&path)?.len() > MAX_MANIFEST_BYTES {
+        bail!("update manifest is too large");
+    }
+    let manifest = serde_json::from_reader(
+        File::open(&path).with_context(|| format!("reading {}", path.display()))?,
+    )
+    .with_context(|| format!("parsing {}", path.display()))?;
+    Ok(Some(manifest))
+}
+
+fn write_candidate(update_dir: &Path, binary: &Path, manifest: &CandidateManifest) -> Result<()> {
+    fs::create_dir_all(update_dir)
+        .with_context(|| format!("creating update directory {}", update_dir.display()))?;
+    let temp = TempDir::new(update_dir, "candidate")?;
+    let dest_binary = temp.path.join(BINARY_NAME);
+    fs::copy(binary, &dest_binary)
+        .with_context(|| format!("copying update candidate {}", binary.display()))?;
+    fs::write(
+        temp.path.join(MANIFEST_FILE),
+        serde_json::to_vec_pretty(manifest)?,
+    )?;
+    let destination = candidate_dir(update_dir);
+    if destination.exists() {
+        fs::remove_dir_all(&destination)?;
+    }
+    fs::rename(&temp.path, &destination)?;
+    Ok(())
+}
+
+fn discover_release_candidate(
+    update_dir: &Path,
+    repo: &str,
+) -> Result<Option<(PathBuf, CandidateManifest)>> {
+    #[derive(Deserialize)]
+    struct ReleaseSummary {
+        #[serde(rename = "tagName")]
+        tag_name: String,
+        #[serde(rename = "isPrerelease", default)]
+        is_prerelease: bool,
+        #[serde(rename = "publishedAt", default)]
+        published_at: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Asset {
+        name: String,
+    }
+    #[derive(Deserialize)]
+    struct ReleaseView {
+        #[serde(rename = "tagName")]
+        tag_name: String,
+        #[serde(rename = "publishedAt", default)]
+        published_at: Option<String>,
+        #[serde(default)]
+        assets: Vec<Asset>,
+    }
+
+    let releases: Vec<ReleaseSummary> = gh_json(&[
+        "release".into(),
+        "list".into(),
+        "--repo".into(),
+        repo.into(),
+        "--limit".into(),
+        "30".into(),
+        "--json".into(),
+        "tagName,isPrerelease,publishedAt".into(),
+    ])?;
+    let Some(release) = releases
+        .into_iter()
+        .filter(|release| !release.is_prerelease)
+        .max_by_key(|release| release.published_at.clone())
+    else {
+        tracing::debug!("no stable GitHub releases found");
+        return Ok(None);
+    };
+
+    let view: ReleaseView = gh_json(&[
+        "release".into(),
+        "view".into(),
+        release.tag_name.clone(),
+        "--repo".into(),
+        repo.into(),
+        "--json".into(),
+        "tagName,publishedAt,assets".into(),
+    ])?;
+    let target = target_triple();
+    let binary_asset = view
+        .assets
+        .iter()
+        .find(|asset| is_archive_for_target(&asset.name, &target))
+        .or_else(|| {
+            view.assets.iter().find(|asset| {
+                (asset.name.ends_with(".tar.gz") || asset.name.ends_with(".tgz"))
+                    && asset.name.contains(std::env::consts::ARCH)
+                    && asset.name.contains(std::env::consts::OS)
+            })
+        })
+        .ok_or_else(|| anyhow::anyhow!("release {} has no downloadable archive", view.tag_name))?;
+    let manifest_asset = view.assets.iter().find(|asset| {
+        asset.name == "manifest.json" || asset.name == format!("manifest-{target}.json")
+    });
+
+    let temp = TempDir::new(update_dir, "download")?;
+    let mut args = vec![
+        "release".to_string(),
+        "download".to_string(),
+        view.tag_name.clone(),
+        "--repo".to_string(),
+        repo.to_string(),
+        "--pattern".to_string(),
+        binary_asset.name.clone(),
+        "--dir".to_string(),
+        temp.path.display().to_string(),
+        "--clobber".to_string(),
+    ];
+    gh(&args)?;
+    if let Some(asset) = manifest_asset {
+        args = vec![
+            "release".to_string(),
+            "download".to_string(),
+            view.tag_name.clone(),
+            "--repo".to_string(),
+            repo.to_string(),
+            "--pattern".to_string(),
+            asset.name.clone(),
+            "--dir".to_string(),
+            temp.path.display().to_string(),
+            "--clobber".to_string(),
+        ];
+        gh(&args)?;
+    }
+
+    let archive = find_archive(&temp.path)
+        .ok_or_else(|| anyhow::anyhow!("downloaded release archive not found"))?;
+    let binary = extract_binary(&archive, &temp.path)?;
+    let mut manifest = match manifest_asset.and_then(|_| find_manifest(&temp.path)) {
+        Some(path) => {
+            let manifest: CandidateManifest = serde_json::from_reader(
+                File::open(&path).with_context(|| format!("reading {}", path.display()))?,
+            )
+            .with_context(|| format!("parsing {}", path.display()))?;
+            manifest
+        }
+        None => CandidateManifest {
+            version: view.tag_name.trim_start_matches('v').to_string(),
+            commit: String::new(),
+            commit_time: parse_time(
+                view.published_at
+                    .as_deref()
+                    .or(release.published_at.as_deref()),
+            ),
+            target: Some(target.clone()),
+            sha256: None,
+            size: None,
+        },
+    };
+    if manifest
+        .target
+        .as_deref()
+        .is_some_and(|value| !target_matches(value))
+    {
+        bail!("release manifest target does not match this build");
+    }
+    manifest.target = Some(target);
+    manifest.size = Some(fs::metadata(&binary)?.len());
+    manifest.sha256 = Some(sha256_file(&binary)?);
+    Ok(Some((binary, manifest)))
+}
+
+fn discover_dev_candidate(
+    update_dir: &Path,
+    repo: &str,
+) -> Result<Option<(PathBuf, CandidateManifest)>> {
+    #[derive(Deserialize)]
+    struct Run {
+        id: u64,
+        #[serde(rename = "head_sha", default)]
+        head_sha: String,
+    }
+    #[derive(Deserialize)]
+    struct Artifact {
+        name: String,
+        created_at: String,
+        #[serde(default)]
+        expired: bool,
+        #[serde(default)]
+        workflow_run: Option<Run>,
+    }
+    #[derive(Deserialize)]
+    struct ArtifactList {
+        artifacts: Vec<Artifact>,
+    }
+
+    let list: ArtifactList = gh_json(&[
+        "api".into(),
+        format!("repos/{repo}/actions/artifacts?per_page=100"),
+    ])?;
+    let arch = std::env::consts::ARCH;
+    let Some(artifact) = list
+        .artifacts
+        .into_iter()
+        .filter(|artifact| !artifact.expired)
+        .filter(|artifact| artifact.workflow_run.is_some())
+        .filter(|artifact| artifact.name.starts_with("opalnote-"))
+        .filter(|artifact| artifact.name.ends_with(&format!("-{arch}")))
+        .max_by_key(|artifact| artifact.created_at.clone())
+    else {
+        tracing::debug!("no unexpired development artifacts found");
+        return Ok(None);
+    };
+    let (version, commit) = parse_dev_artifact_name(&artifact.name, arch)
+        .ok_or_else(|| anyhow::anyhow!("could not parse development artifact {}", artifact.name))?;
+    let Some(run) = artifact.workflow_run else {
+        return Ok(None);
+    };
+    let temp = TempDir::new(update_dir, "download")?;
+    gh(&[
+        "run".into(),
+        "download".into(),
+        run.id.to_string(),
+        "--repo".into(),
+        repo.into(),
+        "--name".into(),
+        artifact.name.clone(),
+        "--dir".into(),
+        temp.path.display().to_string(),
+    ])?;
+    let archive = find_archive(&temp.path)
+        .ok_or_else(|| anyhow::anyhow!("downloaded development artifact archive not found"))?;
+    let binary = extract_binary(&archive, &temp.path)?;
+    let manifest = CandidateManifest {
+        version,
+        commit: if commit.is_empty() {
+            run.head_sha.chars().take(7).collect()
+        } else {
+            commit
+        },
+        commit_time: parse_time(Some(&artifact.created_at)),
+        target: Some(target_triple()),
+        sha256: Some(sha256_file(&binary)?),
+        size: Some(fs::metadata(&binary)?.len()),
+    };
+    Ok(Some((binary, manifest)))
+}
+
+fn parse_dev_artifact_name(name: &str, arch: &str) -> Option<(String, String)> {
+    let rest = name.strip_prefix("opalnote-")?;
+    let mut parts = rest.rsplitn(3, '-');
+    let artifact_arch = parts.next()?;
+    let commit = parts.next()?;
+    let version = parts.next()?;
+    if artifact_arch != arch || version.is_empty() || commit.is_empty() {
+        return None;
+    }
+    Some((version.to_string(), commit.to_string()))
+}
+
+fn is_archive_for_target(name: &str, target: &str) -> bool {
+    (name.ends_with(".tar.gz") || name.ends_with(".tgz")) && name.contains(target)
+}
+
+fn target_triple() -> String {
+    match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("aarch64", "linux") => "aarch64-unknown-linux-gnu".to_string(),
+        ("x86_64", "linux") => "x86_64-unknown-linux-gnu".to_string(),
+        ("aarch64", "macos") => "aarch64-apple-darwin".to_string(),
+        ("x86_64", "macos") => "x86_64-apple-darwin".to_string(),
+        (arch, os) => format!("{arch}-unknown-{os}-gnu"),
+    }
+}
+
+fn parse_time(value: Option<&str>) -> i64 {
+    value
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.timestamp())
+        .unwrap_or(0)
+}
+
+fn find_archive(root: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_archive(&path) {
+                return Some(found);
+            }
+        } else if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".tar.gz") || name.ends_with(".tgz"))
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn find_manifest(root: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() && path.file_name().and_then(|name| name.to_str()) == Some(MANIFEST_FILE)
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn extract_binary(archive: &Path, destination: &Path) -> Result<PathBuf> {
+    let decoder = flate2::read::GzDecoder::new(File::open(archive)?);
+    let mut tar = tar::Archive::new(decoder);
+    let target = destination.join(BINARY_NAME);
+    for entry in tar.entries()? {
+        let mut entry = entry?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = entry.path()?.to_string_lossy().replace('\\', "/");
+        let name = path.rsplit('/').next().unwrap_or_default();
+        if name == BINARY_NAME {
+            let mut output = File::create(&target)?;
+            std::io::copy(&mut entry, &mut output)?;
+            output.sync_all()?;
+            return Ok(target);
+        }
+    }
+    bail!(
+        "archive {} does not contain {}",
+        archive.display(),
+        BINARY_NAME
+    )
+}
+
+fn gh_json<T: for<'de> Deserialize<'de>>(args: &[String]) -> Result<T> {
+    let output = gh(args)?;
+    serde_json::from_str(&output).context("parsing gh JSON output")
+}
+
+fn gh(args: &[String]) -> Result<String> {
+    let output = Command::new("gh")
+        .args(args)
+        .output()
+        .with_context(|| "running gh; install GitHub CLI and run `gh auth login`")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("gh failed: {}", stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    fn new(parent: &Path, prefix: &str) -> Result<Self> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let path = parent.join(format!(".{prefix}-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&path)
+            .with_context(|| format!("creating temporary directory {}", path.display()))?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
 }
 
 fn is_newer(
@@ -261,6 +709,28 @@ mod tests {
         )
         .unwrap();
         candidate
+    }
+
+    #[test]
+    fn parses_dev_artifact_names() {
+        assert_eq!(
+            parse_dev_artifact_name("opalnote-0.1.0-e968d8-aarch64", "aarch64"),
+            Some(("0.1.0".to_string(), "e968d8".to_string()))
+        );
+        assert!(parse_dev_artifact_name("opalnote-0.1.0-e968d8-x86_64", "aarch64").is_none());
+        assert!(parse_dev_artifact_name("other-0.1.0-e968d8-aarch64", "aarch64").is_none());
+    }
+
+    #[test]
+    fn validates_remote_target_archives() {
+        assert!(is_archive_for_target(
+            "opalnote-0.1.0-aarch64-unknown-linux-gnu.tar.gz",
+            "aarch64-unknown-linux-gnu"
+        ));
+        assert!(!is_archive_for_target(
+            "opalnote-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+            "aarch64-unknown-linux-gnu"
+        ));
     }
 
     #[test]

@@ -91,6 +91,14 @@ pub struct ServeArgs {
     #[arg(long = "no-self-update")]
     pub no_self_update: bool,
 
+    /// GitHub repository used for release/dev update discovery.
+    #[arg(long, value_name = "OWNER/REPO")]
+    pub update_repo: Option<String>,
+
+    /// Update channel: `release` or `dev`.
+    #[arg(long, value_name = "CHANNEL")]
+    pub update_channel: Option<String>,
+
     /// Default wall-clock budget for the ad-hoc `/api/query` endpoint, in seconds.
     #[arg(long)]
     pub query_timeout_secs: Option<f64>,
@@ -123,6 +131,8 @@ pub struct ResolvedServeArgs {
     pub token: Option<String>,
     pub update_dir: PathBuf,
     pub no_self_update: bool,
+    pub update_repo: String,
+    pub update_channel: String,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
     pub no_tls: bool,
@@ -155,6 +165,10 @@ struct FileConfig {
     update_dir: Option<PathBuf>,
     #[serde(alias = "OPALNOTE_NO_SELF_UPDATE")]
     no_self_update: Option<bool>,
+    #[serde(alias = "OPALNOTE_UPDATE_REPO")]
+    update_repo: Option<String>,
+    #[serde(alias = "OPALNOTE_UPDATE_CHANNEL")]
+    update_channel: Option<String>,
     #[serde(alias = "OPALNOTE_QUERY_TIMEOUT_SECS")]
     query_timeout_secs: Option<f64>,
     #[serde(alias = "OPALNOTE_PLUGIN_TIMEOUT_SECS")]
@@ -176,6 +190,8 @@ struct EnvConfig {
     token: Option<String>,
     update_dir: Option<PathBuf>,
     no_self_update: Option<bool>,
+    update_repo: Option<String>,
+    update_channel: Option<String>,
     query_timeout_secs: Option<f64>,
     plugin_timeout_secs: Option<f64>,
     no_tls: Option<bool>,
@@ -234,6 +250,16 @@ impl ServeArgs {
                     .unwrap_or(default_update_dir),
             ),
             no_self_update,
+            update_repo: self
+                .update_repo
+                .or(env.update_repo)
+                .or(file.update_repo)
+                .unwrap_or_else(|| "liyu1981/opal_note".to_string()),
+            update_channel: self
+                .update_channel
+                .or(env.update_channel)
+                .or(file.update_channel)
+                .unwrap_or_else(|| "release".to_string()),
             query_timeout_secs: self
                 .query_timeout_secs
                 .or(env.query_timeout_secs)
@@ -270,6 +296,8 @@ impl EnvConfig {
             token: env::var("OPALNOTE_TOKEN").ok(),
             update_dir: env::var_os("OPALNOTE_UPDATE_DIR").map(PathBuf::from),
             no_self_update: env_bool("OPALNOTE_NO_SELF_UPDATE")?,
+            update_repo: env::var("OPALNOTE_UPDATE_REPO").ok(),
+            update_channel: env::var("OPALNOTE_UPDATE_CHANNEL").ok(),
             query_timeout_secs: env_f64("OPALNOTE_QUERY_TIMEOUT_SECS")?,
             plugin_timeout_secs: env_f64("OPALNOTE_PLUGIN_TIMEOUT_SECS")?,
             no_tls: env_bool("OPALNOTE_NO_TLS")?,
@@ -432,6 +460,14 @@ fn default_config_value() -> Value {
         Value::String("~/.opalnote/updates".to_string()),
     );
     table.insert("no_self_update".to_string(), Value::Boolean(false));
+    table.insert(
+        "update_repo".to_string(),
+        Value::String("liyu1981/opal_note".to_string()),
+    );
+    table.insert(
+        "update_channel".to_string(),
+        Value::String("release".to_string()),
+    );
     table.insert(
         "query_timeout_secs".to_string(),
         Value::Float(DEFAULT_QUERY_TIMEOUT),

@@ -58,8 +58,11 @@ async fn main() -> anyhow::Result<()> {
             Ok(None) => {}
             Err(err) => tracing::warn!(error = %err, "self-update check failed"),
         }
-        if let Err(err) = update::check_remote_update_placeholder() {
-            tracing::warn!(error = %err, "remote update check failed");
+        match update::UpdateChannel::parse(&args.update_channel) {
+            Ok(channel) => {
+                spawn_update_checker(args.update_dir.clone(), args.update_repo.clone(), channel)
+            }
+            Err(err) => tracing::warn!(error = %err, "invalid update channel"),
         }
     }
 
@@ -137,6 +140,35 @@ async fn main() -> anyhow::Result<()> {
     }
     tracing::info!("opalnote stopped");
     Ok(())
+}
+
+fn spawn_update_checker(
+    update_dir: std::path::PathBuf,
+    repo: String,
+    channel: update::UpdateChannel,
+) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
+        loop {
+            ticker.tick().await;
+            let dir = update_dir.clone();
+            let repo = repo.clone();
+            let outcome = tokio::task::spawn_blocking(move || {
+                update::check_remote_update(&dir, &repo, channel)
+            })
+            .await;
+            match outcome {
+                Ok(Ok(Some(candidate))) => tracing::info!(
+                    version = %candidate.version,
+                    channel = ?channel,
+                    "update candidate is ready for the next restart"
+                ),
+                Ok(Ok(None)) => {}
+                Ok(Err(err)) => tracing::warn!(error = %err, "remote update check failed"),
+                Err(err) => tracing::warn!(error = %err, "remote update task failed"),
+            }
+        }
+    });
 }
 
 /// Permanently remove expired trash entries even when nobody opens the bin.

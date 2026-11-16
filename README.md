@@ -93,7 +93,9 @@ offline-capable.
 ## Development builds
 
 A manually triggered GitHub Actions workflow builds an **arm64 development
-artifact** from the selected commit. The artifact version is the Cargo package
+artifact** from the selected commit; pushing a `v*` tag also runs
+`.github/workflows/release.yml` to attach the tarball and manifest to a GitHub
+release. The artifact version is the Cargo package
 version plus the first six characters of the commit hash, e.g.
 `0.1.0-a1b2c3`. It is uploaded to the workflow run as a downloadable artifact;
 the workflow does not create a GitHub release.
@@ -195,9 +197,17 @@ and atomically renamed into place. The running process keeps the old image;
 the new version starts on the next restart. The candidate directory is deleted
 after a successful replacement.
 
+Release builds run a background update check at startup and every six hours.
+The `release` channel reads stable GitHub releases and prefers a matching
+`manifest.json` asset; the `dev` channel reads the newest unexpired
+`opalnote-*-<arch>` Actions artifact. Both paths use the authenticated `gh` CLI,
+so the service user must have `gh` on `PATH` and have run `gh auth login`.
+Downloaded candidates are left in place for the next startup to install.
+
 Debug builds skip this by default. Use `--no-self-update` or
-`OPALNOTE_NO_SELF_UPDATE=true` to disable it explicitly. Automatic GitHub
-release detection/download is still a placeholder (`check_remote_update_placeholder`).
+`OPALNOTE_NO_SELF_UPDATE=true` to disable it explicitly. Use `--update-channel
+dev` to follow development artifacts; stable releases use the default
+`release` channel.
 
 `opalnote --version` prints the build version, channel, commit and commit time;
 `GET /api/meta` exposes the same build fields.
@@ -268,6 +278,8 @@ data_dir = "./data"
 token = ""
 update_dir = "~/.opalnote/updates"
 no_self_update = false
+update_repo = "liyu1981/opal_note"
+update_channel = "release"
 query_timeout_secs = 5.0
 plugin_timeout_secs = 5.0
 no_tls = false
@@ -297,6 +309,8 @@ or `--force` to customize it; the command prints the enable commands.
 | `--token`                  | `OPALNOTE_TOKEN`              | _(unset)_         | Bearer token for `/api`; unset means open access         |
 | `--update-dir`             | `OPALNOTE_UPDATE_DIR`         | `~/.opalnote/updates` | Pending self-update candidate directory              |
 | `--no-self-update`         | `OPALNOTE_NO_SELF_UPDATE`     | `false`           | Disable startup self-update checks                       |
+| `--update-repo`            | `OPALNOTE_UPDATE_REPO`        | `liyu1981/opal_note` | GitHub repository for update discovery               |
+| `--update-channel`         | `OPALNOTE_UPDATE_CHANNEL`     | `release`         | `release` or `dev` update channel                        |
 | `--query-timeout-secs`     | `OPALNOTE_QUERY_TIMEOUT_SECS` | `5`               | Default budget for ad-hoc `/api/query`                   |
 | `--plugin-timeout-secs`    | `OPALNOTE_PLUGIN_TIMEOUT_SECS`| `5`               | Per-run QuickJS journal plugin budget                    |
 | `--no-tls`                 | `OPALNOTE_NO_TLS`             | `false`           | Serve plain HTTP instead of HTTPS                        |
