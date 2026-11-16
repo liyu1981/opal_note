@@ -1,0 +1,16 @@
+{
+  "name": "@opalnote/client-plugin-recent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "opal_note": {
+    "id": "OpalNote/recent",
+    "title": "Recent pages",
+    "description": "Recently updated pages in this notebook.",
+    "type": "client"
+  },
+  "opal_note_build": {
+    "entry": "src/index.tsx",
+    "target": "es2020"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "id": "OpalNote/favorites",
+  "title": "Favorites",
+  "description": "Pages pinned from the editor.",
+  "type": "client"
+}

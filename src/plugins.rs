@@ -253,10 +253,17 @@ fn load_builtin_plugins() -> Result<Vec<PluginDefinition>> {
     for folder in folders {
         let manifest = read_builtin_plugin(&format!("{folder}/plugin.json"))
             .with_context(|| format!("reading built-in plugin manifest `{folder}`"))?;
-        let script = read_builtin_plugin(&format!("{folder}/plugin.js"))
-            .with_context(|| format!("reading built-in plugin source `{folder}`"))?;
         let manifest = std::str::from_utf8(&manifest)
             .with_context(|| format!("built-in plugin manifest `{folder}` is not UTF-8"))?;
+        let manifest_json: Value = serde_json::from_str(manifest)
+            .with_context(|| format!("parsing built-in plugin manifest `{folder}`"))?;
+        // Client plugins live in the same OpalNote package tree but are built
+        // into the web bundle; the QuickJS registry must not execute them.
+        if manifest_json.get("type").and_then(Value::as_str) == Some("client") {
+            continue;
+        }
+        let script = read_builtin_plugin(&format!("{folder}/plugin.js"))
+            .with_context(|| format!("reading built-in plugin source `{folder}`"))?;
         let script = std::str::from_utf8(&script)
             .with_context(|| format!("built-in plugin source `{folder}` is not UTF-8"))?;
         plugins.push(parse_plugin(
@@ -390,11 +397,17 @@ fn valid_plugin_id(id: &str) -> bool {
     })
 }
 
+fn default_plugin_type() -> String {
+    "server".to_string()
+}
+
 #[derive(Deserialize)]
 struct PluginManifest {
     id: String,
     title: String,
     description: String,
+    #[serde(default = "default_plugin_type", rename = "type")]
+    plugin_type: String,
 }
 
 fn parse_plugin(
@@ -422,6 +435,13 @@ fn parse_plugin(
     }
     if script.trim().is_empty() {
         bail!("plugin `{folder}` source must not be empty");
+    }
+    match manifest.plugin_type.trim() {
+        "server" => {}
+        "client" => {
+            bail!("plugin `{folder}` is a client plugin and cannot run in the server registry")
+        }
+        other => bail!("plugin `{folder}` has unknown type `{other}`; use server or client"),
     }
 
     Ok(PluginDefinition {
@@ -947,6 +967,28 @@ mod tests {
             "root": { "type": "script", "text": "nope" }
         });
         assert!(validate_plugin_ui(&bad_node).is_err());
+    }
+
+    #[test]
+    fn rejects_client_plugins_in_the_server_registry() {
+        let dir = tempdir().unwrap();
+        let plugin_dir = dir.path().join("plugins").join("client");
+        fs::create_dir_all(&plugin_dir).unwrap();
+        fs::write(
+            plugin_dir.join("plugin.json"),
+            r#"{"id":"Acme/client","title":"Client","description":"Client only.","type":"client"}"#,
+        )
+        .unwrap();
+        fs::write(
+            plugin_dir.join("plugin.js"),
+            "return JSON.stringify({items: []});",
+        )
+        .unwrap();
+
+        let registry = PluginRegistry::new(dir.path()).unwrap();
+        let list = registry.list();
+        assert!(list.errors.iter().any(|error| error.folder == "client"));
+        assert!(!list.plugins.iter().any(|plugin| plugin.id == "Acme/client"));
     }
 
     #[test]

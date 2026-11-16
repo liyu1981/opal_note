@@ -16,7 +16,7 @@ import { noteLinkKeys, normalizeLinkTarget, safeExternalUrl } from "../lib/markd
 import { JournalCard, type JournalCardHandle } from "./JournalCard";
 import { PluginHost } from "./PluginHost";
 import { IconPlus } from "./Icons";
-import { BUILTIN_CLIENT_PLUGINS } from "../plugins/builtin";
+import { BUILTIN_CLIENT_PLUGINS } from "../../../builtin/plugins/index.js";
 import type { HomePluginContext } from "../plugins/types";
 import {
   activeNotebookIdAtom,

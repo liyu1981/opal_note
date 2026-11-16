@@ -431,7 +431,7 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
 The shell follows a Logseq-like split. It opens on the **Home** dashboard:
 today's editable journal card followed by a vertical list of plugin cards.
 Favorites and the three most recently edited pages are client-side built-in
-plugins under `web/src/plugins/builtin/`; server plugins such as Open todos
+plugins under `builtin/src/plugins/OpalNote/`; server plugins such as Open todos
 render in the same main-area list. There is no plugin side strip or section
 label. The top bar carries the omni search bar with the Home button
 beside it, plus back/forward history controls.
@@ -521,7 +521,7 @@ beside it, plus back/forward history controls.
   read-only Datalog, and return JSON items plus an optional declarative UI. The
   built-in todos plugin lists open tasks across the notebook; clicking one
   opens its page. Favorites and Recent pages are client-side built-in plugins
-  under `web/src/plugins/builtin/`; they receive the current notebook, notes,
+  under `builtin/src/plugins/OpalNote/`; they receive the current notebook, notes,
   favorites, browser recents, link data and navigation actions through
   `HomePluginContext`. Settings → Plugins shows installed server plugins and
   reloads the data plugin folder.
@@ -541,6 +541,13 @@ builtin/src/plugins/OpalNote/todos/package.json
 builtin/src/plugins/OpalNote/todos/src/index.js
 ```
 
+Client-side built-in plugins follow the same package shape under
+`builtin/src/plugins/OpalNote/<extension>/` with `type: "client"`; their
+generated modules are written alongside the server plugins in
+`builtin/plugins/OpalNote/<extension>/` and exported through
+`builtin/plugins/index.js`. Favorites and Recent pages live there because they
+use browser-local state.
+
 The source package has normal `name`/`version`/`description` fields, the final
 manifest under `opal_note`, and bundling configuration under
 `opal_note_build`:
@@ -555,7 +562,8 @@ manifest under `opal_note`, and bundling configuration under
   "opal_note": {
     "id": "OpalNote/todos",
     "title": "Open todos",
-    "description": "Tasks not marked done or cancelled across this notebook."
+    "description": "Tasks not marked done or cancelled across this notebook.",
+    "type": "server"
   },
   "opal_note_build": {
     "entry": "src/index.js",
@@ -572,6 +580,18 @@ release folders:
 builtin/plugins/OpalNote/todos/plugin.json
 builtin/plugins/OpalNote/todos/plugin.js
 ```
+
+`opal_note.type` selects the plugin class:
+
+- `server`: loaded by the Rust QuickJS registry; receives `__query` and
+  `__notebook_id`.
+- `client`: compiled into the web client; receives `HomePluginContext` with
+  browser-local favorites, recents, notes, links and navigation actions.
+  Client plugins live under `builtin/src/plugins/OpalNote/` with
+  `type: "client"` and are generated to `builtin/plugins/OpalNote/`.
+
+Server plugins default to `type: "server"` when an older data-plugin manifest
+omits the field. A `type: "client"` manifest in the server registry is rejected.
 
 The final `plugin.js` remains the IIFE expression format consumed by QuickJS.
 Source plugins default-export a function and return `{ items, ui? }`; the
@@ -860,15 +880,15 @@ src/
     markdown.rs      wikilinks, tags, frontmatter, summaries
     queries.rs       every CozoScript statement
     model.rs         API models
-builtin/src/        plugin/background package sources (package.json + assets)
-builtin/plugins/    generated plugin manifests and scripts (embedded)
+builtin/src/        server plugin/background and client plugin package sources
+builtin/plugins/    generated server and client plugin manifests/scripts
 builtin/backgrounds/ generated background manifests/assets (embedded)
 web/
   src/api/           typed client + types
   src/router.tsx     TanStack route tree + URL/view synchronization
   src/state/         Jotai atoms
   src/components/    workspace shell, journal feed, pages, graph, panels
-  src/plugins/builtin/  client-side built-in Home plugins
+  src/plugins/types.ts  shared client plugin context/types
   src/components/backgrounds/  React Bits renderer implementations
   src/components/editor/  live CodeMirror editor surface
   src/lib/           navigation, live preview, completion, editor theme

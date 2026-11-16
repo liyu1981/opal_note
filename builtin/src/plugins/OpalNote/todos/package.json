@@ -10,7 +10,8 @@
   "opal_note": {
     "id": "OpalNote/todos",
     "title": "Open todos",
-    "description": "Tasks not marked done or cancelled across this notebook."
+    "description": "Tasks not marked done or cancelled across this notebook.",
+    "type": "server"
   },
   "opal_note_build": {
     "entry": "src/index.js",

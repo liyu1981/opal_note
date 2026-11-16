@@ -7,6 +7,7 @@ WORKDIR /app/web
 COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
+COPY builtin/plugins /app/builtin/plugins
 RUN pnpm run build
 
 # ---- server ---------------------------------------------------------------

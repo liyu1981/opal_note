@@ -1,0 +1,16 @@
+{
+  "name": "@opalnote/client-plugin-favorites",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "opal_note": {
+    "id": "OpalNote/favorites",
+    "title": "Favorites",
+    "description": "Pages pinned from the editor.",
+    "type": "client"
+  },
+  "opal_note_build": {
+    "entry": "src/index.tsx",
+    "target": "es2020"
+  }
+}

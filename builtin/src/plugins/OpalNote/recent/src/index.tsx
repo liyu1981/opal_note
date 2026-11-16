@@ -1,11 +1,11 @@
-import type { JournalPluginResult } from "../../api/types";
-import { formatJournalDate } from "../../lib/journal";
-import { relativeTime } from "../../lib/format";
-import { PluginHost } from "../../components/PluginHost";
+import type { JournalPluginResult } from "@app/api/types";
+import { formatJournalDate } from "@app/lib/journal";
+import { relativeTime } from "@app/lib/format";
+import { PluginHost } from "@app/components/PluginHost";
 import type {
   BuiltinClientPlugin,
   HomePluginContext,
-} from "../types";
+} from "@app/plugins/types";
 
 function titleFor(
   note: HomePluginContext["notes"][number],
@@ -54,8 +54,10 @@ function renderRecent(context: HomePluginContext) {
   );
 }
 
-export const recentPlugin: BuiltinClientPlugin = {
+const recentPlugin: BuiltinClientPlugin = {
   id: "OpalNote/recent",
   title: "Recent pages",
   render: renderRecent,
 };
+
+export default recentPlugin;

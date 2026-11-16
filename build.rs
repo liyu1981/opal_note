@@ -127,8 +127,10 @@ fn stale(index: &Path) -> bool {
         PathBuf::from("web/package.json"),
         PathBuf::from("web/vite.config.ts"),
         PathBuf::from("web/tsconfig.json"),
+        PathBuf::from("builtin/plugins"),
     ];
     watched.extend(walk(Path::new("web/src")));
+    watched.extend(walk(Path::new("builtin/plugins")));
 
     watched
         .iter()

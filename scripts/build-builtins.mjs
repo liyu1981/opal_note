@@ -86,6 +86,17 @@ function validateManifest(pkg, sourceLabel, expectedKind) {
   ) {
     throw new Error(`${sourceLabel}: opal_note.description is invalid`);
   }
+  const expectedType =
+    expectedKind === "plugin"
+      ? "server"
+      : expectedKind === "client"
+        ? "client"
+        : null;
+  if (expectedType && manifest.type !== expectedType) {
+    throw new Error(
+      `${sourceLabel}: opal_note.type must be "${expectedType}" for this package location`,
+    );
+  }
   if (expectedKind === "background") {
     if (typeof manifest.kind !== "string" || !manifest.kind.trim()) {
       throw new Error(`${sourceLabel}: background opal_note.kind is required`);
@@ -183,6 +194,34 @@ async function buildPlugin(packageDir, manifest, buildConfig = {}) {
   return { script, json };
 }
 
+async function buildClientPlugin(packageDir, manifest, buildConfig = {}) {
+  const entryName = buildConfig.entry ?? "src/index.tsx";
+  const entry = path.resolve(packageDir, entryName);
+  if (!inside(packageDir, entry)) {
+    throw new Error(`${manifest.id}: client entry escapes the package directory`);
+  }
+  if (!existsSync(entry)) {
+    throw new Error(`${manifest.id}: missing client entry ${entryName}`);
+  }
+  const result = await build({
+    absWorkingDir: packageDir,
+    entryPoints: [entry],
+    bundle: true,
+    format: "esm",
+    jsx: "automatic",
+    platform: "browser",
+    target: buildConfig.target ?? "es2020",
+    minify: false,
+    write: false,
+    logLevel: "silent",
+    external: ["@app/*", "react", "react/jsx-runtime"],
+  });
+  const script = result.outputFiles[0]?.text;
+  if (!script) throw new Error(`${manifest.id}: esbuild produced no client script`);
+  const json = JSON.stringify(manifest, null, 2) + "\n";
+  return { script, json };
+}
+
 async function buildOne(kind, packageDir, outputRoot) {
   const pkg = await readPackage(packageDir);
   const manifest = validateManifest(
@@ -197,6 +236,15 @@ async function buildOne(kind, packageDir, outputRoot) {
 
   if (kind === "plugin") {
     const { script, json } = await buildPlugin(
+      packageDir,
+      manifest,
+      pkg.opal_note_build ?? {},
+    );
+    return { id: manifest.id, files: { "plugin.js": script, "plugin.json": json } };
+  }
+
+  if (kind === "client") {
+    const { script, json } = await buildClientPlugin(
       packageDir,
       manifest,
       pkg.opal_note_build ?? {},
@@ -268,28 +316,60 @@ async function compareTree(expected, actual) {
   return errors;
 }
 
+async function writeClientIndex(outputRoot, builtClients) {
+  await mkdir(outputRoot, { recursive: true });
+  const imports = builtClients
+    .map(({ built }, index) => `import plugin${index} from "./${built.id}/plugin.js";`)
+    .join("\n");
+  const names = builtClients.map((_, index) => `plugin${index}`).join(", ");
+  await writeFile(
+    path.join(outputRoot, "index.js"),
+    `${imports}\n\nexport const BUILTIN_CLIENT_PLUGINS = [${names}];\n`,
+  );
+  await writeFile(
+    path.join(outputRoot, "index.d.ts"),
+    'import type { BuiltinClientPlugin } from "@app/plugins/types";\n\nexport declare const BUILTIN_CLIENT_PLUGINS: BuiltinClientPlugin[];\n',
+  );
+}
+
 async function main() {
   const pluginPackages = await discoverPackages(PLUGIN_SOURCE, "plugin");
   const backgroundPackages = await discoverPackages(
     BACKGROUND_SOURCE,
     "background",
   );
-  if (pluginPackages.length === 0 && backgroundPackages.length === 0) {
+  const serverPackages = [];
+  const clientPackages = [];
+  for (const item of pluginPackages) {
+    const pkg = await readPackage(item.dir);
+    if (pkg.opal_note?.type === "client") clientPackages.push(item);
+    else serverPackages.push(item);
+  }
+  if (
+    pluginPackages.length === 0 &&
+    backgroundPackages.length === 0
+  ) {
     fail("no builtin packages found under builtin/src");
   }
 
   const selectedPlugins = only
-    ? pluginPackages.filter(({ dir }) => {
+    ? serverPackages.filter(({ dir }) => {
         const id = path.relative(PLUGIN_SOURCE, dir).split(path.sep).join("/");
         return id === only;
       })
-    : pluginPackages;
+    : serverPackages;
   const selectedBackgrounds = only
     ? backgroundPackages.filter(({ dir }) => {
         const id = path.relative(BACKGROUND_SOURCE, dir).split(path.sep).join("/");
         return id === only;
       })
     : backgroundPackages;
+  const selectedClients = only
+    ? clientPackages.filter(({ dir }) => {
+        const id = path.relative(PLUGIN_SOURCE, dir).split(path.sep).join("/");
+        return id === only;
+      })
+    : clientPackages;
 
   const builtPlugins = [];
   for (const { dir } of selectedPlugins) {
@@ -301,6 +381,18 @@ async function main() {
     const built = await buildOne("background", dir, BACKGROUND_OUTPUT);
     builtBackgrounds.push({ dir, built });
   }
+  const builtClients = [];
+  for (const { dir } of selectedClients) {
+    const built = await buildOne("client", dir, PLUGIN_OUTPUT);
+    builtClients.push({ dir, built });
+  }
+  const clientIndexEntries = only
+    ? clientPackages.map(({ dir }) => ({
+        built: {
+          id: path.relative(PLUGIN_SOURCE, dir).split(path.sep).join("/"),
+        },
+      }))
+    : builtClients;
 
   if (check) {
     const temp = await mkdtemp(path.join(os.tmpdir(), "opalnote-builtins-"));
@@ -311,6 +403,8 @@ async function main() {
       for (const { dir, built } of builtBackgrounds) {
         await writeBackground(tempBackgrounds, dir, built);
       }
+      for (const { built } of builtClients) await writePlugin(tempPlugins, built);
+      await writeClientIndex(tempPlugins, clientIndexEntries);
       const errors = [
         ...(await compareTree(tempPlugins, PLUGIN_OUTPUT)),
         ...(await compareTree(tempBackgrounds, BACKGROUND_OUTPUT)),
@@ -319,7 +413,7 @@ async function main() {
         fail(`generated built-ins are out of date:\n  ${errors.join("\n  ")}`);
       }
       console.log(
-        `  ${builtPlugins.length} plugin(s) and ${builtBackgrounds.length} background(s) are up to date`,
+        `  ${builtPlugins.length} plugin(s), ${builtBackgrounds.length} background(s) and ${builtClients.length} client plugin(s) are up to date`,
       );
     } finally {
       await rm(temp, { recursive: true, force: true });
@@ -338,9 +432,13 @@ async function main() {
   for (const { dir, built } of builtBackgrounds) {
     await writeBackground(BACKGROUND_OUTPUT, dir, built);
   }
+  for (const { built } of builtClients) {
+    await writePlugin(PLUGIN_OUTPUT, built);
+  }
+  await writeClientIndex(PLUGIN_OUTPUT, clientIndexEntries);
 
   console.log(
-    `  wrote ${builtPlugins.length} plugin(s) and ${builtBackgrounds.length} background(s)`,
+    `  wrote ${builtPlugins.length} plugin(s), ${builtBackgrounds.length} background(s) and ${builtClients.length} client plugin(s)`,
   );
 }
 

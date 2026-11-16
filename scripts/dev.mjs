@@ -172,6 +172,10 @@ async function runPending() {
   if (restartOnly) {
     step("Built-in sources changed — rebuilding generated assets");
     ok = tryRun("node", ["scripts/build-builtins.mjs"]) && ok;
+    if (ok) {
+      step("Client plugin sources changed — rebuilding web bundle");
+      ok = tryRun("pnpm", ["--dir", "web", "build"]) && ok;
+    }
   }
 
   if (ok && !shuttingDown && (rebuildClient || rebuildServer || restartOnly)) {

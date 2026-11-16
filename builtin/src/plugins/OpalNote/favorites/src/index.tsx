@@ -1,10 +1,10 @@
-import type { JournalPluginResult } from "../../api/types";
-import { formatJournalDate } from "../../lib/journal";
-import { PluginHost } from "../../components/PluginHost";
+import type { JournalPluginResult } from "@app/api/types";
+import { formatJournalDate } from "@app/lib/journal";
+import { PluginHost } from "@app/components/PluginHost";
 import type {
   BuiltinClientPlugin,
   HomePluginContext,
-} from "../types";
+} from "@app/plugins/types";
 
 function titleFor(
   ref: { path: string; title: string },
@@ -54,8 +54,10 @@ function renderFavorites(context: HomePluginContext) {
   );
 }
 
-export const favoritesPlugin: BuiltinClientPlugin = {
+const favoritesPlugin: BuiltinClientPlugin = {
   id: "OpalNote/favorites",
   title: "Favorites",
   render: renderFavorites,
 };
+
+export default favoritesPlugin;

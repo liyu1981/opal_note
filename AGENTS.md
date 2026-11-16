@@ -100,8 +100,8 @@ src/
     trash.rs       separate trash metadata database + retention records
     markdown.rs    wikilinks, tags, frontmatter, summaries + unit tests
     model.rs       API-facing serde models
-builtin/src/       built-in package sources and assets
-builtin/plugins/   generated plugin manifests/scripts embedded with rust-embed
+builtin/src/       built-in server/client package sources and assets
+builtin/plugins/   generated server/client plugin manifests and scripts (rust-embed)
 builtin/backgrounds/ generated background manifests/assets (rust-embed)
 web/
   package.json     build + typecheck only (no dev server)
@@ -109,7 +109,7 @@ web/
   src/router.tsx   TanStack route tree and URL/view synchronization
   src/state/       Jotai atoms (async read atoms invalidated by revisionAtom)
   src/components/  workspace shell, home/plugin cards, pages, graph, assets, panels
-  src/plugins/builtin/  client-side built-in Home plugin modules
+  src/plugins/types.ts  shared client plugin context/types
   src/components/editor/  CodeMirror live editor + link completion
   src/lib/         app navigation, settings, live preview, graph layout
 ```
@@ -228,7 +228,7 @@ web/
 - The workspace opens on `HomeView` (`homeViewAtom`): today's editable journal
   card with a New page action, followed by a main-area plugin list. Favorites
   and Recent pages are client-side built-in plugins under
-  `web/src/plugins/builtin/`; Open todos and other server plugins share the same
+  `builtin/src/plugins/OpalNote/`; Open todos and other server plugins share the same
   list. There is no right plugin strip or plugin section label. The global top bar hosts the
   **OmniBar** (with the Home button beside it): normal text searches notes, a
   leading `#` lists tags, and a leading `>` lists commands. `Ctrl+M` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
@@ -334,11 +334,15 @@ web/
   speed overrides live in `backgroundOptions[id]`. Grid Scan defaults to a slow
   10 s sweep with a 5 min delay, and Letter Glitch to 0.25× speed; expose both
   Grid Scan controls and the Letter Glitch speed in Settings → Background.
-- Built-in plugin sources live in `builtin/src/plugins/<domain>/<extension>/`.
-  Each package has a `package.json`; `opal_note` holds the final manifest and
-  `opal_note_build` holds the esbuild entry/target/minify settings. Source
-  modules default-export a function returning `{ items, ui? }`. The build tool
-  writes `builtin/plugins/<id>/plugin.json` and the final IIFE `plugin.js`.
+- Built-in server plugin sources live in `builtin/src/plugins/<domain>/<extension>/`.
+  Each package has a `package.json`; `opal_note.type` is `server` or `client`,
+  `opal_note` holds the final manifest and `opal_note_build` holds the esbuild
+  entry/target/minify settings. Server source modules default-export a function
+  returning `{ items, ui? }`; client source modules default-export a
+  `BuiltinClientPlugin`. The build tool writes server output to
+  `builtin/plugins/<id>/` and client output to `builtin/plugins/<id>/`.
+  Client plugins may consume `HomePluginContext`; server plugins only receive
+  QuickJS/Datalog data.
   Data plugins live in `<data-dir>/plugins/<folder>/` with final
   `plugin.json`/`plugin.js` files. Built-in ids win over data plugins;
   conflicting data folders are reported as load errors. The registry loads at startup and can rescan via
@@ -357,7 +361,7 @@ web/
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
   the todo-kind/legacy fallback. Home renders every server plugin result plus
-  client-side Favorites and Recent plugins from `web/src/plugins/builtin/`.
+  client-side Favorites and Recent plugins generated under `builtin/plugins/`.
   `HomePluginContext` exposes notes, favorites, browser recents, link data, and
   navigation actions to those built-in plugins. The journal feed has no plugin
   rail. Plugin saves refresh `journalPluginsRevisionAtom` so widget data updates
