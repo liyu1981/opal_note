@@ -331,13 +331,19 @@ web/
   conflicting data folders are reported as load errors. The registry loads at startup and can rescan via
   `POST /api/plugins/reload`; `GET /api/plugins` lists metadata. The journal
   endpoint is `GET /notebooks/{id}/plugins` and uses
-  `OPALNOTE_PLUGIN_TIMEOUT_SECS`.
+  `OPALNOTE_PLUGIN_TIMEOUT_SECS`. Plugin results may include an optional `ui`
+  descriptor: either a safe `kind` or a versioned declarative schema (`schema:
+  1`, `root`). Supported actions are `openNote`, `openTag`, `openExternal`, and
+  `runCommand`; validate and bound UI depth, node count, strings, URLs, and
+  payload size on both server and client.
 - Tasks are derived during filesystem sync into the `task` relation from
   markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
   rows in sync with note insert/update/delete and notebook deletion.
-- `PluginCard` renders generic plugin items and is used by the Home todo strip;
-  the journal feed no longer has a plugin rail. Plugin saves refresh
-  `notesRevisionAtom` so todo widgets update after checkbox edits.
+- `PluginHost` dispatches plugin results to a safe renderer kind, the
+  declarative schema renderer, or the legacy item card. `PluginCard` remains
+  the todo-kind/legacy fallback. Home renders every plugin result; the journal
+  feed no longer has a plugin rail. Plugin saves refresh
+  `journalPluginsRevisionAtom` so widget data updates after checkbox edits.
 - `AssetsView` browses the notebook `assets/` folder with server-side search,
   kind filters, sorting and pagination. `AssetDetailView` provides image
   zoom/pan, video/audio players, download/rename actions, and reference

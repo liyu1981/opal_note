@@ -277,6 +277,22 @@ Only if arbitrary custom UI becomes a requirement:
 
 Do not make arbitrary same-origin client JavaScript the default extension model.
 
+## Implementation status
+
+Phase 1 and Phase 2 are implemented:
+
+- plugin results carry an optional `ui` descriptor
+- Home renders every plugin result through `PluginHost`
+- safe renderer kinds are supported
+- the declarative schema contract supports card, section, row, heading, text,
+  badge, list, button, link, separator and empty nodes
+- actions are limited to openNote, openTag, openExternal and runCommand
+- server-side validation bounds UI size, depth, node count, strings, actions
+  and external URL schemes
+- the built-in todos plugin now returns a schema-based card/list UI
+
+Phase 3 (sandboxed iframes for arbitrary custom UI) remains future work.
+
 ## Conclusion
 
 UI fragments are feasible.

@@ -31,6 +31,11 @@ const MAX_ITEMS: usize = 200;
 const MAX_ID_CHARS: usize = 96;
 const MAX_TITLE_CHARS: usize = 120;
 const MAX_DESCRIPTION_CHARS: usize = 500;
+const MAX_UI_BYTES: usize = 64 * 1024;
+const MAX_UI_DEPTH: usize = 8;
+const MAX_UI_NODES: usize = 200;
+const MAX_UI_STRING_CHARS: usize = 2_000;
+const MAX_UI_LIST_ITEMS: usize = 200;
 const MEMORY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 const STACK_LIMIT_BYTES: usize = 512 * 1024;
 
@@ -157,11 +162,12 @@ impl PluginRegistry {
             .iter()
             .map(
                 |plugin| match run_plugin(store.clone(), notebook_id, plugin, timeout) {
-                    Ok(items) => JournalPluginResult {
+                    Ok(output) => JournalPluginResult {
                         id: plugin.id.clone(),
                         title: plugin.title.clone(),
                         description: plugin.description.clone(),
-                        items,
+                        items: output.items,
+                        ui: output.ui,
                         error: None,
                     },
                     Err(err) => JournalPluginResult {
@@ -169,6 +175,7 @@ impl PluginRegistry {
                         title: plugin.title.clone(),
                         description: plugin.description.clone(),
                         items: json!([]),
+                        ui: None,
                         error: Some(err.to_string()),
                     },
                 },
@@ -183,8 +190,17 @@ pub struct JournalPluginResult {
     pub title: String,
     pub description: String,
     pub items: Value,
+    /// Optional declarative UI supplied by the plugin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ui: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[derive(Debug)]
+struct PluginOutput {
+    items: Value,
+    ui: Option<Value>,
 }
 
 fn load_registry(directory: &Path) -> Result<RegistryState> {
@@ -422,7 +438,7 @@ fn run_plugin(
     notebook_id: &str,
     plugin: &PluginDefinition,
     timeout_secs: f64,
-) -> Result<Value> {
+) -> Result<PluginOutput> {
     let deadline = Instant::now() + Duration::from_secs_f64(timeout_secs);
     let runtime = Runtime::new().context("creating QuickJS runtime")?;
     runtime.set_memory_limit(MEMORY_LIMIT_BYTES);
@@ -453,13 +469,254 @@ fn run_plugin(
 
     let value: Value = serde_json::from_str(&output)
         .with_context(|| format!("plugin `{}` returned invalid JSON", plugin.id))?;
+    let ui = match value.get("ui") {
+        Some(ui) if !ui.is_null() => Some(validate_plugin_ui(ui)?),
+        _ => None,
+    };
     let items = value.get("items").cloned().unwrap_or(value);
     if !items.is_array() {
         return Err(anyhow!("plugin `{}` must return an items array", plugin.id));
     }
     let mut items = items.as_array().cloned().unwrap_or_default();
     items.truncate(MAX_ITEMS);
-    Ok(Value::Array(items))
+    Ok(PluginOutput {
+        items: Value::Array(items),
+        ui,
+    })
+}
+
+fn validate_plugin_ui(value: &Value) -> Result<Value> {
+    let encoded = serde_json::to_vec(value).context("serializing plugin ui")?;
+    if encoded.len() > MAX_UI_BYTES {
+        bail!("plugin ui must be at most {MAX_UI_BYTES} bytes");
+    }
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("plugin ui must be an object"))?;
+
+    if let Some(schema) = object.get("schema") {
+        if schema.as_i64() != Some(1) {
+            bail!("plugin ui schema must be 1");
+        }
+        let root = object
+            .get("root")
+            .ok_or_else(|| anyhow!("plugin ui schema requires a root node"))?;
+        let mut nodes = 0;
+        validate_ui_node(root, 0, &mut nodes)?;
+        return Ok(value.clone());
+    }
+
+    if let Some(kind) = object.get("kind") {
+        let kind = kind
+            .as_str()
+            .ok_or_else(|| anyhow!("plugin ui kind must be a string"))?;
+        if kind.trim().is_empty() || kind.chars().count() > 64 {
+            bail!("plugin ui kind must be 1-64 characters");
+        }
+        if let Some(title) = object.get("title") {
+            validate_ui_string_value(title, "plugin ui title")?;
+        }
+        return Ok(value.clone());
+    }
+
+    bail!("plugin ui requires either schema or kind")
+}
+
+fn validate_ui_node(node: &Value, depth: usize, nodes: &mut usize) -> Result<()> {
+    if depth > MAX_UI_DEPTH {
+        bail!("plugin ui nesting exceeds {MAX_UI_DEPTH} levels");
+    }
+    *nodes += 1;
+    if *nodes > MAX_UI_NODES {
+        bail!("plugin ui has more than {MAX_UI_NODES} nodes");
+    }
+    let object = node
+        .as_object()
+        .ok_or_else(|| anyhow!("plugin ui nodes must be objects"))?;
+    let kind = object
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("plugin ui node requires a type"))?;
+
+    match kind {
+        "card" | "section" | "row" => {
+            validate_optional_ui_string(object, "title")?;
+            validate_optional_ui_string(object, "emptyText")?;
+            validate_ui_children(object, depth, nodes)?;
+        }
+        "heading" => {
+            validate_ui_string(object, "text", "plugin ui heading text")?;
+            if let Some(level) = object.get("level") {
+                let level = level
+                    .as_i64()
+                    .ok_or_else(|| anyhow!("plugin ui heading level must be an integer"))?;
+                if !(1..=3).contains(&level) {
+                    bail!("plugin ui heading level must be 1-3");
+                }
+            }
+        }
+        "text" | "empty" => {
+            validate_optional_ui_string(object, "text")?;
+            validate_ui_tone(object)?;
+        }
+        "badge" => {
+            validate_ui_string(object, "text", "plugin ui badge text")?;
+            validate_ui_tone(object)?;
+        }
+        "list" => {
+            validate_optional_ui_string(object, "emptyText")?;
+            let items = object
+                .get("items")
+                .and_then(Value::as_array)
+                .ok_or_else(|| anyhow!("plugin ui list requires an items array"))?;
+            if items.len() > MAX_UI_LIST_ITEMS {
+                bail!("plugin ui list supports at most {MAX_UI_LIST_ITEMS} items");
+            }
+            for item in items {
+                validate_ui_list_item(item)?;
+            }
+        }
+        "button" => {
+            validate_ui_string(object, "label", "plugin ui button label")?;
+            validate_ui_variant(object)?;
+            validate_ui_action(
+                object
+                    .get("action")
+                    .ok_or_else(|| anyhow!("plugin ui button requires an action"))?,
+            )?;
+        }
+        "link" => {
+            validate_ui_string(object, "label", "plugin ui link label")?;
+            validate_ui_action(
+                object
+                    .get("action")
+                    .ok_or_else(|| anyhow!("plugin ui link requires an action"))?,
+            )?;
+        }
+        "separator" => {}
+        other => bail!("plugin ui node type `{other}` is not supported"),
+    }
+    Ok(())
+}
+
+fn validate_ui_children(
+    object: &serde_json::Map<String, Value>,
+    depth: usize,
+    nodes: &mut usize,
+) -> Result<()> {
+    let Some(children) = object.get("children") else {
+        return Ok(());
+    };
+    let children = children
+        .as_array()
+        .ok_or_else(|| anyhow!("plugin ui children must be an array"))?;
+    for child in children {
+        validate_ui_node(child, depth + 1, nodes)?;
+    }
+    Ok(())
+}
+
+fn validate_ui_list_item(value: &Value) -> Result<()> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("plugin ui list items must be objects"))?;
+    validate_ui_string(object, "title", "plugin ui list item title")?;
+    validate_optional_ui_string(object, "detail")?;
+    validate_optional_ui_string(object, "note_path")?;
+    validate_optional_ui_string(object, "status")?;
+    if let Some(action) = object.get("action") {
+        validate_ui_action(action)?;
+    }
+    Ok(())
+}
+
+fn validate_ui_action(value: &Value) -> Result<()> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("plugin ui action must be an object"))?;
+    let kind = object
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("plugin ui action requires a type"))?;
+    match kind {
+        "openNote" => {
+            validate_ui_string(object, "path", "plugin ui openNote path")?;
+        }
+        "openTag" => {
+            validate_ui_string(object, "tag", "plugin ui openTag tag")?;
+        }
+        "openExternal" => {
+            let url = validate_ui_string(object, "url", "plugin ui openExternal url")?;
+            if !["http://", "https://", "mailto:"]
+                .iter()
+                .any(|prefix| url.starts_with(prefix))
+            {
+                bail!("plugin ui openExternal url must use http, https or mailto");
+            }
+        }
+        "runCommand" => {
+            validate_ui_string(object, "id", "plugin ui runCommand id")?;
+        }
+        other => bail!("plugin ui action type `{other}` is not supported"),
+    }
+    Ok(())
+}
+
+fn validate_ui_tone(object: &serde_json::Map<String, Value>) -> Result<()> {
+    if let Some(tone) = object.get("tone") {
+        let tone = tone
+            .as_str()
+            .ok_or_else(|| anyhow!("plugin ui tone must be a string"))?;
+        if !matches!(tone, "muted" | "accent" | "danger" | "success") {
+            bail!("plugin ui tone `{tone}` is not supported");
+        }
+    }
+    Ok(())
+}
+
+fn validate_ui_variant(object: &serde_json::Map<String, Value>) -> Result<()> {
+    if let Some(variant) = object.get("variant") {
+        let variant = variant
+            .as_str()
+            .ok_or_else(|| anyhow!("plugin ui variant must be a string"))?;
+        if !matches!(variant, "default" | "ghost" | "danger") {
+            bail!("plugin ui variant `{variant}` is not supported");
+        }
+    }
+    Ok(())
+}
+
+fn validate_ui_string<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    key: &str,
+    label: &str,
+) -> Result<&'a str> {
+    let value = object
+        .get(key)
+        .ok_or_else(|| anyhow!("{label} is required"))?
+        .as_str()
+        .ok_or_else(|| anyhow!("{label} must be a string"))?;
+    if value.chars().count() > MAX_UI_STRING_CHARS {
+        bail!("{label} is too long");
+    }
+    Ok(value)
+}
+
+fn validate_optional_ui_string(object: &serde_json::Map<String, Value>, key: &str) -> Result<()> {
+    if let Some(value) = object.get(key) {
+        validate_ui_string_value(value, &format!("plugin ui {key}"))?;
+    }
+    Ok(())
+}
+
+fn validate_ui_string_value(value: &Value, label: &str) -> Result<()> {
+    let value = value
+        .as_str()
+        .ok_or_else(|| anyhow!("{label} must be a string"))?;
+    if value.chars().count() > MAX_UI_STRING_CHARS {
+        bail!("{label} is too long");
+    }
+    Ok(())
 }
 
 fn host_query<'js>(ctx: Ctx<'js>, store: Arc<Store>, deadline: Instant) -> Result<Function<'js>> {
@@ -597,6 +854,41 @@ mod tests {
             .iter()
             .any(|plugin| plugin.id == "Acme/hello" && plugin.source == PluginSource::Data));
         assert!(list.errors.is_empty());
+    }
+
+    #[test]
+    fn validates_declarative_plugin_ui() {
+        let ui = json!({
+            "schema": 1,
+            "root": {
+                "type": "card",
+                "title": "Open todos",
+                "children": [{
+                    "type": "list",
+                    "items": [{
+                        "title": "Task",
+                        "action": { "type": "openNote", "path": "pages/task.md" }
+                    }]
+                }]
+            }
+        });
+        assert!(validate_plugin_ui(&ui).is_ok());
+
+        let bad_action = json!({
+            "schema": 1,
+            "root": {
+                "type": "button",
+                "label": "Unsafe",
+                "action": { "type": "openExternal", "url": "javascript:alert(1)" }
+            }
+        });
+        assert!(validate_plugin_ui(&bad_action).is_err());
+
+        let bad_node = json!({
+            "schema": 1,
+            "root": { "type": "script", "text": "nope" }
+        });
+        assert!(validate_plugin_ui(&bad_node).is_err());
     }
 
     #[test]

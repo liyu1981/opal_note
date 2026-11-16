@@ -17,6 +17,8 @@ import {
 
 type Tab = "context" | "info" | "graph";
 
+const TAG_PREVIEW_LIMIT = 12;
+
 export function RightPanel() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const notebook = useAtomValue(activeNotebookAtom);
@@ -150,28 +152,56 @@ function ContextTab({
   onOpenNote: (path: string) => void;
   onOpenTag: (tag: string) => void;
 }) {
+  const [showAllTags, setShowAllTags] = useState(false);
+
   if (!note) {
+    const visibleTags = showAllTags
+      ? tags
+      : tags.slice(0, TAG_PREVIEW_LIMIT);
     return (
       <div className="space-y-5">
+        <section>
+          <SectionLabel icon={<IconLink className="h-3 w-3" />}>
+            Outgoing links
+          </SectionLabel>
+          <Hint>Open a page to see its outgoing links.</Hint>
+        </section>
+        <section>
+          <SectionLabel icon={<IconFile className="h-3 w-3" />}>
+            Backlinks
+          </SectionLabel>
+          <Hint>Open a page to see what links to it.</Hint>
+        </section>
         <section>
           <SectionLabel icon={<IconTag className="h-3 w-3" />}>
             Notebook tags
           </SectionLabel>
           {tags.length > 0 ? (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {tags.map((tag) => (
+            <>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {visibleTags.map((tag) => (
+                  <button
+                    key={tag.tag}
+                    type="button"
+                    onClick={() => onOpenTag(tag.tag)}
+                    className="flex items-center gap-1 rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
+                    title={`Open #${tag.tag}`}
+                  >
+                    #{tag.tag}
+                    <span className="text-[14px] text-faint">{tag.count}</span>
+                  </button>
+                ))}
+              </div>
+              {tags.length > TAG_PREVIEW_LIMIT && (
                 <button
-                  key={tag.tag}
                   type="button"
-                  onClick={() => onOpenTag(tag.tag)}
-                  className="flex items-center gap-1 rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
-                  title={`Open #${tag.tag}`}
+                  onClick={() => setShowAllTags((value) => !value)}
+                  className="mt-1.5 font-mono text-[12px] text-faint transition hover:text-ink"
                 >
-                  #{tag.tag}
-                  <span className="text-[14px] text-faint">{tag.count}</span>
+                  {showAllTags ? "Show fewer" : `Show all ${tags.length}`}
                 </button>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
             <Hint>No tags in this notebook yet.</Hint>
           )}
@@ -188,29 +218,12 @@ function ContextTab({
     );
   }
 
+  const visibleNoteTags = showAllTags
+    ? note.tags
+    : note.tags.slice(0, TAG_PREVIEW_LIMIT);
+
   return (
     <div className="animate-fade-up space-y-5">
-      <section>
-        <SectionLabel icon={<IconTag className="h-3 w-3" />}>Tags</SectionLabel>
-        {note.tags.length > 0 ? (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {note.tags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => onOpenTag(tag)}
-                className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
-                title={`Open #${tag}`}
-              >
-                #{tag}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <Hint>Add commas to the tag field, or write #tags inline.</Hint>
-        )}
-      </section>
-
       <section>
         <SectionLabel icon={<IconLink className="h-3 w-3" />}>
           Outgoing links
@@ -270,6 +283,38 @@ function ContextTab({
           </ul>
         ) : (
           <Hint>Nothing links here yet.</Hint>
+        )}
+      </section>
+
+      <section>
+        <SectionLabel icon={<IconTag className="h-3 w-3" />}>Tags</SectionLabel>
+        {note.tags.length > 0 ? (
+          <>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {visibleNoteTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => onOpenTag(tag)}
+                  className="rounded-md border border-line bg-white/60 px-1.5 py-0.5 font-sans text-[14px] text-ink-soft transition hover:border-accent/30 hover:bg-accent-soft hover:text-accent-strong"
+                  title={`Open #${tag}`}
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+            {note.tags.length > TAG_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                onClick={() => setShowAllTags((value) => !value)}
+                className="mt-1.5 font-mono text-[12px] text-faint transition hover:text-ink"
+              >
+                {showAllTags ? "Show fewer" : `Show all ${note.tags.length}`}
+              </button>
+            )}
+          </>
+        ) : (
+          <Hint>Add commas to the tag field, or write #tags inline.</Hint>
         )}
       </section>
     </div>

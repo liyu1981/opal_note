@@ -2,14 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
-import type { JournalPage, JournalPluginResult, Note } from "../api/types";
+import type {
+  JournalPage,
+  JournalPluginResult,
+  Note,
+  PluginAction,
+} from "../api/types";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate, todayKey, ensureJournalPage } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { useViewAutoFocus } from "../lib/useViewFocus";
-import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
+import { useShortcutRunner } from "../lib/useShortcutRunner";
+import { noteLinkKeys, normalizeLinkTarget, safeExternalUrl } from "../lib/markdown";
 import { JournalCard, type JournalCardHandle } from "./JournalCard";
-import { PluginCard } from "./PluginCard";
+import { PluginHost } from "./PluginHost";
 import { IconCalendar, IconFile, IconPlus, IconStar } from "./Icons";
 import {
   activeNotebookIdAtom,
@@ -50,13 +56,14 @@ export function HomeView() {
   const refresh = useSetAtom(refreshAtom);
   const refreshNotes = useSetAtom(refreshNotesAtom);
   const navigate = useAppNavigate();
+  const runCommand = useShortcutRunner();
   const todayCardRef = useRef<JournalCardHandle>(null);
 
   const [today, setToday] = useState<JournalPage | null>(null);
   const [loadingToday, setLoadingToday] = useState(true);
   const [todayError, setTodayError] = useState<string | null>(null);
-  const [todos, setTodos] = useState<JournalPluginResult | null>(null);
-  const [todosError, setTodosError] = useState<string | null>(null);
+  const [plugins, setPlugins] = useState<JournalPluginResult[]>([]);
+  const [pluginsError, setPluginsError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   useViewAutoFocus(
@@ -128,28 +135,47 @@ export function HomeView() {
 
   useEffect(() => {
     if (!notebookId) {
-      setTodos(null);
+      setPlugins([]);
       return;
     }
     let cancelled = false;
     api
       .journalPlugins(notebookId)
-      .then((plugins) => {
+      .then((results) => {
         if (cancelled) return;
-        setTodos(plugins.find((plugin) => plugin.id === "OpalNote/todos") ?? null);
-        setTodosError(null);
+        setPlugins(results);
+        setPluginsError(null);
       })
       .catch((cause) => {
         if (cancelled) return;
-        setTodos(null);
-        setTodosError(
-          cause instanceof Error ? cause.message : "Could not load todos",
+        setPlugins([]);
+        setPluginsError(
+          cause instanceof Error ? cause.message : "Could not load plugins",
         );
       });
     return () => {
       cancelled = true;
     };
   }, [notebookId, notesRevision, pluginRevision]);
+
+  function handlePluginAction(action: PluginAction) {
+    switch (action.type) {
+      case "openNote":
+        navigate({ view: "note", noteId: action.path });
+        break;
+      case "openTag":
+        navigate({ view: "tag", tag: action.tag });
+        break;
+      case "openExternal": {
+        const safe = safeExternalUrl(action.url);
+        if (safe) window.open(safe, "_blank", "noopener,noreferrer");
+        break;
+      }
+      case "runCommand":
+        runCommand(action.id);
+        break;
+    }
+  }
 
   const recent = useMemo(() => {
     const todayPath = `journals/${todayKey()}.md`;
@@ -342,28 +368,31 @@ export function HomeView() {
         <aside className="sticky top-6 hidden max-h-[calc(100vh-5rem)] self-start overflow-y-auto rounded-xl border border-line bg-paper p-3 lg:block">
           <div className="mb-2 flex items-center justify-between px-1">
             <h2 className="font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
-              Outstanding todos
+              Plugins
             </h2>
-            {todos && (
+            {plugins.length > 0 && (
               <span className="font-mono text-[14px] text-faint">
-                {todos.items.length}
+                {plugins.length}
               </span>
             )}
           </div>
-          {todosError ? (
+          {pluginsError ? (
             <p className="rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
-              {todosError}
+              {pluginsError}
             </p>
-          ) : todos ? (
-            <PluginCard
-              plugin={todos}
-              onOpen={(item) =>
-                navigate({ view: "note", noteId: item.note_path })
-              }
-            />
+          ) : plugins.length > 0 ? (
+            <div className="space-y-2">
+              {plugins.map((plugin) => (
+                <PluginHost
+                  key={plugin.id}
+                  plugin={plugin}
+                  onAction={handlePluginAction}
+                />
+              ))}
+            </div>
           ) : (
             <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">
-              No todo plugin loaded.
+              No plugins loaded.
             </p>
           )}
         </aside>

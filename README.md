@@ -483,11 +483,12 @@ back/forward history controls.
   using the same resolved-link data, filling the available workspace. Drag the
   canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,
   and reset the view. It participates in normal back/forward history.
-- **Home todo strip** — the Home dashboard reserves a right-hand strip for
-  outstanding todo-plugin items. Plugins run server-side in QuickJS, use
-  read-only Datalog, and return JSON items. The built-in todos plugin lists open
-  tasks across the notebook; clicking one opens its page. Settings → Plugins
-  shows installed plugins and reloads the data plugin folder.
+- **Home plugin strip** — the Home dashboard renders every registered plugin
+  result in its right-hand strip. Plugins run server-side in QuickJS, use
+  read-only Datalog, and return JSON items plus an optional declarative UI. The
+  built-in todos plugin lists open tasks across the notebook; clicking one
+  opens its page. Settings → Plugins shows installed plugins and reloads the
+  data plugin folder.
 - **Tag view** — `/<notebook>/tag/<tag>` shows every page carrying `#tag` as
   editable cards containing only the tagged block, with a page-title list for
   fast jumping. Clicking a tag in a journal card, page, pages table, right
@@ -506,11 +507,49 @@ plugins/builtin/OpalNote/todos/plugin.js
 
 `plugin.json` contains an `id` shaped `<domain>/<extension>` (`OpalNote/todos`
 for built-ins, e.g. `Acme/my-widget` for a data plugin), plus `title` and
-`description`. `plugin.js` is an IIFE
-that returns `JSON.stringify({ items: [...] })`; it can call the read-only
+`description`. `plugin.js` is an IIFE that returns
+`JSON.stringify({ items: [...], ui?: ... })`; it can call the read-only
 `__query(script, params)` bridge and read `__notebook_id`. Built-in ids take
 precedence: a data plugin with the same id is rejected and reported in Settings
 → Plugins. Reloading does not require a server restart.
+
+The optional `ui` object can be a safe renderer kind:
+
+```json
+{ "kind": "todo-list", "title": "Open todos" }
+```
+
+or a declarative schema:
+
+```json
+{
+  "schema": 1,
+  "root": {
+    "type": "card",
+    "title": "Open todos",
+    "children": [
+      {
+        "type": "list",
+        "emptyText": "All clear.",
+        "items": [
+          {
+            "title": "Task",
+            "detail": "Page title",
+            "status": "doing",
+            "action": { "type": "openNote", "path": "pages/task.md" }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Supported schema nodes include `card`, `section`, `row`, `heading`, `text`,
+`badge`, `list`, `button`, `link`, `separator`, and `empty`. Actions are
+`openNote`, `openTag`, `openExternal`, and `runCommand`; external URLs are
+restricted to safe schemes. The server validates the UI shape and limits before
+returning it. Unknown kinds fall back to the generic item card.
 
 ### Backgrounds
 

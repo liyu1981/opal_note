@@ -49,11 +49,59 @@ export interface JournalPluginItem {
   updated_at?: number;
 }
 
+export type PluginAction =
+  | { type: "openNote"; path: string }
+  | { type: "openTag"; tag: string }
+  | { type: "openExternal"; url: string }
+  | { type: "runCommand"; id: string };
+
+export type PluginUiTone = "muted" | "accent" | "danger" | "success";
+
+export type PluginUiNodeType =
+  | "card"
+  | "section"
+  | "row"
+  | "heading"
+  | "text"
+  | "badge"
+  | "list"
+  | "button"
+  | "link"
+  | "separator"
+  | "empty";
+
+export interface PluginUiListItem {
+  title: string;
+  detail?: string;
+  note_path?: string;
+  status?: string;
+  action?: PluginAction;
+}
+
+export interface PluginUiNode {
+  type: PluginUiNodeType;
+  title?: string;
+  text?: string;
+  label?: string;
+  level?: number;
+  tone?: PluginUiTone;
+  variant?: "default" | "ghost" | "danger";
+  emptyText?: string;
+  children?: PluginUiNode[];
+  items?: PluginUiListItem[];
+  action?: PluginAction;
+}
+
+export type PluginUi =
+  | { schema: 1; root: PluginUiNode }
+  | { kind: string; title?: string };
+
 export interface JournalPluginResult {
   id: string;
   title: string;
   description: string;
   items: JournalPluginItem[];
+  ui?: PluginUi;
   error?: string;
 }
 

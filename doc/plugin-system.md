@@ -5,6 +5,22 @@ loaded, executed, exposed by the server, and rendered by the web client. It
 also records the main limitations and possible directions for the next
 iteration.
 
+## Implementation status
+
+The first two UI-expansion phases are implemented:
+
+- plugin results may carry an optional `ui` descriptor
+- Home renders every plugin result instead of selecting `OpalNote/todos`
+- `PluginHost` supports safe renderer kinds, declarative schema nodes, and the
+  legacy item card fallback
+- the server validates schema nodes, actions, string sizes, depth, node count
+  and payload size before returning them
+- actions are limited to `openNote`, `openTag`, `openExternal`, and
+  `runCommand`
+
+The rest of this document describes the data pipeline; the schema contract is
+summarized below in the UI section.
+
 ## 1. High-level model
 
 OpalNote plugins are **server-side JavaScript widgets** backed by read-only
@@ -431,6 +447,33 @@ Each item button:
   with `journals/`)
 - appends `· doing` when `status === "doing"`
 - opens the owning note via `navigate({ view: "note", noteId: item.note_path })`
+
+### 6.3.1 Declarative UI schema
+
+A plugin can return `ui.schema: 1` with a `root` node. The supported nodes are:
+
+```text
+card, section, row, heading, text, badge, list,
+button, link, separator, empty
+```
+
+The supported actions are:
+
+```text
+openNote, openTag, openExternal, runCommand
+```
+
+`PluginHost` renders the tree through `PluginNodeView`; unknown node types are
+ignored. The server enforces:
+
+- at most 64 KiB UI JSON
+- at most 8 nesting levels
+- at most 200 nodes/items
+- at most 200 characters per string
+- allowed action types and safe external URL schemes
+
+The built-in todos plugin now returns a schema card/list instead of relying on
+the hard-coded Home selection.
 
 ### 6.4 Refresh path
 
