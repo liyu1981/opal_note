@@ -107,12 +107,23 @@ export function livePreview(optionsRef: OptionsRef): Extension {
       decorations: (plugin) => plugin.decorations,
     }),
     EditorView.domEventHandlers({
-      // A tag is a mark, so CodeMirror would normally replace the target with
-      // a source line when mousedown moves the selection. In reading mode open
-      // it before that happens; while the editor is focused, leave mousedown
-      // alone so the cursor still lands in the text.
-      click(event, view) {
-        if (view.hasFocus && !optionsRef.current.readOnly) return false;
+      // A tag is a mark, so CodeMirror would move the selection on mousedown
+      // and re-render that line as plain source, destroying the mark before a
+      // click event could land on it. Open the tag on mousedown instead; the
+      // line that is currently being edited shows source rather than a
+      // `.cm-live-tag` mark, so its tags stay clickable as text and the cursor
+      // still lands there. Modifier clicks fall through so text selection and
+      // range operations keep working.
+      mousedown(event) {
+        if (
+          event.button !== 0 ||
+          event.shiftKey ||
+          event.altKey ||
+          event.metaKey ||
+          event.ctrlKey
+        ) {
+          return false;
+        }
         return openTagFromEvent(event, optionsRef.current);
       },
     }),

@@ -204,6 +204,11 @@ web/
   the active-line tint remains the focus cue. Keep the source hanging indent
   (`.cm-live-hang` + content-column `--block-pad`) so wrapped focused list and
   paragraph lines stay under their content, not at the editor edge.
+- Inline tags are marks (`.cm-live-tag`), so `livePreview` opens them on
+  `mousedown`: CodeMirror's selection handling would otherwise re-render the
+  line as source and destroy the mark before a `click` could land on it.
+  Modifier clicks fall through so text selection still works, and the block
+  being edited exposes `#tag` as plain source text instead of a mark.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
   CodeMirror completion source after wikilinks. They trigger only when `/` is
   the first non-whitespace character of a source line and are suppressed inside
