@@ -145,10 +145,16 @@ the browser tab after a client rebuild to load the new bundle. Override the list
 directory with `OPALNOTE_DATA_DIR`.
 
 HTTPS is on by default. `pnpm dev` creates `certs/localhost.pem` and
-`certs/localhost-key.pem` with mkcert if they are missing. Run
-`mkcert -install` once so the browser trusts the local CA, then open the
-printed `https://` URL. Use `pnpm certs` to regenerate certificates or
-`pnpm dev -- --no-tls` for plain HTTP.
+`certs/localhost-key.pem` with mkcert if they are missing. The certificate
+covers `localhost`, `127.0.0.1`, `::1` and **every non-internal IPv4 address**,
+so opening `https://<lan-ip>:7827` from a phone or another machine is a properly
+secured origin (that is what the PWA needs — see below). `pnpm dev` regenerates
+the certificate when the current addresses are not covered, so a changed LAN IP
+is handled automatically; add extra names with `OPALNOTE_TLS_HOSTS=a.example,10.0.0.5`
+and rerun `pnpm certs`. Run `mkcert -install` once — on each device that opens
+the app — so the browser trusts the local CA, then open the printed `https://`
+URL. Use `pnpm certs` to regenerate certificates or `pnpm dev -- --no-tls` for
+plain HTTP.
 
 ```bash
 # production: one binary, assets embedded
@@ -845,6 +851,16 @@ current shell. `/sw.js`, the manifest, the icons and the placeholder are served
 
 `pnpm dev` serves production bundles, so the worker is active there too; open
 `/` once, stop the server and reload to see the placeholder.
+
+Installing the PWA needs a **trusted** certificate for the exact URL host:
+Chrome refuses the service worker (and reports `not-from-secure-origin`) when
+the dev certificate does not include the address you typed. Either open
+`https://localhost:7827`/`127.0.0.1` or make sure the certificate covers the
+LAN IP (`pnpm certs` does) and that the device trusts the mkcert CA. The install
+entry is in Chrome's ⋮ menu under **Cast, save and share → Install page as
+app**; the omnibox install icon only appears while Chrome decides the page
+qualifies, so its absence is not a failure. DevTools → **Application →
+Manifest** (and `chrome://web-app-internals`) lists any installability problem.
 
 ## HTTP API
 

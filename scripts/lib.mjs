@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { X509Certificate } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { cp, rm, stat } from "node:fs/promises";
+import { networkInterfaces } from "node:os";
 import path from "node:path";
 
 export const ROOT = path.resolve(import.meta.dirname, "..");
@@ -48,7 +50,50 @@ export function run(command, args) {
   if (!tryRun(command, args)) process.exit(1);
 }
 
-/** Create local mkcert certificates when TLS is enabled and files are missing. */
+/**
+ * Hosts the dev certificate must cover: localhost plus every non-internal IPv4
+ * address, so `https://<lan-ip>:7827` is a properly secured origin. Browsers
+ * refuse service workers (and therefore PWA installation) on a certificate
+ * whose SANs do not include the URL host. `OPALNOTE_TLS_HOSTS` adds names/IPs
+ * (for example a tunnel or proxy hostname).
+ */
+export function devCertificateNames() {
+  const names = new Set(["localhost", "127.0.0.1", "::1"]);
+  for (const value of String(process.env.OPALNOTE_TLS_HOSTS ?? "").split(",")) {
+    if (value.trim()) names.add(value.trim());
+  }
+  for (const list of Object.values(networkInterfaces())) {
+    for (const address of list ?? []) {
+      if (!address.internal && address.family === "IPv4") {
+        names.add(address.address);
+      }
+    }
+  }
+  return [...names];
+}
+
+/** True when the PEM certificate covers every DNS name and IPv4 host. */
+export function certificateCovers(certPath, names) {
+  try {
+    const certificate = new X509Certificate(readFileSync(certPath));
+    const alt = certificate.subjectAltName ?? "";
+    return names
+      .filter((name) => !name.includes(":"))
+      .every((name) =>
+        /^\d+\.\d+\.\d+\.\d+$/u.test(name)
+          ? alt.includes(`IP Address:${name}`)
+          : alt.includes(`DNS:${name}`),
+      );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create local mkcert certificates when TLS is enabled. Missing files and a
+ * certificate that does not cover the current LAN addresses both regenerate it,
+ * which is what makes the PWA installable from another device on the LAN.
+ */
 export function ensureDevCerts(args) {
   if (
     args.includes("--no-tls") ||
@@ -60,7 +105,13 @@ export function ensureDevCerts(args) {
   }
   const cert = path.join(ROOT, "certs", "localhost.pem");
   const key = path.join(ROOT, "certs", "localhost-key.pem");
-  if (existsSync(cert) && existsSync(key)) return;
+  if (
+    existsSync(cert) &&
+    existsSync(key) &&
+    certificateCovers(cert, devCertificateNames())
+  ) {
+    return;
+  }
   step("Preparing local HTTPS certificates");
   run("node", ["scripts/certs.mjs"]);
 }

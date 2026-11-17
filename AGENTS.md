@@ -177,6 +177,11 @@ web/
   reindex) use `refreshAtom`; note content/title/tag saves use
   `refreshNotesAtom`. Do not call global refresh from the autosave path.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
+- `scripts/certs.mjs` / `devCertificateNames()` cover `localhost`, `127.0.0.1`,
+  `::1` and every non-internal IPv4 address (plus `OPALNOTE_TLS_HOSTS`);
+  `ensureDevCerts` regenerates when the cert no longer covers the current
+  addresses. A PWA needs a certificate whose SANs include the exact URL host —
+  Chrome blocks the service worker (`not-from-secure-origin`) otherwise.
 - The web client is an installable **PWA** with deliberately minimal offline
   support: `web/public/manifest.webmanifest` + `icons/` (192/512/maskable and
   an apple-touch 180) describe the app, and `web/public/sw.js` caches only
