@@ -642,6 +642,30 @@ function buildDecorations(
       claimed.push([start, end]);
     });
 
+    // ---- bare URLs -------------------------------------------------------
+    // Recognize typed links the way Obsidian does: `https://…` and `www.…`
+    // become clickable without wrapping them in markdown. Markdown links,
+    // images, wikilinks and code spans were claimed above, so their URLs are
+    // never matched twice.
+    if (!active) {
+      const bareUrl = /(?:https?:\/\/|www\.)[^\s<>"'`\]]+/giu;
+      process(bareUrl, (match) => {
+        const start = line.from + match.index;
+        const end = start + match[0].length;
+        if (insideClaimed(start, end) || overlaps(start, end)) return;
+        const display = trimUrlTrailing(match[0]);
+        if (!display) return;
+        const trimmedEnd = start + display.length;
+        const url = /^www\./iu.test(display) ? `https://${display}` : display;
+        replace(
+          start,
+          trimmedEnd,
+          new ExternalLinkWidget(display, url, options.onOpenLink),
+        );
+        claimed.push([start, trimmedEnd]);
+      });
+    }
+
     const bold = /\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu;
     process(bold, (match) => {
       const start = line.from + match.index;
@@ -717,6 +741,26 @@ function normalizePosixPath(path: string): string {
     else parts.push(part);
   }
   return parts.join("/");
+}
+
+/** Drop sentence punctuation glued to the end of a bare URL. */
+function trimUrlTrailing(value: string): string {
+  let url = value;
+  for (;;) {
+    const trimmed = url.replace(/[.,;:!?…"'”’]+$/u, "");
+    // A closing paren/bracket only belongs to the URL when it is balanced.
+    const last = trimmed.at(-1);
+    if (last === ")" || last === "]" || last === "}") {
+      const open = last === ")" ? "(" : last === "]" ? "[" : "{";
+      const opens = trimmed.split(open).length - 1;
+      const closes = trimmed.split(last).length - 1;
+      if (closes > opens) {
+        url = trimmed.slice(0, -1);
+        continue;
+      }
+    }
+    return trimmed;
+  }
 }
 
 function resolveAssetPath(notePath: string, src: string): string | null {

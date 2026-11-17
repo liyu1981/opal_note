@@ -242,6 +242,11 @@ web/
   destination in `<...>` when the name still has spaces or punctuation;
   sanitized upload names usually need neither. Asset rename sanitizes the new
   name the same way and rewrites raw `assets/<path>` references.
+- Bare URLs are recognized in the live preview: `https://…` and `www.…` render
+  as clickable `ExternalLinkWidget`s (`www.` opens with `https://`), with
+  trailing sentence punctuation dropped and balanced parentheses kept. Markdown
+  links, images, wikilinks, inline code and fenced code are claimed first, so
+  their URLs are never double-handled; the active source line stays raw.
 - In the live preview an asset reference renders by kind: `![](assets/x.png)` is
   an image, `![](assets/x.mp4)`/`![](assets/x.mp3)` become `MediaWidget`
   players with native controls, and everything else (plain links included) is an
