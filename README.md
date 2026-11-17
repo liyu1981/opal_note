@@ -215,7 +215,30 @@ opalnote update --update-dir ~/.opalnote/updates
 ```
 
 `opalnote update` checks the selected channel, downloads a newer candidate and
-leaves it staged for the next restart. Archives are unpacked into
+leaves it staged for the next restart. It reports what it is doing — the
+running build, the channel and repository, the latest release or artifact it
+found, every download with its size, and the staged version/commit/hash — so a
+cron log explains why a run did or did not stage anything:
+
+```text
+OpalNote updater
+  current build : 0.1.0 (82ec9f1, committed 2026-11-17T12:12:43Z)
+  channel       : development (liyu1981/opal_note)
+  update dir    : /home/ubuntu/.opalnote/updates
+Checking GitHub Actions artifacts for liyu1981/opal_note with `gh`
+Latest artifact: opalnote-0.1.0-e968d8-aarch64 (created 2026-11-16T20:40:10Z, run 12345)
+Downloading artifact opalnote-0.1.0-e968d8-aarch64 with `gh run download`…
+Artifact archive: …/download/opalnote-0.1.0-e968d8-aarch64.tar.gz
+Extracted …/download/opalnote (29.3 MiB)
+Staged 0.1.0 (e968d8) in /home/ubuntu/.opalnote/updates/candidate
+  binary : 29.3 MiB
+  sha256 : …
+Update 0.1.0 (e968d8) is staged in …; restart the server to apply it.
+```
+
+When an already-downloaded candidate is reused it says so, and a candidate
+that is not newer (or a missing release/artifact) is reported with the version
+it compared against. Progress goes to stderr, the final line to stdout. Archives are unpacked into
 `<update-dir>/download/`, which is wiped at the start of each run and again once
 the candidate is staged. The `release` channel queries GitHub's
 public `releases/latest` API over HTTPS and prefers a matching `manifest.json`

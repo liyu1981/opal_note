@@ -202,73 +202,150 @@ pub fn check_remote_update(
 
     if let Some(existing) = read_candidate_manifest(update_dir)? {
         if candidate_is_newer(&existing)? {
-            tracing::debug!(
-                version = %existing.version,
-                "using the already downloaded update candidate"
+            eprintln!(
+                "Using the candidate already staged in {}: {} ({})",
+                candidate_dir(update_dir).display(),
+                existing.version,
+                existing.commit
             );
             return Ok(Some(existing));
         }
     }
 
-    let result = stage_candidate(update_dir, repo, channel);
+    let result = stage_candidate(update_dir, repo, channel).and_then(|outcome| match outcome {
+        StageOutcome::Staged(manifest) => Ok(Some(manifest)),
+        StageOutcome::NotFound => {
+            eprintln!(
+                "No {} update source was found (repo {repo}).",
+                channel_label(channel)
+            );
+            Ok(None)
+        }
+        StageOutcome::NotNewer(manifest) => {
+            eprintln!(
+                "Latest {} candidate {} ({}, {}) is not newer than the running build.",
+                channel_label(channel),
+                manifest.version,
+                if manifest.commit.is_empty() {
+                    "no commit"
+                } else {
+                    manifest.commit.as_str()
+                },
+                format_time(manifest.commit_time)
+            );
+            Ok(None)
+        }
+    });
     let _ = fs::remove_dir_all(download_dir(update_dir));
     result
 }
 
-fn stage_candidate(
-    update_dir: &Path,
-    repo: &str,
-    channel: UpdateChannel,
-) -> Result<Option<CandidateManifest>> {
+fn stage_candidate(update_dir: &Path, repo: &str, channel: UpdateChannel) -> Result<StageOutcome> {
     let found = match channel {
         UpdateChannel::Release => discover_release_candidate(update_dir, repo)?,
         UpdateChannel::Dev => discover_dev_candidate(update_dir, repo)?,
     };
     let Some((binary, manifest)) = found else {
-        return Ok(None);
+        return Ok(StageOutcome::NotFound);
     };
     if !candidate_is_newer(&manifest)? {
-        tracing::info!(
-            version = %manifest.version,
-            channel = ?channel,
-            "latest GitHub candidate is not newer"
-        );
-        return Ok(None);
+        return Ok(StageOutcome::NotNewer(manifest));
     }
     write_candidate(update_dir, &binary, &manifest)?;
-    tracing::info!(
-        version = %manifest.version,
-        commit = %manifest.commit,
-        channel = ?channel,
-        "downloaded self-update candidate"
+    eprintln!(
+        "Staged {} ({}) in {}",
+        manifest.version,
+        if manifest.commit.is_empty() {
+            "no commit"
+        } else {
+            manifest.commit.as_str()
+        },
+        candidate_dir(update_dir).display()
     );
-    Ok(Some(manifest))
+    if let Some(size) = manifest.size {
+        eprintln!("  binary : {}", human_bytes(size));
+    }
+    if let Some(hash) = manifest.sha256.as_deref() {
+        eprintln!("  sha256 : {}", hash);
+    }
+    Ok(StageOutcome::Staged(manifest))
 }
 
 /// CLI entry point for `opalnote update`: discover and stage a newer candidate.
 /// This does not replace the running binary; the next server restart applies it.
 pub fn run_update(update_dir: &Path, repo: &str, channel: UpdateChannel) -> Result<()> {
+    eprintln!("OpalNote updater");
+    eprintln!(
+        "  current build : {} ({}, committed {})",
+        build_info::VERSION,
+        build_info::COMMIT,
+        format_time(build_info::commit_time())
+    );
+    eprintln!("  channel       : {} ({})", channel_label(channel), repo);
+    eprintln!("  update dir    : {}", update_dir.display());
+
     let result = check_remote_update(update_dir, repo, channel)?;
     match result {
         Some(manifest) => {
             println!(
-                "Downloaded {} ({}) to {}; restart the server to apply it.",
+                "Update {} ({}) is staged in {}; restart the server to apply it.",
                 manifest.version,
-                manifest.commit,
+                if manifest.commit.is_empty() {
+                    "no commit"
+                } else {
+                    manifest.commit.as_str()
+                },
                 candidate_dir(update_dir).display()
             );
         }
         None => {
             println!(
-                "No newer {} update is available for this build.",
-                match channel {
-                    UpdateChannel::Release => "release",
-                    UpdateChannel::Dev => "development",
-                }
+                "Nothing staged: the running build {} ({}) is current.",
+                build_info::VERSION,
+                build_info::COMMIT
             );
         }
     }
     Ok(())
+}
+
+/// Human-readable byte count for progress output.
+fn human_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    let value = bytes as f64;
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if value < KIB * KIB {
+        format!("{:.1} KiB", value / KIB)
+    } else if value < KIB * KIB * KIB {
+        format!("{:.1} MiB", value / (KIB * KIB))
+    } else {
+        format!("{:.2} GiB", value / (KIB * KIB * KIB))
+    }
+}
+
+/// RFC3339 rendering of an embedded/release timestamp, or `unknown`.
+fn format_time(secs: i64) -> String {
+    if secs <= 0 {
+        return "unknown".to_string();
+    }
+    DateTime::from_timestamp(secs, 0)
+        .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn channel_label(channel: UpdateChannel) -> &'static str {
+    match channel {
+        UpdateChannel::Release => "release",
+        UpdateChannel::Dev => "development",
+    }
+}
+
+/// Result of looking for a candidate, so the CLI can explain what happened.
+enum StageOutcome {
+    Staged(CandidateManifest),
+    NotFound,
+    NotNewer(CandidateManifest),
 }
 
 fn candidate_is_newer(manifest: &CandidateManifest) -> Result<bool> {
@@ -326,6 +403,8 @@ fn discover_release_candidate(
     struct Asset {
         name: String,
         browser_download_url: String,
+        #[serde(default)]
+        size: u64,
     }
     #[derive(Deserialize)]
     struct ReleaseView {
@@ -339,6 +418,7 @@ fn discover_release_candidate(
     // The public releases API is enough for discovery; it does not need `gh`
     // or a GitHub token. The dev channel still uses the authenticated CLI.
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    eprintln!("Checking GitHub releases: {url}");
     let response = ureq::get(&url)
         .set("user-agent", "opalnote-updater")
         .set("accept", "application/vnd.github+json")
@@ -346,7 +426,7 @@ fn discover_release_candidate(
     let response = match response {
         Ok(response) => response,
         Err(ureq::Error::Status(404, _)) => {
-            tracing::debug!("no stable GitHub releases found");
+            eprintln!("No published release found for {repo}.");
             return Ok(None);
         }
         Err(err) => return Err(err.into()),
@@ -354,6 +434,14 @@ fn discover_release_candidate(
     let view: ReleaseView = response
         .into_json()
         .with_context(|| format!("parsing release response from {url}"))?;
+    eprintln!(
+        "Latest release: {} (published {})",
+        view.tag_name,
+        view.published_at
+            .as_deref()
+            .map(|value| format_time(parse_time(Some(value))))
+            .unwrap_or_else(|| "unknown".to_string())
+    );
     let target = target_triple();
     let binary_asset = view
         .assets
@@ -371,6 +459,18 @@ fn discover_release_candidate(
         asset.name == "manifest.json" || asset.name == format!("manifest-{target}.json")
     });
 
+    eprintln!(
+        "Release archive: {} ({})",
+        binary_asset.name,
+        if binary_asset.size > 0 {
+            human_bytes(binary_asset.size)
+        } else {
+            "unknown size".to_string()
+        }
+    );
+    if let Some(asset) = manifest_asset {
+        eprintln!("Release manifest: {}", asset.name);
+    }
     let download = reset_download_dir(update_dir)?;
     let archive_name = asset_file_name(&binary_asset.name);
     let archive = download.join(&archive_name);
@@ -383,6 +483,7 @@ fn discover_release_candidate(
     }
 
     let binary = extract_binary(&archive, &download)?;
+    eprintln!("Extracted {} from {}", binary.display(), archive.display());
     let mut manifest = match manifest_asset.and_then(|_| find_manifest(&download)) {
         Some(path) => {
             let manifest: CandidateManifest = serde_json::from_reader(
@@ -422,6 +523,7 @@ fn asset_file_name(name: &str) -> String {
 }
 
 fn download_asset(url: &str, destination: &Path) -> Result<()> {
+    eprintln!("Downloading {url}");
     let response = ureq::get(url)
         .set("user-agent", "opalnote-updater")
         .call()
@@ -429,9 +531,14 @@ fn download_asset(url: &str, destination: &Path) -> Result<()> {
     let mut reader = response.into_reader();
     let mut output =
         File::create(destination).with_context(|| format!("creating {}", destination.display()))?;
-    std::io::copy(&mut reader, &mut output)
+    let written = std::io::copy(&mut reader, &mut output)
         .with_context(|| format!("writing {}", destination.display()))?;
     output.sync_all()?;
+    eprintln!(
+        "Downloaded {} ({})",
+        destination.display(),
+        human_bytes(written)
+    );
     Ok(())
 }
 
@@ -459,6 +566,7 @@ fn discover_dev_candidate(
         artifacts: Vec<Artifact>,
     }
 
+    eprintln!("Checking GitHub Actions artifacts for {repo} with `gh`");
     let list: ArtifactList = gh_json(&[
         "api".into(),
         format!("repos/{repo}/actions/artifacts?per_page=100"),
@@ -473,7 +581,7 @@ fn discover_dev_candidate(
         .filter(|artifact| artifact.name.ends_with(&format!("-{arch}")))
         .max_by_key(|artifact| artifact.created_at.clone())
     else {
-        tracing::debug!("no unexpired development artifacts found");
+        eprintln!("No unexpired opalnote-*-{arch} artifact found for {repo}.");
         return Ok(None);
     };
     let (version, commit) = parse_dev_artifact_name(&artifact.name, arch)
@@ -481,7 +589,17 @@ fn discover_dev_candidate(
     let Some(run) = artifact.workflow_run else {
         return Ok(None);
     };
+    eprintln!(
+        "Latest artifact: {} (created {}, run {})",
+        artifact.name,
+        format_time(parse_time(Some(&artifact.created_at))),
+        run.id
+    );
     let download = reset_download_dir(update_dir)?;
+    eprintln!(
+        "Downloading artifact {} with `gh run download`…",
+        artifact.name
+    );
     gh(&[
         "run".into(),
         "download".into(),
@@ -495,7 +613,13 @@ fn discover_dev_candidate(
     ])?;
     let archive = find_archive(&download)
         .ok_or_else(|| anyhow::anyhow!("downloaded development artifact archive not found"))?;
+    eprintln!("Artifact archive: {}", archive.display());
     let binary = extract_binary(&archive, &download)?;
+    eprintln!(
+        "Extracted {} ({})",
+        binary.display(),
+        human_bytes(fs::metadata(&binary)?.len())
+    );
     let manifest = CandidateManifest {
         version,
         commit: if commit.is_empty() {
@@ -806,6 +930,16 @@ mod tests {
         assert!(is_newer(&current, 101, &current, 100));
         assert!(!is_newer(&current, 100, &current, 100));
         assert!(!is_newer(&current, 99, &current, 100));
+    }
+
+    #[test]
+    fn formats_progress_output() {
+        assert_eq!(human_bytes(512), "512 B");
+        assert_eq!(human_bytes(2048), "2.0 KiB");
+        assert_eq!(human_bytes(5 * 1024 * 1024), "5.0 MiB");
+        assert_eq!(human_bytes(3 * 1024 * 1024 * 1024), "3.00 GiB");
+        assert_eq!(format_time(0), "unknown");
+        assert_eq!(format_time(1_700_000_000), "2023-11-14T22:13:20Z");
     }
 
     #[test]
