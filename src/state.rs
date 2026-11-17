@@ -20,6 +20,8 @@ pub struct AppState {
     pub secure_cookies: bool,
     pub query_timeout_secs: f64,
     pub plugin_timeout_secs: f64,
+    /// Extra host[:port] values trusted by the viewer CSP (proxy deployments).
+    pub csp_hosts: Vec<String>,
     pub started_at: Instant,
     pub version: &'static str,
 }
@@ -35,6 +37,7 @@ impl AppState {
         secure_cookies: bool,
         query_timeout_secs: f64,
         plugin_timeout_secs: f64,
+        csp_hosts: Vec<String>,
     ) -> Self {
         Self {
             store,
@@ -46,6 +49,7 @@ impl AppState {
             secure_cookies,
             query_timeout_secs,
             plugin_timeout_secs,
+            csp_hosts,
             started_at: Instant::now(),
             version: crate::build_info::VERSION,
         }

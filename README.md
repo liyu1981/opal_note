@@ -309,6 +309,7 @@ no_tls = false
 tls_cert = "certs/localhost.pem"
 tls_key = "certs/localhost-key.pem"
 dev_cors = false
+csp_hosts = []
 ```
 
 Server command:
@@ -349,6 +350,7 @@ or `--force` to customize it; the command prints the enable commands.
 | `--tls-cert`               | `OPALNOTE_TLS_CERT`           | `certs/localhost.pem` | PEM certificate chain for HTTPS                     |
 | `--tls-key`                | `OPALNOTE_TLS_KEY`            | `certs/localhost-key.pem` | PEM private key for HTTPS                      |
 | `--dev-cors`               | `OPALNOTE_DEV_CORS`           | `false`           | Permissive CORS for API calls from another origin        |
+| `--csp-host`               | `OPALNOTE_CSP_HOSTS`          | none              | Extra `host[:port]` trusted by the viewer-plugin CSP     |
 
 Logging uses `tracing`: `RUST_LOG=opalnote=debug,tower_http=info`.
 

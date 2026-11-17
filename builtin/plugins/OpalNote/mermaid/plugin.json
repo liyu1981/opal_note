@@ -11,5 +11,6 @@
   "entry": "viewer.html",
   "role": "renderer",
   "inline": "read",
-  "lightbox": "edit"
+  "lightbox": "edit",
+  "sandbox": "same-origin"
 }

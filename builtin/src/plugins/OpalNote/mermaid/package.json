@@ -13,11 +13,15 @@
     "description": "Render and edit Mermaid diagrams with Pele.",
     "type": "viewer",
     "api": 1,
-    "extensions": ["mermaid", "mmd"],
+    "extensions": [
+      "mermaid",
+      "mmd"
+    ],
     "entry": "viewer.html",
     "role": "renderer",
     "inline": "read",
-    "lightbox": "edit"
+    "lightbox": "edit",
+    "sandbox": "same-origin"
   },
   "opal_note_build": {
     "entry": "src/index.ts",

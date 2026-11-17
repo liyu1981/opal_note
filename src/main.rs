@@ -96,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         !args.no_tls,
         args.query_timeout_secs,
         args.plugin_timeout_secs,
+        args.csp_hosts.clone(),
     );
     spawn_trash_purger(state.clone());
     let app = routes::router(state, args.dev_cors);

@@ -674,16 +674,25 @@ fn parse_plugin(
     })
 }
 
-/// Viewer CSP: viewer documents get an opaque origin (sandbox), so `'self'` is
-/// unreliable — the CSP names the request host and the plugin's own static
-/// prefix explicitly, then merges the directives the manifest declared.
+/// Viewer CSP. Built-in viewers run same-origin (`'self'`), so the policy works
+/// behind any proxy; host-derived sources are added as a fallback for opaque
+/// data viewers, where `'self'` cannot match. Manifest `csp` directives are
+/// merged last, and the `sandbox` directive mirrors the iframe tokens.
 pub fn viewer_csp_for(
-    host: &str,
+    hosts: &[String],
     plugin_id: &str,
+    sandbox: &str,
     extra: &BTreeMap<String, Vec<String>>,
 ) -> String {
-    let base_https = format!("https://{host}/static/plugins/{plugin_id}/");
-    let base_http = format!("http://{host}/static/plugins/{plugin_id}/");
+    let mut bases: Vec<String> = Vec::new();
+    for host in hosts {
+        for scheme in ["https", "http"] {
+            let base = format!("{scheme}://{host}/static/plugins/{plugin_id}/");
+            if !bases.contains(&base) {
+                bases.push(base);
+            }
+        }
+    }
     let mut csp: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut extend = |directive: &str, values: &[&str]| {
         let slot = csp.entry(directive.to_string()).or_default();
@@ -695,24 +704,30 @@ pub fn viewer_csp_for(
         }
     };
 
+    fn with<'a>(bases: &'a [String], extra: &[&'a str]) -> Vec<&'a str> {
+        let mut values: Vec<&'a str> = vec!["'self'"];
+        values.extend(bases.iter().map(String::as_str));
+        values.extend(extra.iter().copied());
+        values
+    }
+
     extend("default-src", &["'none'"]);
-    extend("script-src", &[&base_https, &base_http]);
-    extend("style-src", &[&base_https, &base_http, "'unsafe-inline'"]);
-    extend("img-src", &[&base_https, &base_http, "data:", "blob:"]);
-    extend("font-src", &[&base_https, &base_http, "data:", "blob:"]);
-    extend("connect-src", &[&base_https, &base_http]);
-    extend("worker-src", &[&base_https, &base_http, "blob:"]);
+    extend("script-src", &with(&bases, &[]));
+    extend("style-src", &with(&bases, &["'unsafe-inline'"]));
+    extend("img-src", &with(&bases, &["data:", "blob:"]));
+    extend("font-src", &with(&bases, &["data:", "blob:"]));
+    extend("connect-src", &with(&bases, &[]));
+    extend("worker-src", &with(&bases, &["blob:"]));
     extend("frame-ancestors", &["'self'"]);
 
     for (directive, values) in extra {
         if !VIEWER_CSP_DIRECTIVES.contains(&directive.as_str()) {
             continue;
         }
-        let owned: Vec<String> = values.clone();
-        for value in owned {
+        for value in values {
             let slot = csp.entry(directive.clone()).or_default();
-            if !slot.iter().any(|existing| existing == &value) {
-                slot.push(value);
+            if !slot.iter().any(|existing| existing == value) {
+                slot.push(value.clone());
             }
         }
     }
@@ -722,8 +737,13 @@ pub fn viewer_csp_for(
         .map(|(directive, values)| format!("{directive} {}", values.join(" ")))
         .collect::<Vec<_>>()
         .join("; ");
-    // Keep a document opened as a top-level tab opaque as well.
-    rendered.push_str("; sandbox allow-scripts");
+    // Keep a document opened as a top-level tab sandboxed as well, with the
+    // same tokens as the iframe attribute.
+    rendered.push_str(if sandbox == "same-origin" {
+        "; sandbox allow-scripts allow-same-origin"
+    } else {
+        "; sandbox allow-scripts"
+    });
     rendered
 }
 
@@ -741,6 +761,21 @@ impl PluginRegistry {
             .and_then(|plugin| plugin.viewer.as_ref())
             .map(|viewer| viewer.csp.clone())
             .unwrap_or_default()
+    }
+
+    /// Declared sandbox mode for a viewer (`opaque` or `same-origin`).
+    pub fn viewer_sandbox(&self, id: &str) -> String {
+        let state = self
+            .state
+            .read()
+            .unwrap_or_else(|poison| poison.into_inner());
+        state
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == id)
+            .and_then(|plugin| plugin.viewer.as_ref())
+            .map(|viewer| viewer.sandbox.clone())
+            .unwrap_or_else(|| "opaque".to_string())
     }
 
     /// Serve one file of a viewer bundle (`viewer.html`, `viewer.js`, fonts…).
@@ -1346,8 +1381,9 @@ mod tests {
         }"#;
         let plugin = parse_plugin("case", manifest, "", PluginSource::Data, "case", None).unwrap();
         let rendered = viewer_csp_for(
-            "notes.example:7827",
+            &["notes.example:7827".to_string()],
             "A/canvas",
+            "opaque",
             &plugin.viewer.as_ref().unwrap().csp,
         );
         assert!(
@@ -1360,10 +1396,9 @@ mod tests {
         assert!(rendered.contains("sandbox allow-scripts"), "{rendered}");
         assert!(!rendered.contains("'unsafe-eval'"), "{rendered}");
         assert!(!rendered.contains("esm.sh"), "{rendered}");
-        assert!(
-            !rendered.contains("script-src 'self'"),
-            "host-scoped script-src expected: {rendered}"
-        );
+        assert!(rendered.contains("script-src 'self'"), "{rendered}");
+        assert!(rendered.contains("font-src 'self'"), "{rendered}");
+        assert!(rendered.contains("sandbox allow-scripts"), "{rendered}");
     }
 
     #[test]

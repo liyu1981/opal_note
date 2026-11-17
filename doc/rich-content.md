@@ -321,6 +321,37 @@ Access-Control-Allow-Origin: null   (when the request Origin is null)
 - The app page's `frame-src` falls back to `default-src 'self'`, so the
   same-origin static URL is allowed without changing the app CSP.
 
+### Production deployment
+
+CSP correctness does not depend on getting `Host` right for the built-in
+viewers: `OpalNote/mermaid` and `OpalNote/excalidraw` run **same-origin**
+(`sandbox="allow-scripts allow-same-origin"`), so `'self'` matches the real
+document origin no matter how the request reached the server — direct IP,
+hostname, TLS terminated at a proxy, or a proxy that rewrites `Host` to
+`localhost`. Host-derived sources are only needed for **opaque** data viewers.
+For those, the host is taken from `X-Forwarded-Host`, `Forwarded: host=…`, then
+`Host`; anything else (e.g. a tunnel that rewrites `Host` without forwarding
+headers) can be covered by configuration:
+
+```bash
+OPALNOTE_CSP_HOSTS=notes.example:8443,10.0.0.5:7827   # or --csp-host … (repeatable)
+```
+
+Operational notes:
+
+- `/static/plugins/…` must be reachable through the edge proxy/CDN unchanged.
+  It is public by design (client-shipped code only, never secrets) and sends
+  `Cache-Control: no-cache`, so an upgrade cannot serve a stale bundle.
+- Do not add `X-Frame-Options: DENY` or a conflicting `Content-Security-Policy`
+  at the edge: viewer documents must be frameable by the app and need `'self'`,
+  `'wasm-unsafe-eval'`, `blob:` fonts/workers. Multiple CSP headers intersect,
+  so an edge CSP can only break a viewer, never widen it.
+- Root-absolute `/api` and `/static` URLs mean a sub-path deployment
+  (`https://host/notes/`) is not supported; mount at the origin root.
+- Trust boundary: same-origin built-ins can call the app API with the user's
+  session; opaque data viewers cannot (no cookies, `connect-src` limited to
+  their own static prefix). Keep third-party viewers opaque.
+
 ### 4.3 Sandbox and message protocol
 
 `<iframe sandbox="allow-scripts">` — an **opaque origin** (the default for all

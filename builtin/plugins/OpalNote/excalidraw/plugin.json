@@ -19,5 +19,5 @@
       "blob:"
     ]
   },
-  "sandbox": "opaque"
+  "sandbox": "same-origin"
 }

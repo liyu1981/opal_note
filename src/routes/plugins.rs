@@ -77,21 +77,59 @@ fn viewer_content_type(path: &str) -> Option<&'static str> {
     })
 }
 
-/// Request host for CSP sources, stripped to characters a host may contain.
-fn csp_host(headers: &HeaderMap) -> String {
-    let raw = headers
-        .get(header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
+fn sanitize_host(raw: &str) -> Option<String> {
     let host: String = raw
+        .trim()
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | ':' | '-' | '[' | ']'))
         .collect();
-    if host.is_empty() {
-        "localhost".to_string()
-    } else {
-        host
+    (!host.is_empty()).then_some(host)
+}
+
+/// Candidate hosts for CSP sources.
+///
+/// Same-origin viewers rely on `'self'`, so the Host header only matters for
+/// opaque-sandbox data viewers. Proxies that rewrite `Host` are covered by
+/// `X-Forwarded-Host` / `Forwarded`, and `--csp-host` (or
+/// `OPALNOTE_CSP_HOSTS`) is the escape hatch for anything else.
+fn csp_hosts(headers: &HeaderMap, configured: &[String]) -> Vec<String> {
+    let mut hosts: Vec<String> = Vec::new();
+    let mut push = |value: &str| {
+        if let Some(host) = sanitize_host(value) {
+            if !hosts.contains(&host) {
+                hosts.push(host);
+            }
+        }
+    };
+
+    for header_name in ["x-forwarded-host", "x-original-host"] {
+        if let Some(value) = headers.get(header_name).and_then(|v| v.to_str().ok()) {
+            if let Some(first) = value.split(',').next() {
+                push(first);
+            }
+        }
     }
+    if let Some(value) = headers.get(header::FORWARDED).and_then(|v| v.to_str().ok()) {
+        for part in value.split(',') {
+            for pair in part.split(';') {
+                if let Some((name, value)) = pair.trim().split_once('=') {
+                    if name.eq_ignore_ascii_case("host") {
+                        push(value.trim_matches('"'));
+                    }
+                }
+            }
+        }
+    }
+    if let Some(value) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) {
+        push(value);
+    }
+    for value in configured {
+        push(value);
+    }
+    if hosts.is_empty() {
+        hosts.push("localhost".to_string());
+    }
+    hosts
 }
 
 /// Whether a CORS origin may read viewer assets. Viewers run in an opaque
@@ -141,7 +179,7 @@ pub async fn static_file(
         return Err(AppError::not_found("viewer file not found"));
     };
 
-    let host = csp_host(&headers);
+    let hosts = csp_hosts(&headers, &state.csp_hosts);
     let mut response = Response::new(Body::from(bytes));
     let out = response.headers_mut();
     out.insert(
@@ -154,7 +192,7 @@ pub async fn static_file(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    if let Some(origin) = allowed_cors_origin(&headers, &host) {
+    if let Some(origin) = allowed_cors_origin(&headers, &hosts[0]) {
         if let Ok(value) = HeaderValue::from_str(&origin) {
             out.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value);
             out.insert(header::VARY, HeaderValue::from_static("Origin"));
@@ -168,7 +206,14 @@ pub async fn static_file(
             AppError::Internal,
         )
         .await?;
-        let csp = viewer_csp_for(&host, &id, &extra);
+        let sandbox_id = id.clone();
+        let plugins = state.plugins.clone();
+        let sandbox = db_call(
+            move || Ok(plugins.viewer_sandbox(&sandbox_id)),
+            AppError::Internal,
+        )
+        .await?;
+        let csp = viewer_csp_for(&hosts, &id, &sandbox, &extra);
         out.insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_str(&csp)

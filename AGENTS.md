@@ -389,8 +389,12 @@ web/
 - Plugins have three kinds. `server` plugins run in QuickJS; `client` plugins are
   built into the web bundle; `viewer` plugins are sandboxed iframe bundles
   (`type: "viewer"` with `extensions`, `entry`, `role`) served from the public
-  `/static/plugins/{domain}/{extension}/{*path}` route with a host-scoped CSP
-  and `Access-Control-Allow-Origin: null` for opaque-origin module/font fetches.
+  `/static/plugins/{domain}/{extension}/{*path}` route (public, code-only) with
+  a CSP of `'self'` plus host-derived sources and
+  `Access-Control-Allow-Origin: null` for opaque-origin module/font fetches.
+  Built-in viewers are `sandbox: "same-origin"` so `'self'` keeps them working
+  behind any proxy; opaque data viewers use `X-Forwarded-Host`/`Forwarded`/`Host`
+  and the `--csp-host` / `OPALNOTE_CSP_HOSTS` escape hatch.
   Built-in viewers (`builtin/src/plugins/OpalNote/mermaid`,
   `OpalNote/excalidraw`) bundle their engine into
   `builtin/plugins/<id>/viewer.js` and are excluded from the client plugin

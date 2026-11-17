@@ -136,6 +136,12 @@ pub struct ServeArgs {
     /// Allow cross-origin API requests.
     #[arg(long)]
     pub dev_cors: bool,
+
+    /// Extra host[:port] the viewer CSP should trust (repeatable).
+    /// Needed only for opaque-sandbox viewer plugins behind a proxy that
+    /// rewrites the Host header.
+    #[arg(long = "csp-host", value_name = "HOST")]
+    pub csp_hosts: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +157,8 @@ pub struct ResolvedServeArgs {
     pub tls_cert: PathBuf,
     pub tls_key: PathBuf,
     pub dev_cors: bool,
+    /// Hosts (optionally with port) added to the viewer CSP sources.
+    pub csp_hosts: Vec<String>,
 }
 
 impl ResolvedServeArgs {
@@ -200,6 +208,8 @@ struct FileConfig {
     tls_key: Option<PathBuf>,
     #[serde(alias = "OPALNOTE_DEV_CORS")]
     dev_cors: Option<bool>,
+    #[serde(alias = "OPALNOTE_CSP_HOSTS")]
+    csp_hosts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -217,6 +227,7 @@ struct EnvConfig {
     tls_cert: Option<PathBuf>,
     tls_key: Option<PathBuf>,
     dev_cors: Option<bool>,
+    csp_hosts: Option<Vec<String>>,
 }
 
 fn default_update_dir() -> PathBuf {
@@ -320,6 +331,21 @@ impl ServeArgs {
                     .unwrap_or_else(|| PathBuf::from(DEFAULT_TLS_KEY)),
             ),
             dev_cors,
+            csp_hosts: {
+                let from_cli: Vec<String> = self
+                    .csp_hosts
+                    .into_iter()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .collect();
+                if !from_cli.is_empty() {
+                    from_cli
+                } else if let Some(values) = env.csp_hosts {
+                    values
+                } else {
+                    file.csp_hosts.unwrap_or_default()
+                }
+            },
         })
     }
 }
@@ -340,6 +366,13 @@ impl EnvConfig {
             tls_cert: env::var_os("OPALNOTE_TLS_CERT").map(PathBuf::from),
             tls_key: env::var_os("OPALNOTE_TLS_KEY").map(PathBuf::from),
             dev_cors: env_bool("OPALNOTE_DEV_CORS")?,
+            csp_hosts: env::var("OPALNOTE_CSP_HOSTS").ok().map(|value| {
+                value
+                    .split(',')
+                    .map(|part| part.trim().to_string())
+                    .filter(|part| !part.is_empty())
+                    .collect()
+            }),
         })
     }
 }
