@@ -369,6 +369,10 @@ web/
 - `Todos` opens the todo directory (`tasksViewAtom`, `TasksView`), a read-only
   list over the derived `task` relation with `GET /notebooks/{id}/tasks`
   (default 20/page, user-selectable sizes, server-side `status`/`q`/`sort`/`dir`).
+  Rows default to newest first (`sort=updated_at`, `dir=desc`, also the API
+  default when no sort is given); choosing `status` keeps the
+  open → doing → done → cancelled grouping and only flips the newest/oldest
+  order *inside* each status group.
   The status filter is a multi-select (open/doing/done/cancelled, default
   open+doing) persisted in `taskStatusFilterAtom`; `TaskList.counts` always
   covers the whole notebook so the chips show totals while filtered. Rows open

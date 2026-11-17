@@ -480,7 +480,8 @@ beside it, plus back/forward history controls.
   Logseq `TODO`/`DOING`/`DONE`/`CANCELED` keywords across pages and journals.
   Status chips (open, doing, done, cancelled) filter the list and show
   notebook-wide totals, a text filter narrows by task or page, sort covers
-  status/task/page/updated, and each row opens the note that holds it. Both
+  status/task/page/updated (newest first by default), and each row opens the
+  note that holds it. Both
   sidebars start collapsed and can be toggled from the top bar, leaving the
   writing surface to fill the window.
   The single-page editor grows with its content and scrolls the page, not an

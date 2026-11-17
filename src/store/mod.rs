@@ -276,27 +276,41 @@ enum TaskSortKey {
 
 impl TaskSortKey {
     fn parse(value: Option<&str>) -> Self {
-        match value.unwrap_or("status") {
+        match value.unwrap_or("updated_at") {
             "task" | "text" => Self::Task,
             "page" | "title" => Self::Page,
             "status" => Self::Status,
             "updated_at" => Self::UpdatedAt,
-            _ => Self::Status,
+            _ => Self::UpdatedAt,
         }
     }
 
-    fn compare(self, left: &TaskOverview, right: &TaskOverview) -> std::cmp::Ordering {
-        match self {
+    /// `ascending` flips every key except the status grouping: status always
+    /// reads open → doing → done → cancelled, and only the newest/oldest
+    /// tie-break inside a group follows the direction.
+    fn compare(
+        self,
+        left: &TaskOverview,
+        right: &TaskOverview,
+        ascending: bool,
+    ) -> std::cmp::Ordering {
+        let ordering = match self {
             Self::Task => left.text.to_lowercase().cmp(&right.text.to_lowercase()),
             Self::Page => left
                 .note_title
                 .to_lowercase()
                 .cmp(&right.note_title.to_lowercase())
                 .then_with(|| left.line.cmp(&right.line)),
-            Self::Status => task_status_rank(&left.status)
-                .cmp(&task_status_rank(&right.status))
-                .then_with(|| left.updated_at.cmp(&right.updated_at)),
+            Self::Status => task_status_rank(&left.status).cmp(&task_status_rank(&right.status)),
             Self::UpdatedAt => left.updated_at.cmp(&right.updated_at),
+        };
+        match self {
+            Self::Status => {
+                let tie = left.updated_at.cmp(&right.updated_at);
+                ordering.then_with(|| if ascending { tie } else { tie.reverse() })
+            }
+            _ if ascending => ordering,
+            _ => ordering.reverse(),
         }
     }
 }
@@ -1178,14 +1192,7 @@ impl Store {
 
         let sort = TaskSortKey::parse(sort);
         let ascending = matches!(direction, Some("asc"));
-        tasks.sort_by(|left, right| {
-            let ordering = sort.compare(left, right);
-            if ascending {
-                ordering
-            } else {
-                ordering.reverse()
-            }
-        });
+        tasks.sort_by(|left, right| sort.compare(left, right, ascending));
 
         let total = tasks.len() as i64;
         let offset = offset.min(tasks.len());
@@ -3380,6 +3387,64 @@ mod tests {
             .unwrap();
         assert_eq!(by_title.total, 1);
         assert_eq!(by_title.tasks[0].note_title, "Journal");
+    }
+
+    #[test]
+    fn tasks_default_to_newest_first_and_group_status_open_first() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Order", "").unwrap().unwrap();
+        store
+            .create_note(
+                &notebook.id,
+                "Older",
+                "- [ ] older open\n- [x] older done\n",
+                &[],
+            )
+            .unwrap();
+        // `updated_at` has second precision; make the second note clearly newer.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        store
+            .create_note(&notebook.id, "Newer", "- [ ] newer open\n", &[])
+            .unwrap();
+
+        let newest = store
+            .list_tasks(
+                &notebook.id,
+                TaskListOptions {
+                    limit: 50,
+                    offset: 0,
+                    statuses: None,
+                    query: None,
+                    sort: None,
+                    direction: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(newest.tasks[0].text, "newer open");
+
+        let grouped = store
+            .list_tasks(
+                &notebook.id,
+                TaskListOptions {
+                    limit: 50,
+                    offset: 0,
+                    statuses: None,
+                    query: None,
+                    sort: Some("status"),
+                    direction: Some("desc"),
+                },
+            )
+            .unwrap();
+        let statuses: Vec<&str> = grouped
+            .tasks
+            .iter()
+            .map(|task| task.status.as_str())
+            .collect();
+        // Rank order is fixed even when the direction is descending.
+        assert_eq!(statuses, vec!["open", "open", "done"]);
+        // Newest first inside the open group.
+        assert_eq!(grouped.tasks[0].text, "newer open");
+        assert_eq!(grouped.tasks[1].text, "older open");
     }
 
     #[test]
