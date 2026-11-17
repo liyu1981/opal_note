@@ -63,6 +63,15 @@ function applyCodeBlock(view: EditorView, from: number, to: number) {
   });
 }
 
+function applyMathBlock(view: EditorView, from: number, to: number) {
+  const insert = "$$\n\n$$";
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: { anchor: from + 3 },
+    scrollIntoView: true,
+  });
+}
+
 function applyWikiLink(view: EditorView, from: number, to: number) {
   view.dispatch({
     changes: { from, to, insert: "[[" },
@@ -123,6 +132,12 @@ const COMMANDS: SlashCommand[] = [
     apply: applyCodeBlock,
   },
   {
+    label: "Math block",
+    detail: "Block",
+    keywords: "math latex katex formula equation display",
+    apply: applyMathBlock,
+  },
+  {
     label: "Divider",
     detail: "Block",
     keywords: "hr horizontal rule divider",
@@ -133,6 +148,12 @@ const COMMANDS: SlashCommand[] = [
     detail: "Inline",
     keywords: "wikilink link page",
     apply: applyWikiLink,
+  },
+  {
+    label: "Inline math",
+    detail: "Inline",
+    keywords: "math latex katex formula equation inline",
+    apply: applyWrapped("$", "$"),
   },
   {
     label: "Inline code",

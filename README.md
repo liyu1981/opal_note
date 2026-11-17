@@ -442,6 +442,14 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   `https://…` and `www.…` URLs are recognized and become clickable links. The line under the cursor becomes plain markdown source —
   visible markers, normal text size and weight, no rendered inline styling —
   the way Obsidian live preview does. There is no separate source mode.
+- **Math** is typeset with KaTeX: `$e^{i\pi}+1=0$` inline and `$$…$$` as a
+  centered display block (either on one line or as `$$` fences around several
+  lines). A formula shows its source while the line or block is being edited,
+  and returns to typeset form on blur; an invalid formula stays as plain,
+  non-interactive source instead of breaking the note. `$` inside inline code,
+  fenced code and `\$` stays literal, and Pandoc's currency rule keeps prose
+  like `$5 and $10` out of math mode. Formulas are rendered with
+  `trust: false`, so `\href`/`\html` cannot inject links or markup.
 - Fenced code blocks use configurable syntax themes (GitHub Light by default),
   language-aware highlighting, and a copy button.
   Focusing any line inside the fence reveals the whole block as plain markdown

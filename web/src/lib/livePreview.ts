@@ -1,5 +1,7 @@
 import {
   StateEffect,
+  StateField,
+  type EditorState,
   type Extension,
   type Range,
   type Text,
@@ -16,6 +18,7 @@ import {
 import { assetKindFromPath } from "./assets";
 import { extensionOfPath, viewerTheme } from "../plugins/viewers";
 import { mountViewer, type ViewerMount } from "../plugins/viewerMount";
+import { MAX_MATH_CHARS, renderMath } from "./latex";
 import { normalizeLinkTarget, splitWikilink } from "./markdown";
 
 export type LinkTarget = { title: string; path: string };
@@ -87,6 +90,124 @@ function findCodeBlocks(doc: Text): CodeBlockRange[] {
   return blocks;
 }
 
+type MathBlockRange = { start: number; end: number; source: string };
+
+const BLOCK_MATH_FENCE = /^\s*\$\$\s*$/u;
+
+/**
+ * `$$` fences that sit on their own line, outside fenced code. Anything
+ * unclosed stays plain source, so a half-typed block never swallows the note.
+ */
+function findMathBlocks(
+  doc: Text,
+  codeBlocks: CodeBlockRange[],
+): MathBlockRange[] {
+  const inCode = new Set<number>();
+  for (const block of codeBlocks) {
+    for (let line = block.start; line <= block.end; line += 1) inCode.add(line);
+  }
+
+  const blocks: MathBlockRange[] = [];
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
+    if (inCode.has(lineNumber)) continue;
+    if (!BLOCK_MATH_FENCE.test(doc.line(lineNumber).text)) continue;
+
+    let close = 0;
+    for (let next = lineNumber + 1; next <= doc.lines; next += 1) {
+      if (inCode.has(next)) break;
+      if (BLOCK_MATH_FENCE.test(doc.line(next).text)) {
+        close = next;
+        break;
+      }
+    }
+    if (!close) continue;
+
+    const lines: string[] = [];
+    for (let inner = lineNumber + 1; inner < close; inner += 1) {
+      lines.push(doc.line(inner).text.trim());
+    }
+    const source = lines.join("\n");
+    if (!source) continue;
+
+    blocks.push({ start: lineNumber, end: close, source });
+    lineNumber = close;
+  }
+  return blocks;
+}
+
+/** Mirrors editor focus into the state; block widgets follow it. */
+const editorFocus = StateEffect.define<boolean>();
+
+const editorFocusField = StateField.define<boolean>({
+  create: () => false,
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(editorFocus)) return effect.value;
+    }
+    return value;
+  },
+});
+
+/**
+ * Display-math blocks replace whole lines, and CodeMirror rejects block
+ * decorations from a view plugin, so they live in this state field while every
+ * inline decoration stays in the plugin below.
+ */
+function buildMathBlockDecorations(
+  state: EditorState,
+  focused: boolean,
+): DecorationSet {
+  const doc = state.doc;
+  const editing = new Set<number>();
+  if (focused) {
+    for (const selection of state.selection.ranges) {
+      const first = doc.lineAt(selection.from).number;
+      const last = doc.lineAt(selection.to).number;
+      for (let line = first; line <= last; line += 1) editing.add(line);
+    }
+  }
+
+  const ranges: Range<Decoration>[] = [];
+  for (const block of findMathBlocks(doc, findCodeBlocks(doc))) {
+    let touched = false;
+    for (let line = block.start; line <= block.end; line += 1) {
+      if (editing.has(line)) touched = true;
+    }
+    if (touched) continue;
+    ranges.push(
+      Decoration.replace({
+        widget: new MathWidget(block.source, true),
+        block: true,
+      }).range(doc.line(block.start).from, doc.line(block.end).to),
+    );
+  }
+  return Decoration.set(ranges, true);
+}
+
+const mathBlockField = StateField.define<DecorationSet>({
+  create: (state) => buildMathBlockDecorations(state, false),
+  update(value, transaction) {
+    const focusChanged = transaction.effects.some((effect) =>
+      effect.is(editorFocus),
+    );
+    if (
+      transaction.docChanged ||
+      transaction.selection ||
+      focusChanged ||
+      transaction.effects.some((effect) => effect.is(refreshLivePreview))
+    ) {
+      // `editorFocusField` is configured first, so its value is already the
+      // new one here.
+      return buildMathBlockDecorations(
+        transaction.state,
+        transaction.state.field(editorFocusField),
+      );
+    }
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 /** Ask the live decorations to rebuild even when the document did not change. */
 export const refreshLivePreview = StateEffect.define<null>();
 
@@ -115,10 +236,20 @@ export function livePreview(optionsRef: OptionsRef): Extension {
   }
 
   return [
+    editorFocusField,
+    mathBlockField,
     ViewPlugin.fromClass(LivePreviewPlugin, {
       decorations: (plugin) => plugin.decorations,
     }),
     EditorView.domEventHandlers({
+      focus(_event, view) {
+        view.dispatch({ effects: editorFocus.of(true) });
+        return false;
+      },
+      blur(_event, view) {
+        view.dispatch({ effects: editorFocus.of(false) });
+        return false;
+      },
       // A tag is a mark, so CodeMirror would move the selection on mousedown
       // and re-render that line as plain source, destroying the mark before a
       // click event could land on it. Open the tag on mousedown instead; the
@@ -205,6 +336,14 @@ function buildDecorations(
     if (!touched) continue;
     for (let line = block.start; line <= block.end; line += 1) {
       editingCodeLines.add(line);
+    }
+  }
+
+  const mathBlocks = findMathBlocks(doc, codeBlocks);
+  const mathBlockByLine = new Map<number, MathBlockRange>();
+  for (const block of mathBlocks) {
+    for (let line = block.start; line <= block.end; line += 1) {
+      mathBlockByLine.set(line, block);
     }
   }
 
@@ -296,6 +435,10 @@ function buildDecorations(
     // no inline markup colors and no rendered widgets. The active-line tint
     // remains as the only focus cue.
     if (active) continue;
+
+    // Display-math blocks belong to `mathBlockField` (see above): either a
+    // rendered block widget or plain source while it is being edited.
+    if (mathBlockByLine.has(lineNumber)) continue;
 
     // ---- fenced code -----------------------------------------------------
     const addCodeLine = (
@@ -521,6 +664,33 @@ function buildDecorations(
       addMark(start + 1, end - 1, "cm-live-inline-code");
       claimed.push([start, end]);
     });
+
+    // KaTeX typesets `$…$` and `$$…$$`; the source returns as soon as the line
+    // is being edited. Inline code ran first, so a `$` inside backticks stays
+    // literal, and emphasis runs later, so `_`/`*` inside a formula are kept.
+    const math = (
+      match: RegExpExecArray,
+      content: string,
+      display: boolean,
+    ) => {
+      const start = line.from + match.index;
+      const end = start + match[0].length;
+      if (insideClaimed(start, end) || overlaps(start, end)) return;
+      if (content.length > MAX_MATH_CHARS) return;
+      if (!display) {
+        // Pandoc's rules keep prose such as "$5 and $10" out of math mode.
+        if (/^\s/u.test(content) || /\s$/u.test(content)) return;
+        const after = text[match.index + match[0].length] ?? "";
+        if (/^[0-9]/u.test(after)) return;
+      }
+      replace(start, end, new MathWidget(content, display));
+      claimed.push([start, end]);
+    };
+
+    process(/\$\$([^$\n]+?)\$\$/gu, (match) =>
+      math(match, match[1] ?? "", true),
+    );
+    process(/\$([^$\n]+?)\$/gu, (match) => math(match, match[1] ?? "", false));
 
     const wikilink = /\[\[([^\]\n]+)\]\]/gu;
     process(wikilink, (match) => {
@@ -1213,6 +1383,44 @@ class ViewerWidget extends WidgetType {
 
   ignoreEvent(): boolean {
     return true;
+  }
+}
+
+class MathWidget extends WidgetType {
+  constructor(
+    readonly source: string,
+    readonly display: boolean,
+  ) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof MathWidget &&
+      other.source === this.source &&
+      other.display === this.display
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const host = document.createElement(this.display ? "div" : "span");
+    host.className = `cm-live-math${this.display ? " cm-live-math-display" : ""}`;
+    const rendered = renderMath(this.source, this.display);
+    if (rendered.error) {
+      host.classList.add("is-error");
+      host.title = rendered.error;
+      host.textContent = this.display
+        ? `$$\n${this.source}\n$$`
+        : `$${this.source}$`;
+      return host;
+    }
+    host.innerHTML = rendered.html;
+    return host;
+  }
+
+  /** A click places the caret in the source, which reveals it for editing. */
+  ignoreEvent(): boolean {
+    return false;
   }
 }
 

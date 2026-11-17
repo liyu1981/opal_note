@@ -27,6 +27,7 @@
     "@tanstack/react-router": "^1.170.46",
     "d3-force": "^3.0.1",
     "jotai": "^3.0.2",
+    "katex": "^0.19.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

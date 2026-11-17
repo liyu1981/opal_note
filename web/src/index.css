@@ -439,6 +439,40 @@ select:focus-visible {
   padding: 0.04em 0.3em;
 }
 
+/* KaTeX math: typeset in preview, plain source while the line is edited. */
+.cm-live-math {
+  color: var(--color-ink);
+}
+
+.cm-live-math:not(.cm-live-math-display) {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.05em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.cm-live-math-display {
+  display: block;
+  margin: 0.4rem 0;
+  padding: 0.1rem 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.cm-live-math-display .katex-display {
+  margin: 0;
+}
+
+.cm-live-math.is-error {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--color-danger);
+  text-align: left;
+  white-space: pre-wrap;
+}
+
 .cm-live-tag {
   background: var(--color-accent-soft);
   cursor: pointer;

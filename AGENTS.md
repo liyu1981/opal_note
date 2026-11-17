@@ -285,6 +285,15 @@ web/
   it clears the typed `/upload`, opens the host file picker, and inserts
   `assetMarkdown` for the uploaded entry once it returns (read-only editors skip
   it).
+- Math is KaTeX with `$…$` and `$$…$$` (`web/src/lib/latex.ts` renders and caches
+  formulas; `trust: false` keeps `\href`/`\html` inert). Inline formulas are a
+  normal `Decoration.replace` in the view plugin; display `$$` blocks replace
+  whole lines, and CodeMirror only accepts block decorations from a
+  `StateField` ("Block decorations may not be specified via plugins"), so they
+  live in `mathBlockField` and follow editor focus through `editorFocusField`.
+  Keep `findMathBlocks` skipping fenced code, and keep the inline pass after
+  inline code and before emphasis so `$` in code stays literal and `_`/`*`
+  inside a formula are not read as markup.
 - Fenced code is block-scoped: `findCodeBlocks` scans the document so focusing
   any line (not just the opening fence) reveals the entire fenced source and
   restores the rendered block on blur. While editing, `.cm-live-code-edit`
