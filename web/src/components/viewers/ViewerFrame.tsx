@@ -24,7 +24,7 @@ export function ViewerFrame({
   onResize?: (height: number) => void;
   onOpen?: () => void;
   onSave?: (content: string) => void;
-  onError?: (message: string) => void;
+  onError?: (message: string, reason: "timeout" | "viewer") => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<ReturnType<typeof mountViewer> | null>(null);

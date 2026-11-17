@@ -1,21 +1,29 @@
 import { useEffect, useRef, useState, type Ref } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { AssetEntry, AssetKind, AssetList } from "../api/types";
-import { assetKindLabel, downloadAsset, formatBytes } from "../lib/assets";
+import {
+  assetKindLabel,
+  downloadAsset,
+  formatBytes,
+  isRichContentPath,
+} from "../lib/assets";
 import { relativeTime } from "../lib/format";
+import { extensionOfPath } from "../plugins/viewers";
 import { useAppNavigate } from "../lib/appNavigation";
 import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAssetBlob } from "../lib/useAssetBlob";
 import {
   activeNotebookIdAtom,
+  diagramLightboxAtom,
   readOnlyAtom,
 } from "../state/atoms";
 import {
   IconDownload,
   IconFile,
   IconFolder,
+  IconBook,
   IconPencil,
   IconRefresh,
   IconSearch,
@@ -32,6 +40,7 @@ const KINDS: Array<{ value: "" | AssetKind; label: string }> = [
 ];
 
 export function AssetsView() {
+  const setDiagramLightbox = useSetAtom(diagramLightboxAtom);
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const locked = useAtomValue(readOnlyAtom);
   const navigate = useAppNavigate();
@@ -236,6 +245,16 @@ export function AssetsView() {
                   })
                 }
                 onRename={() => renameAsset(asset)}
+                onEdit={
+                  isRichContentPath(asset.path)
+                    ? () =>
+                        setDiagramLightbox({
+                          notebookId,
+                          path: asset.path,
+                          extension: extensionOfPath(asset.path),
+                        })
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -281,6 +300,7 @@ function AssetCard({
   onOpen,
   onDownload,
   onRename,
+  onEdit,
 }: {
   openRef?: Ref<HTMLButtonElement>;
   notebookId: string;
@@ -289,6 +309,7 @@ function AssetCard({
   onOpen: () => void;
   onDownload: () => void;
   onRename: () => void;
+  onEdit?: () => void;
 }) {
   const previewable =
     asset.kind === "image" || asset.kind === "video" || asset.kind === "audio";
@@ -344,6 +365,17 @@ function AssetCard({
         </div>
       </button>
       <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+        {!locked && onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded border border-line bg-white/85 p-1.5 text-muted shadow-sm transition hover:bg-white hover:text-ink"
+            aria-label={`Edit ${asset.name}`}
+            title="Edit diagram"
+          >
+            <IconBook className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onDownload}

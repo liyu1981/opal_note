@@ -7,19 +7,23 @@ import {
   assetKindLabel,
   downloadAsset,
   formatBytes,
+  isRichContentPath,
 } from "../lib/assets";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
+import { extensionOfPath } from "../plugins/viewers";
 import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAssetBlob } from "../lib/useAssetBlob";
 import {
   activeNotebookIdAtom,
+  diagramLightboxAtom,
   readOnlyAtom,
   refreshAtom,
 } from "../state/atoms";
 import {
   IconArrowLeft,
+  IconBook,
   IconDownload,
   IconFile,
   IconPencil,
@@ -31,6 +35,7 @@ export function AssetDetailView({ path }: { path: string }) {
   const locked = useAtomValue(readOnlyAtom);
   const navigate = useAppNavigate();
   const refresh = useSetAtom(refreshAtom);
+  const setDiagramLightbox = useSetAtom(diagramLightboxAtom);
   const [info, setInfo] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +168,22 @@ export function AssetDetailView({ path }: { path: string }) {
               </button>
               {!locked && (
                 <>
+                  {isRichContentPath(info.asset.path) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDiagramLightbox({
+                          notebookId,
+                          path: info.asset.path,
+                          extension: extensionOfPath(info.asset.path),
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-sans text-[14px] text-muted transition hover:bg-white hover:text-ink"
+                    >
+                      <IconBook className="h-3.5 w-3.5" />
+                      Edit diagram
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={rename}

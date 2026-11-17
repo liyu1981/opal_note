@@ -40,7 +40,7 @@ import {
   viewerPluginsAtom,
 } from "../../plugins/viewers";
 import { settingsAtom } from "../../lib/settings";
-import { diagramLightboxAtom } from "../../state/atoms";
+import { assetRevisionAtom, diagramLightboxAtom } from "../../state/atoms";
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
 import { slashCommandSource } from "../../lib/slashCommands";
 
@@ -130,6 +130,7 @@ export const LiveMarkdownEditor = forwardRef<
   const viewerPlugins = useAtomValue(viewerPluginsAtom);
   const viewerMap = viewerByExtension(viewerPlugins);
   const setDiagramLightbox = useSetAtom(diagramLightboxAtom);
+  const assetRevision = useAtomValue(assetRevisionAtom);
   const onOpenViewerRef = useRef<
     ((assetPath: string, extension: string) => void) | null
   >(null);
@@ -165,6 +166,7 @@ export const LiveMarkdownEditor = forwardRef<
     viewerFor: () => null,
     onOpenViewer: (assetPath, extension) =>
       onOpenViewerRef.current?.(assetPath, extension),
+    assetRevision: 0,
     readOnly,
     notePath,
     loadAsset: (path) => api.getAssetBlob(notebookId, path),
@@ -183,6 +185,7 @@ export const LiveMarkdownEditor = forwardRef<
     onOpenViewer: (assetPath, extension) => {
       onOpenViewerRef.current?.(assetPath, extension);
     },
+    assetRevision,
   };
 
   /** Create a viewer asset from a starter template and embed it. */
@@ -216,6 +219,7 @@ export const LiveMarkdownEditor = forwardRef<
           scrollIntoView: true,
         });
         editorView.focus();
+        setDiagramLightbox({ notebookId, path: asset.path, extension });
       })
       .catch((cause) => {
         window.alert(
@@ -446,6 +450,11 @@ export const LiveMarkdownEditor = forwardRef<
   useEffect(() => {
     viewRef.current?.dispatch({ effects: refreshLivePreview.of(null) });
   }, [linkKeys]);
+
+  // A saved diagram changes bytes, not markdown: re-mount viewer widgets.
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: refreshLivePreview.of(null) });
+  }, [assetRevision, viewerPlugins]);
 
   return (
     <div

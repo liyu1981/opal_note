@@ -30,6 +30,8 @@ export type LivePreviewOptions = {
   viewerFor: (extension: string) => { id: string; src: string } | null;
   /** Open the lightbox for a viewer-backed asset. */
   onOpenViewer: (assetPath: string, extension: string) => void;
+  /** Changes when a text asset is saved, so viewer widgets re-mount. */
+  assetRevision: number;
   readOnly: boolean;
   notePath: string;
   loadAsset: (path: string) => Promise<Blob>;
@@ -567,6 +569,7 @@ function buildDecorations(
               viewer,
               options.loadAsset,
               options.onOpenViewer,
+              options.assetRevision,
             ),
           );
         }
@@ -1062,6 +1065,7 @@ class ViewerWidget extends WidgetType {
     readonly viewer: { id: string; src: string },
     readonly loadAsset: (path: string) => Promise<Blob>,
     readonly onOpenViewer: (assetPath: string, extension: string) => void,
+    readonly revision: number,
   ) {
     super();
   }
@@ -1071,7 +1075,8 @@ class ViewerWidget extends WidgetType {
       other instanceof ViewerWidget &&
       other.assetPath === this.assetPath &&
       other.extension === this.extension &&
-      other.viewer.id === this.viewer.id
+      other.viewer.id === this.viewer.id &&
+      other.revision === this.revision
     );
   }
 
@@ -1101,9 +1106,12 @@ class ViewerWidget extends WidgetType {
               wrapper.style.height = `${Math.min(height, 520)}px`;
             },
             onOpen: () => this.onOpenViewer(this.assetPath, this.extension),
-            onError: (message) => {
+            onError: (message, reason) => {
               wrapper.dataset.state = "error";
-              wrapper.textContent = message;
+              wrapper.title = message;
+              // Pele renders parser errors inside the frame; only a frame that
+              // never started needs a host-side message.
+              if (reason === "timeout") wrapper.textContent = message;
             },
           });
         })

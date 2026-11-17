@@ -21,7 +21,7 @@ export type ViewerMountOptions = {
   onResize?: (height: number) => void;
   onOpen?: () => void;
   onSave?: (content: string) => void;
-  onError?: (message: string) => void;
+  onError?: (message: string, reason: "timeout" | "viewer") => void;
 };
 
 export type ViewerMount = {
@@ -64,7 +64,7 @@ export function mountViewer(
 
   const timer = window.setTimeout(() => {
     if (!ready && !destroyed) {
-      options.onError?.("The viewer did not start in time.");
+      options.onError?.("The viewer did not start in time.", "timeout");
     }
   }, Math.max(1, options.readyTimeoutSecs ?? 8) * 1000);
 
@@ -114,6 +114,7 @@ export function mountViewer(
       case "opalnote-viewer/error":
         options.onError?.(
           typeof data.message === "string" ? data.message : "Viewer error",
+          "viewer",
         );
         break;
       default:
