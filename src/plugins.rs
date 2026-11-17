@@ -26,6 +26,9 @@ use crate::store::Store;
 
 const MAX_MANIFEST_BYTES: usize = 16 * 1024;
 const MAX_SCRIPT_BYTES: usize = 20_000;
+const MAX_VIEWER_EXTENSIONS: usize = 8;
+const MAX_VIEWER_ENTRY_CHARS: usize = 200;
+pub const MAX_VIEWER_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PARAMS: usize = 100;
 const MAX_ITEMS: usize = 200;
 const MAX_ID_CHARS: usize = 96;
@@ -52,12 +55,32 @@ pub enum PluginSource {
     Data,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginKind {
+    Server,
+    Viewer,
+}
+
+/// Metadata for an iframe `viewer` plugin: the host mounts `files/<entry>` in a
+/// sandbox and exchanges content over `postMessage`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ViewerInfo {
+    pub extensions: Vec<String>,
+    pub role: String,
+    pub entry: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginInfo {
     pub id: String,
     pub title: String,
     pub description: String,
     pub source: PluginSource,
+    #[serde(rename = "type")]
+    pub kind: PluginKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub viewer: Option<ViewerInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
@@ -80,8 +103,13 @@ struct PluginDefinition {
     id: String,
     title: String,
     description: String,
+    kind: PluginKind,
+    /// QuickJS source for server plugins; empty for viewers.
     script: String,
+    viewer: Option<ViewerInfo>,
     source: PluginSource,
+    /// Built-in folder (`OpalNote/mermaid`) or the data plugin directory.
+    folder: String,
     path: Option<String>,
 }
 
@@ -138,6 +166,8 @@ impl PluginRegistry {
                     title: plugin.title.clone(),
                     description: plugin.description.clone(),
                     source: plugin.source,
+                    kind: plugin.kind,
+                    viewer: plugin.viewer.clone(),
                     path: plugin.path.clone(),
                 })
                 .collect(),
@@ -161,6 +191,7 @@ impl PluginRegistry {
             .clone();
         plugins
             .iter()
+            .filter(|plugin| plugin.kind == PluginKind::Server)
             .map(
                 |plugin| match run_plugin(store.clone(), notebook_id, plugin, timeout) {
                     Ok(output) => JournalPluginResult {
@@ -262,15 +293,21 @@ fn load_builtin_plugins() -> Result<Vec<PluginDefinition>> {
         if manifest_json.get("type").and_then(Value::as_str) == Some("client") {
             continue;
         }
-        let script = read_builtin_plugin(&format!("{folder}/plugin.js"))
-            .with_context(|| format!("reading built-in plugin source `{folder}`"))?;
-        let script = std::str::from_utf8(&script)
-            .with_context(|| format!("built-in plugin source `{folder}` is not UTF-8"))?;
+        let script = if is_viewer_manifest(&manifest_json) {
+            String::new()
+        } else {
+            let script = read_builtin_plugin(&format!("{folder}/plugin.js"))
+                .with_context(|| format!("reading built-in plugin source `{folder}`"))?;
+            std::str::from_utf8(&script)
+                .with_context(|| format!("built-in plugin source `{folder}` is not UTF-8"))?
+                .to_string()
+        };
         plugins.push(parse_plugin(
             &folder,
             manifest,
-            script,
+            &script,
             PluginSource::Builtin,
+            &folder,
             Some(format!("builtin/plugins/{folder}")),
         )?);
     }
@@ -351,14 +388,29 @@ fn load_data_plugins(directory: &Path) -> Vec<(String, Result<PluginDefinition>)
         let folder = entry.file_name().to_string_lossy().to_string();
         let result = (|| {
             let manifest = read_text(&path.join("plugin.json"), MAX_MANIFEST_BYTES)?;
-            let script = read_text(&path.join("plugin.js"), MAX_SCRIPT_BYTES)?;
-            parse_plugin(
+            let manifest_json: Value = serde_json::from_str(&manifest)
+                .with_context(|| format!("parsing plugin.json for `{folder}`"))?;
+            let script = if is_viewer_manifest(&manifest_json) {
+                String::new()
+            } else {
+                read_text(&path.join("plugin.js"), MAX_SCRIPT_BYTES)?
+            };
+            let definition = parse_plugin(
                 &folder,
                 &manifest,
                 &script,
                 PluginSource::Data,
+                &path.display().to_string(),
                 Some(path.display().to_string()),
-            )
+            )?;
+            if let (PluginKind::Viewer, Some(viewer)) = (definition.kind, definition.viewer.as_ref())
+            {
+                let entry = path.join(&viewer.entry);
+                if !entry.is_file() {
+                    bail!("viewer plugin `{folder}` is missing `{}`", viewer.entry);
+                }
+            }
+            Ok(definition)
         })();
         results.push((folder, result));
     }
@@ -408,6 +460,33 @@ struct PluginManifest {
     description: String,
     #[serde(default = "default_plugin_type", rename = "type")]
     plugin_type: String,
+    #[serde(default)]
+    extensions: Vec<String>,
+    #[serde(default)]
+    entry: String,
+    #[serde(default)]
+    role: String,
+}
+
+fn is_viewer_manifest(manifest: &Value) -> bool {
+    manifest.get("type").and_then(Value::as_str) == Some("viewer")
+}
+
+fn valid_viewer_extension(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().count() <= 16
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
+}
+
+/// A viewer file path: relative, forward slashes, no traversal.
+pub fn is_safe_viewer_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains('\\')
+        && !path.contains("//")
+        && !path.split('/').any(|part| part.is_empty() || part == "." || part == "..")
 }
 
 fn parse_plugin(
@@ -415,6 +494,7 @@ fn parse_plugin(
     manifest_raw: &str,
     script: &str,
     source: PluginSource,
+    base_folder: &str,
     path: Option<String>,
 ) -> Result<PluginDefinition> {
     let manifest: PluginManifest = serde_json::from_str(manifest_raw)
@@ -433,25 +513,118 @@ fn parse_plugin(
     if description.is_empty() || description.chars().count() > MAX_DESCRIPTION_CHARS {
         bail!("plugin `{folder}` description must be 1-{MAX_DESCRIPTION_CHARS} characters");
     }
-    if script.trim().is_empty() {
-        bail!("plugin `{folder}` source must not be empty");
-    }
-    match manifest.plugin_type.trim() {
-        "server" => {}
+    let kind = match manifest.plugin_type.trim() {
+        "server" => PluginKind::Server,
+        "viewer" => PluginKind::Viewer,
         "client" => {
             bail!("plugin `{folder}` is a client plugin and cannot run in the server registry")
         }
-        other => bail!("plugin `{folder}` has unknown type `{other}`; use server or client"),
+        other => {
+            bail!("plugin `{folder}` has unknown type `{other}`; use server, client or viewer")
+        }
+    };
+
+    if kind == PluginKind::Server && script.trim().is_empty() {
+        bail!("plugin `{folder}` source must not be empty");
+    }
+
+    let mut viewer = None;
+    if kind == PluginKind::Viewer {
+        let extensions: Vec<String> = manifest
+            .extensions
+            .iter()
+            .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+        if extensions.is_empty() || extensions.len() > MAX_VIEWER_EXTENSIONS {
+            bail!(
+                "viewer plugin `{folder}` must declare 1-{MAX_VIEWER_EXTENSIONS} extensions"
+            );
+        }
+        if let Some(bad) = extensions.iter().find(|value| !valid_viewer_extension(value)) {
+            bail!(
+                "viewer plugin `{folder}` has invalid extension `{bad}`; use lower-case letters and digits"
+            );
+        }
+        let entry = manifest.entry.trim();
+        if entry.is_empty()
+            || entry.chars().count() > MAX_VIEWER_ENTRY_CHARS
+            || !entry.ends_with(".html")
+            || !is_safe_viewer_path(entry)
+        {
+            bail!("viewer plugin `{folder}` entry must be a relative `.html` path");
+        }
+        let role = manifest.role.trim();
+        if role != "renderer" && role != "editor" {
+            bail!("viewer plugin `{folder}` role must be `renderer` or `editor`");
+        }
+        viewer = Some(ViewerInfo {
+            extensions,
+            role: role.to_string(),
+            entry: entry.to_string(),
+        });
     }
 
     Ok(PluginDefinition {
         id: id.to_string(),
         title: title.to_string(),
         description: description.to_string(),
+        kind,
         script: script.to_string(),
+        viewer,
         source,
+        folder: base_folder.to_string(),
         path,
     })
+}
+
+impl PluginRegistry {
+    /// Serve one file of a viewer bundle (`viewer.html`, `viewer.js`, fonts…).
+    pub fn viewer_file(&self, id: &str, rel: &str) -> Result<Option<Vec<u8>>> {
+        if !is_safe_viewer_path(rel) {
+            bail!("invalid viewer file path");
+        }
+        let state = self
+            .state
+            .read()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let Some(plugin) = state.plugins.iter().find(|plugin| plugin.id == id) else {
+            return Ok(None);
+        };
+        if plugin.kind != PluginKind::Viewer {
+            return Ok(None);
+        }
+        match plugin.source {
+            PluginSource::Builtin => {
+                let path = format!("{}/{rel}", plugin.folder);
+                let bytes = read_builtin_plugin(&path)?;
+                if bytes.len() as u64 > MAX_VIEWER_FILE_BYTES {
+                    bail!("viewer file `{path}` is too large");
+                }
+                Ok(Some(bytes))
+            }
+            PluginSource::Data => {
+                let root = PathBuf::from(&plugin.folder);
+                let target = root.join(rel);
+                let root = fs::canonicalize(&root)
+                    .with_context(|| format!("resolving viewer folder {}", root.display()))?;
+                let target = fs::canonicalize(&target)
+                    .with_context(|| format!("resolving viewer file {}", target.display()))?;
+                if !target.starts_with(&root) {
+                    bail!("viewer file escapes the plugin folder");
+                }
+                let metadata = fs::metadata(&target)?;
+                if !metadata.is_file() {
+                    bail!("viewer file is not a file");
+                }
+                if metadata.len() > MAX_VIEWER_FILE_BYTES {
+                    bail!("viewer file is too large");
+                }
+                Ok(Some(fs::read(&target)?))
+            }
+        }
+    }
+
 }
 
 fn run_plugin(
@@ -872,8 +1045,11 @@ mod tests {
             id: "Test/runaway".to_string(),
             title: "Runaway".to_string(),
             description: "test".to_string(),
+            kind: PluginKind::Server,
             script: "while (true) {}".to_string(),
+            viewer: None,
             source: PluginSource::Data,
+            folder: String::new(),
             path: None,
         };
         let started = Instant::now();
@@ -909,6 +1085,81 @@ mod tests {
             .iter()
             .any(|plugin| plugin.id == "Acme/hello" && plugin.source == PluginSource::Data));
         assert!(list.errors.is_empty());
+    }
+
+    #[test]
+    fn registry_loads_viewer_plugins_and_serves_files() {
+        let dir = tempdir().unwrap();
+        let viewer_dir = dir.path().join("plugins").join("mermaid");
+        fs::create_dir_all(&viewer_dir).unwrap();
+        fs::write(
+            viewer_dir.join("plugin.json"),
+            r#"{
+                "id": "Acme/mermaid",
+                "title": "Mermaid",
+                "description": "Viewer test",
+                "type": "viewer",
+                "extensions": ["Mermaid", ".mmd"],
+                "entry": "viewer.html",
+                "role": "renderer"
+            }"#,
+        )
+        .unwrap();
+        fs::write(viewer_dir.join("viewer.html"), "<!doctype html>ok").unwrap();
+        fs::write(viewer_dir.join("viewer.js"), "console.log(1)").unwrap();
+
+        let registry = PluginRegistry::new(dir.path()).unwrap();
+        let list = registry.list();
+        let viewer = list
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == "Acme/mermaid")
+            .expect("viewer plugin loaded");
+        assert_eq!(viewer.kind, PluginKind::Viewer);
+        let meta = viewer.viewer.as_ref().unwrap();
+        assert_eq!(meta.extensions, vec!["mermaid", "mmd"]);
+        assert_eq!(meta.role, "renderer");
+        assert_eq!(meta.entry, "viewer.html");
+
+        let html = registry
+            .viewer_file("Acme/mermaid", "viewer.html")
+            .unwrap()
+            .expect("viewer file");
+        assert_eq!(html, b"<!doctype html>ok");
+        assert!(registry
+            .viewer_file("Acme/mermaid", "../../secret")
+            .is_err());
+        assert!(registry.viewer_file("Acme/missing", "viewer.html").unwrap().is_none());
+
+        // Viewers never run as journal plugins.
+        let store = Arc::new(Store::open(dir.path(), 1.0).unwrap());
+        store.create_notebook("Notes", "").unwrap();
+        let results = registry.run_journal(&store, "Notes", 0.5);
+        assert!(results.iter().all(|result| result.id != "Acme/mermaid"));
+    }
+
+    #[test]
+    fn rejects_invalid_viewer_manifests() {
+        let cases = [
+            r#"{"id":"A/b","title":"T","description":"D","type":"viewer","entry":"viewer.html","role":"renderer"}"#,
+            r#"{"id":"A/b","title":"T","description":"D","type":"viewer","extensions":["mermaid"],"entry":"viewer.txt","role":"renderer"}"#,
+            r#"{"id":"A/b","title":"T","description":"D","type":"viewer","extensions":["mermaid"],"entry":"../viewer.html","role":"renderer"}"#,
+            r#"{"id":"A/b","title":"T","description":"D","type":"viewer","extensions":["mermaid"],"entry":"viewer.html","role":"canvas"}"#,
+        ];
+        for manifest in cases {
+            assert!(
+                parse_plugin(
+                    "case",
+                    manifest,
+                    "",
+                    PluginSource::Data,
+                    "case",
+                    None
+                )
+                .is_err(),
+                "manifest should be rejected: {manifest}"
+            );
+        }
     }
 
     #[test]

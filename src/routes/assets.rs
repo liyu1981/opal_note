@@ -9,8 +9,9 @@ use tokio::io::AsyncWriteExt;
 use crate::error::{ApiResult, AppError};
 use crate::routes::{clamp_limit, clamp_offset, db_call};
 use crate::state::AppState;
+use crate::store::files::{self, EDITABLE_ASSET_EXTENSIONS};
 use crate::store::model::{AssetEntry, AssetInfo, AssetList};
-use crate::store::{AssetListOptions, AssetRename};
+use crate::store::{AssetListOptions, AssetRename, AssetUpdate};
 
 fn default_limit() -> usize {
     24
@@ -114,6 +115,112 @@ async fn write_upload(
         return Err(AppError::Internal(err.into()));
     }
     Ok(temp)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateContentAssetRequest {
+    #[serde(default)]
+    pub name: String,
+    pub extension: String,
+    #[serde(default)]
+    pub content: String,
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateContentAssetRequest {
+    #[serde(default)]
+    pub content: String,
+    pub base_updated_at: Option<String>,
+}
+
+fn editable_extension(value: &str) -> Option<String> {
+    let extension = value.trim().trim_start_matches('.').to_ascii_lowercase();
+    EDITABLE_ASSET_EXTENSIONS
+        .contains(&extension.as_str())
+        .then_some(extension)
+}
+
+fn check_content_size(extension: &str, content: &str) -> ApiResult<()> {
+    let limit = files::editable_asset_max_bytes(extension);
+    if content.len() as u64 > limit {
+        return Err(AppError::PayloadTooLarge(format!(
+            "asset content exceeds the {} KB limit",
+            limit / 1024
+        )));
+    }
+    Ok(())
+}
+
+/// Create a text asset (Mermaid source, Excalidraw scene) from JSON.
+pub async fn create_content(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Json(body): Json<CreateContentAssetRequest>,
+) -> ApiResult<Json<AssetEntry>> {
+    let Some(extension) = editable_extension(&body.extension) else {
+        return Err(AppError::bad_request(format!(
+            "unsupported asset extension; use {}",
+            EDITABLE_ASSET_EXTENSIONS.join(", ")
+        )));
+    };
+    check_content_size(&extension, &body.content)?;
+    let name = body.name.trim().to_string();
+    let folder = body
+        .folder
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let content = body.content;
+    let store = state.store.clone();
+    let entry = db_call(
+        move || {
+            store.write_asset(
+                &notebook_id,
+                &name,
+                &extension,
+                folder.as_deref(),
+                &content,
+            )
+        },
+        AppError::Internal,
+    )
+    .await?;
+    Ok(Json(entry))
+}
+
+/// Overwrite an existing text asset. `base_updated_at` guards against a stale
+/// editor clobbering a newer save.
+pub async fn update_content(
+    State(state): State<AppState>,
+    Path((notebook_id, path)): Path<(String, String)>,
+    Json(body): Json<UpdateContentAssetRequest>,
+) -> ApiResult<Json<AssetEntry>> {
+    let extension = std::path::Path::new(&path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .and_then(editable_extension)
+        .ok_or_else(|| {
+            AppError::bad_request(format!(
+                "asset `{path}` is not an editable text asset; use {}",
+                EDITABLE_ASSET_EXTENSIONS.join(", ")
+            ))
+        })?;
+    check_content_size(&extension, &body.content)?;
+    let content = body.content;
+    let base = body.base_updated_at;
+    let store = state.store.clone();
+    let outcome = db_call(
+        move || store.update_asset(&notebook_id, &path, &content, base.as_deref()),
+        AppError::Internal,
+    )
+    .await?;
+    match outcome {
+        AssetUpdate::Updated(entry) => Ok(Json(entry)),
+        AssetUpdate::NotFound => Err(AppError::not_found("asset not found")),
+        AssetUpdate::Conflict => Err(AppError::Conflict(
+            "asset was modified elsewhere; reload before saving".to_string(),
+        )),
+    }
 }
 
 /// Multipart asset upload. The first file field wins; the original file name is

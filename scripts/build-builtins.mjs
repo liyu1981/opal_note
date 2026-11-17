@@ -33,6 +33,8 @@ const PLUGIN_OUTPUT = path.join(ROOT, "builtin", "plugins");
 const BACKGROUND_OUTPUT = path.join(ROOT, "builtin", "backgrounds");
 
 const MAX_PLUGIN_BYTES = 20_000;
+const MAX_VIEWER_BYTES = 16 * 1024 * 1024;
+const MAX_VIEWER_EXTENSIONS = 8;
 const MAX_MANIFEST_BYTES = 16 * 1024;
 const MAX_ID_CHARS = 96;
 const MAX_TITLE_CHARS = 120;
@@ -91,11 +93,50 @@ function validateManifest(pkg, sourceLabel, expectedKind) {
       ? "server"
       : expectedKind === "client"
         ? "client"
-        : null;
+        : expectedKind === "viewer"
+          ? "viewer"
+          : null;
   if (expectedType && manifest.type !== expectedType) {
     throw new Error(
       `${sourceLabel}: opal_note.type must be "${expectedType}" for this package location`,
     );
+  }
+  if (expectedKind === "viewer") {
+    const extensions = manifest.extensions;
+    if (
+      !Array.isArray(extensions) ||
+      extensions.length === 0 ||
+      extensions.length > MAX_VIEWER_EXTENSIONS
+    ) {
+      throw new Error(
+        `${sourceLabel}: viewer opal_note.extensions must list 1-${MAX_VIEWER_EXTENSIONS} entries`,
+      );
+    }
+    for (const extension of extensions) {
+      if (
+        typeof extension !== "string" ||
+        !/^[a-z0-9]{1,16}$/u.test(extension)
+      ) {
+        throw new Error(
+          `${sourceLabel}: viewer extension \`${extension}\` must be lower-case letters and digits`,
+        );
+      }
+    }
+    if (
+      typeof manifest.entry !== "string" ||
+      !manifest.entry.endsWith(".html") ||
+      manifest.entry.startsWith("/") ||
+      manifest.entry.split("/").some((part) => part === ".." || part === "")
+    ) {
+      throw new Error(
+        `${sourceLabel}: viewer opal_note.entry must be a relative .html path`,
+      );
+    }
+    if (manifest.role !== "renderer" && manifest.role !== "editor") {
+      throw new Error(
+        `${sourceLabel}: viewer opal_note.role must be "renderer" or "editor"`,
+      );
+    }
   }
   if (expectedKind === "background") {
     if (typeof manifest.kind !== "string" || !manifest.kind.trim()) {
@@ -222,6 +263,130 @@ async function buildClientPlugin(packageDir, manifest, buildConfig = {}) {
   return { script, json };
 }
 
+async function buildViewerPlugin(packageDir, manifest, buildConfig = {}) {
+  const entryName = buildConfig.entry ?? "src/index.ts";
+  const entry = path.resolve(packageDir, entryName);
+  if (!inside(packageDir, entry)) {
+    throw new Error(`${manifest.id}: viewer entry escapes the package directory`);
+  }
+  if (!existsSync(entry)) {
+    throw new Error(`${manifest.id}: missing viewer entry ${entryName}`);
+  }
+  const outdir = await mkdtemp(path.join(os.tmpdir(), "opalnote-viewer-"));
+  try {
+    const result = await build({
+      absWorkingDir: packageDir,
+      entryPoints: [entry],
+      outdir,
+      bundle: true,
+      format: "iife",
+      jsx: "automatic",
+      platform: "browser",
+      target: buildConfig.target ?? "es2020",
+      minify: buildConfig.minify !== false,
+      conditions: ["production", "browser"],
+      write: false,
+      logLevel: "silent",
+      loader: {
+        ".woff2": "file",
+        ".woff": "file",
+        ".ttf": "file",
+        ".png": "file",
+        ".jpg": "file",
+        ".gif": "file",
+        ".svg": "file",
+      },
+      assetNames: "[name]-[hash]",
+    });
+
+    const files = {};
+    let css = null;
+    for (const file of result.outputFiles) {
+      const rel = path.relative(outdir, file.path).split(path.sep).join("/");
+      if (rel.endsWith(".js") && !files["viewer.js"]) {
+        files["viewer.js"] = file.contents;
+      } else if (rel.endsWith(".css") && !css) {
+        css = file.contents;
+      } else {
+        files[rel] = file.contents;
+      }
+    }
+    if (!files["viewer.js"]) {
+      throw new Error(`${manifest.id}: esbuild produced no viewer script`);
+    }
+    if (css) files["viewer.css"] = css;
+
+    const htmlPath = path.join(packageDir, "viewer.html");
+    files[manifest.entry] = existsSync(htmlPath)
+      ? await readFile(htmlPath)
+      : Buffer.from(
+          [
+            "<!doctype html>",
+            '<html lang="en">',
+            "<head>",
+            '<meta charset="utf-8" />',
+            '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+            css ? '<link rel="stylesheet" href="viewer.css" />' : null,
+            "<style>html,body{margin:0;height:100%;}body{overflow:hidden;}</style>",
+            "</head>",
+            "<body>",
+            '<div id="root"></div>',
+            '<script src="viewer.js"></script>',
+            "</body>",
+            "</html>",
+            "",
+          ]
+            .filter((line) => line !== null)
+            .join("\n"),
+        );
+
+    // Extra static files (`copy` entries) such as Excalidraw's fonts.
+    for (const copy of buildConfig.copy ?? []) {
+      if (
+        !copy ||
+        typeof copy.from !== "string" ||
+        typeof copy.to !== "string" ||
+        copy.to.startsWith("/") ||
+        copy.to.split("/").some((part) => part === ".." || part === "")
+      ) {
+        throw new Error(`${manifest.id}: invalid opal_note_build.copy entry`);
+      }
+      const source = copy.from.startsWith(".")
+        ? path.resolve(packageDir, copy.from)
+        : path.join(ROOT, "node_modules", copy.from);
+      if (!existsSync(source)) {
+        throw new Error(`${manifest.id}: copy source ${copy.from} not found`);
+      }
+      const entries = await readdir(source, { recursive: true, withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const absolute = path.join(entry.parentPath ?? entry.path, entry.name);
+        const rel = path.relative(source, absolute).split(path.sep).join("/");
+        files[`${copy.to}/${rel}`] = await readFile(absolute);
+      }
+    }
+
+    const json = JSON.stringify(manifest, null, 2) + "\n";
+    if (Buffer.byteLength(json) > MAX_MANIFEST_BYTES) {
+      throw new Error(`${manifest.id}: plugin.json exceeds ${MAX_MANIFEST_BYTES} bytes`);
+    }
+    files["plugin.json"] = Buffer.from(json);
+
+    const bytes = Object.values(files).reduce(
+      (total, content) => total + content.length,
+      0,
+    );
+    if (bytes > MAX_VIEWER_BYTES) {
+      throw new Error(
+        `${manifest.id}: viewer bundle is ${bytes} bytes; maximum is ${MAX_VIEWER_BYTES}`,
+      );
+    }
+    return { id: manifest.id, files };
+  } finally {
+    await rm(outdir, { recursive: true, force: true });
+  }
+}
+
 async function buildOne(kind, packageDir, outputRoot) {
   const pkg = await readPackage(packageDir);
   const manifest = validateManifest(
@@ -252,6 +417,10 @@ async function buildOne(kind, packageDir, outputRoot) {
     return { id: manifest.id, files: { "plugin.js": script, "plugin.json": json } };
   }
 
+  if (kind === "viewer") {
+    return buildViewerPlugin(packageDir, manifest, pkg.opal_note_build ?? {});
+  }
+
   const json = JSON.stringify(manifest, null, 2) + "\n";
   if (Buffer.byteLength(json) > MAX_MANIFEST_BYTES) {
     throw new Error(
@@ -269,7 +438,9 @@ async function writePlugin(outputRoot, built) {
   await rm(destination, { recursive: true, force: true });
   await mkdir(destination, { recursive: true });
   for (const [name, content] of Object.entries(built.files)) {
-    await writeFile(path.join(destination, name), content);
+    const target = path.join(destination, name);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content);
   }
 }
 
@@ -340,9 +511,11 @@ async function main() {
   );
   const serverPackages = [];
   const clientPackages = [];
+  const viewerPackages = [];
   for (const item of pluginPackages) {
     const pkg = await readPackage(item.dir);
     if (pkg.opal_note?.type === "client") clientPackages.push(item);
+    else if (pkg.opal_note?.type === "viewer") viewerPackages.push(item);
     else serverPackages.push(item);
   }
   if (
@@ -386,6 +559,17 @@ async function main() {
     const built = await buildOne("client", dir, PLUGIN_OUTPUT);
     builtClients.push({ dir, built });
   }
+  const selectedViewers = only
+    ? viewerPackages.filter(({ dir }) => {
+        const id = path.relative(PLUGIN_SOURCE, dir).split(path.sep).join("/");
+        return id === only;
+      })
+    : viewerPackages;
+  const builtViewers = [];
+  for (const { dir } of selectedViewers) {
+    const built = await buildOne("viewer", dir, PLUGIN_OUTPUT);
+    builtViewers.push({ dir, built });
+  }
   const clientIndexEntries = only
     ? clientPackages.map(({ dir }) => ({
         built: {
@@ -404,6 +588,7 @@ async function main() {
         await writeBackground(tempBackgrounds, dir, built);
       }
       for (const { built } of builtClients) await writePlugin(tempPlugins, built);
+      for (const { built } of builtViewers) await writePlugin(tempPlugins, built);
       await writeClientIndex(tempPlugins, clientIndexEntries);
       const errors = [
         ...(await compareTree(tempPlugins, PLUGIN_OUTPUT)),
@@ -413,7 +598,7 @@ async function main() {
         fail(`generated built-ins are out of date:\n  ${errors.join("\n  ")}`);
       }
       console.log(
-        `  ${builtPlugins.length} plugin(s), ${builtBackgrounds.length} background(s) and ${builtClients.length} client plugin(s) are up to date`,
+        `  ${builtPlugins.length} plugin(s), ${builtBackgrounds.length} background(s), ${builtClients.length} client plugin(s) and ${builtViewers.length} viewer plugin(s) are up to date`,
       );
     } finally {
       await rm(temp, { recursive: true, force: true });
@@ -435,10 +620,13 @@ async function main() {
   for (const { built } of builtClients) {
     await writePlugin(PLUGIN_OUTPUT, built);
   }
+  for (const { built } of builtViewers) {
+    await writePlugin(PLUGIN_OUTPUT, built);
+  }
   await writeClientIndex(PLUGIN_OUTPUT, clientIndexEntries);
 
   console.log(
-    `  wrote ${builtPlugins.length} plugin(s), ${builtBackgrounds.length} background(s) and ${builtClients.length} client plugin(s)`,
+    `  wrote ${builtPlugins.length} plugin(s), ${builtBackgrounds.length} background(s), ${builtClients.length} client plugin(s) and ${builtViewers.length} viewer plugin(s)`,
   );
 }
 

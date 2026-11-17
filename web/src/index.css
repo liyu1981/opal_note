@@ -719,6 +719,36 @@ select:focus-visible {
   padding: 0.3rem 0.5rem;
 }
 
+/* Sandboxed viewer plugin embed (Mermaid, Excalidraw, …). */
+.cm-live-viewer {
+  display: block;
+  margin: 0.4rem 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-paper);
+  position: relative;
+}
+
+.cm-live-viewer[data-state="loading"],
+.cm-live-viewer[data-state="error"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: var(--color-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.cm-live-viewer iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 /* Non-media asset reference: icon + name, opens the asset view. */
 .cm-live-file {
   align-items: center;

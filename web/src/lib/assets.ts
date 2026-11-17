@@ -112,11 +112,24 @@ export function assetUrl(path: string): string {
   return /[\s<>()]/.test(path) ? `<${url}>` : url;
 }
 
+/**
+ * Extensions rendered by rich-content viewer plugins. They are embedded with
+ * `![]`, not linked, so the live preview can mount their viewer.
+ */
+const RICH_CONTENT_EXTENSIONS = new Set(["mermaid", "mmd", "excalidraw"]);
+
+export function isRichContentPath(path: string): boolean {
+  return RICH_CONTENT_EXTENSIONS.has(extensionOf(path));
+}
+
 /** Markdown for a freshly uploaded asset: media embeds, other files link. */
 export function assetMarkdown(asset: AssetEntry): string {
   const kind = assetKindFromPath(asset.path);
   const url = assetUrl(asset.path);
-  return kind === "image" || kind === "video" || kind === "audio"
+  return kind === "image" ||
+    kind === "video" ||
+    kind === "audio" ||
+    isRichContentPath(asset.path)
     ? `![${asset.name}](${url})`
     : `[${asset.name}](${url})`;
 }

@@ -11,14 +11,26 @@ type SlashCommand = {
   label: string;
   detail: string;
   keywords: string;
-  /** `upload` opens the host's file picker instead of editing the line. */
-  kind?: "upload";
+  /**
+   * `upload` opens the host's file picker; `viewer` creates a rich-content
+   * asset (diagram/drawing) and inserts its embed.
+   */
+  kind?: "upload" | "viewer";
+  /** Asset extension for `kind: "viewer"` commands. */
+  extension?: string;
   apply: (view: EditorView, from: number, to: number) => void;
 };
 
 export type SlashCommandOptions = {
   /** Provided by the editor host; opens a picker and inserts the asset link. */
   onUpload?: (view: EditorView, from: number, to: number) => void;
+  /** Creates a viewer asset (`extension`) and inserts the resulting embed. */
+  onCreateViewer?: (
+    view: EditorView,
+    from: number,
+    to: number,
+    extension: string,
+  ) => void;
 };
 
 function applyPrefix(prefix: string) {
@@ -135,6 +147,14 @@ const COMMANDS: SlashCommand[] = [
     kind: "upload",
     apply: () => {},
   },
+  {
+    label: "Mermaid diagram",
+    detail: "Diagram",
+    keywords: "mermaid diagram flowchart sequence gantt chart",
+    kind: "viewer",
+    extension: "mermaid",
+    apply: () => {},
+  },
 ];
 
 /**
@@ -179,6 +199,10 @@ export function slashCommandSource(
     apply: (view, _completion, from, to) => {
       if (command.kind === "upload") {
         slashOptions.onUpload?.(view, from, to);
+        return;
+      }
+      if (command.kind === "viewer") {
+        slashOptions.onCreateViewer?.(view, from, to, command.extension ?? "");
         return;
       }
       command.apply(view, from, to);

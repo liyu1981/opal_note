@@ -1,0 +1,27 @@
+{
+  "name": "@opalnote/plugin-mermaid",
+  "version": "1.0.0",
+  "description": "Render and edit Mermaid diagrams with Pele.",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pele": "^1.13.0"
+  },
+  "opal_note": {
+    "id": "OpalNote/mermaid",
+    "title": "Mermaid diagram",
+    "description": "Render and edit Mermaid diagrams with Pele.",
+    "type": "viewer",
+    "api": 1,
+    "extensions": ["mermaid", "mmd"],
+    "entry": "viewer.html",
+    "role": "renderer",
+    "inline": "read",
+    "lightbox": "edit"
+  },
+  "opal_note_build": {
+    "entry": "src/index.ts",
+    "target": "es2020",
+    "minify": true
+  }
+}

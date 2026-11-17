@@ -146,11 +146,25 @@ export interface JournalPluginResult {
 
 export type PluginSource = "builtin" | "data";
 
+export type PluginKind = "server" | "viewer";
+
+/** Metadata for an iframe `viewer` plugin. */
+export interface ViewerInfo {
+  /** Lower-case, dot-less file extensions this viewer handles. */
+  extensions: string[];
+  /** `renderer` renders content (host owns the editor); `editor` owns its UI. */
+  role: "renderer" | "editor";
+  /** Entry HTML file served from the plugin bundle. */
+  entry: string;
+}
+
 export interface PluginInfo {
   id: string;
   title: string;
   description: string;
   source: PluginSource;
+  type: PluginKind;
+  viewer?: ViewerInfo;
   path?: string;
 }
 

@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 pub const PAGE_DIR: &str = "pages";
 pub const JOURNAL_DIR: &str = "journals";
 pub const ASSET_DIR: &str = "assets";
+/// Default subfolder for rich-content assets (diagrams, drawings).
+pub const DIAGRAM_ASSET_DIR: &str = "diagrams";
 pub const META_FILE: &str = ".opalnote.json";
 pub const NOTE_EXT: &str = "md";
 
@@ -516,11 +518,41 @@ fn walk_assets(root: &Path, dir: &Path, out: &mut Vec<AssetFile>) -> io::Result<
     Ok(())
 }
 
+/// Modification time of an asset for optimistic concurrency checks.
+pub fn asset_updated_at(path: &Path) -> io::Result<f64> {
+    let metadata = fs::metadata(path)?;
+    let (_, updated_at, _) = file_times(&metadata);
+    Ok(updated_at)
+}
+
 pub fn asset_mime(path: &Path) -> String {
-    mime_guess::from_path(path)
-        .first_or_octet_stream()
-        .essence_str()
-        .to_string()
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        // Rich-content assets are plain text documents; `mime_guess` has no
+        // entry for them and would serve octet-stream.
+        "mermaid" | "mmd" => "text/plain".to_string(),
+        "excalidraw" => "application/json".to_string(),
+        _ => mime_guess::from_path(path)
+            .first_or_octet_stream()
+            .essence_str()
+            .to_string(),
+    }
+}
+
+/// Extensions the text-asset API accepts. Renderer plugins map these to an
+/// editor/viewer, so the list stays explicit.
+pub const EDITABLE_ASSET_EXTENSIONS: &[&str] = &["mermaid", "mmd", "excalidraw"];
+
+/// Per-extension size cap for text assets (scenes embed image data URLs).
+pub fn editable_asset_max_bytes(extension: &str) -> u64 {
+    match extension {
+        "excalidraw" => 8 * 1024 * 1024,
+        _ => 2 * 1024 * 1024,
+    }
 }
 
 pub fn asset_file(notebook: &Path, rel: &str) -> io::Result<AssetFile> {
@@ -572,6 +604,9 @@ fn asset_kind(mime: &str, path: &Path) -> &'static str {
             | "zip"
             | "tar"
             | "gz"
+            | "mermaid"
+            | "mmd"
+            | "excalidraw"
     ) {
         "document"
     } else {

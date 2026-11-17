@@ -24,6 +24,7 @@
     "docker": "docker build -t opal-note ."
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "pele": "^1.13.0"
   }
 }

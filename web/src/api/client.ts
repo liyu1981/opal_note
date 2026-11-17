@@ -267,6 +267,32 @@ export const api = {
   getAssetBlob: (notebookId: string, path: string) =>
     requestBlob(assetPath(notebookId, path)),
 
+  /** Create a text asset (Mermaid source, Excalidraw scene). */
+  createAssetContent: (
+    notebookId: string,
+    body: {
+      name: string;
+      extension: string;
+      content: string;
+      folder?: string;
+    },
+  ) =>
+    request<AssetEntry>(`/notebooks/${encode(notebookId)}/assets/content`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** Overwrite an existing text asset, optionally guarded by `updated_at`. */
+  updateAssetContent: (
+    notebookId: string,
+    path: string,
+    body: { content: string; base_updated_at?: string },
+  ) =>
+    request<AssetEntry>(assetPath(notebookId, path), {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   /** Upload one file into the notebook's `assets/` folder. */
   uploadAsset: (notebookId: string, file: File) => {
     const body = new FormData();

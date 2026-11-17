@@ -4,7 +4,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
@@ -34,9 +34,31 @@ import {
   type LivePreviewOptions,
 } from "../../lib/livePreview";
 import { noteEditorTheme, noteMarkdownHighlighting } from "../../lib/editorTheme";
+import {
+  viewerByExtension,
+  viewerEntryUrl,
+  viewerPluginsAtom,
+} from "../../plugins/viewers";
 import { settingsAtom } from "../../lib/settings";
+import { diagramLightboxAtom } from "../../state/atoms";
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
 import { slashCommandSource } from "../../lib/slashCommands";
+
+const STARTERS: Record<string, string> = {
+  mermaid: "flowchart LR\n  A[Start] --> B[End]\n",
+  excalidraw: JSON.stringify(
+    {
+      type: "excalidraw",
+      version: 2,
+      source: "opalnote",
+      elements: [],
+      appState: {},
+      files: {},
+    },
+    null,
+    2,
+  ),
+};
 
 export type LiveMarkdownEditorHandle = {
   focus: () => void;
@@ -105,6 +127,14 @@ export const LiveMarkdownEditor = forwardRef<
   const openAssetRef = useRef<(assetPath: string) => void>(() => {});
   openAssetRef.current = (assetPath) =>
     navigate({ view: "asset", path: assetPath });
+  const viewerPlugins = useAtomValue(viewerPluginsAtom);
+  const viewerMap = viewerByExtension(viewerPlugins);
+  const setDiagramLightbox = useSetAtom(diagramLightboxAtom);
+  const onOpenViewerRef = useRef<
+    ((assetPath: string, extension: string) => void) | null
+  >(null);
+  onOpenViewerRef.current = (assetPath, extension) =>
+    setDiagramLightbox({ notebookId, path: assetPath, extension });
 
   readOnlyRef.current = readOnly;
   const onChangeRef = useRef(onChange);
@@ -132,6 +162,9 @@ export const LiveMarkdownEditor = forwardRef<
     },
     onTag: (tag) => onTagRef.current(tag),
     onOpenAsset: (assetPath) => openAssetRef.current(assetPath),
+    viewerFor: () => null,
+    onOpenViewer: (assetPath, extension) =>
+      onOpenViewerRef.current?.(assetPath, extension),
     readOnly,
     notePath,
     loadAsset: (path) => api.getAssetBlob(notebookId, path),
@@ -143,7 +176,55 @@ export const LiveMarkdownEditor = forwardRef<
     notePath,
     loadAsset: (path) => api.getAssetBlob(notebookId, path),
     onOpenAsset: (assetPath) => openAssetRef.current(assetPath),
+    viewerFor: (extension) => {
+      const plugin = viewerMap.get(extension);
+      return plugin ? { id: plugin.id, src: viewerEntryUrl(plugin) } : null;
+    },
+    onOpenViewer: (assetPath, extension) => {
+      onOpenViewerRef.current?.(assetPath, extension);
+    },
   };
+
+  /** Create a viewer asset from a starter template and embed it. */
+  function createViewerAsset(
+    view: EditorView,
+    from: number,
+    to: number,
+    extension: string,
+  ) {
+    if (readOnlyRef.current) return;
+    view.dispatch({
+      changes: { from, to, insert: "" },
+      selection: { anchor: from },
+    });
+    const title = notePath.split("/").pop()?.replace(/\.md$/u, "") ?? "Diagram";
+    void api
+      .createAssetContent(notebookId, {
+        name: title,
+        extension,
+        content: STARTERS[extension] ?? "",
+        folder: "diagrams",
+      })
+      .then((asset) => {
+        const editorView = viewRef.current;
+        if (!editorView) return;
+        const markdown = assetMarkdown(asset);
+        const at = Math.min(from, editorView.state.doc.length);
+        editorView.dispatch({
+          changes: { from: at, insert: markdown },
+          selection: { anchor: at + markdown.length },
+          scrollIntoView: true,
+        });
+        editorView.focus();
+      })
+      .catch((cause) => {
+        window.alert(
+          cause instanceof Error
+            ? cause.message
+            : "Could not create the diagram",
+        );
+      });
+  }
 
   /** Upload a file chosen from the `/upload` command and insert its markdown. */
   function insertUploadedAsset(file: File, from: number) {
@@ -281,6 +362,8 @@ export const LiveMarkdownEditor = forwardRef<
           (context) =>
             slashCommandSource(context, {
               onUpload: (view, from, to) => requestUpload(view, from, to),
+              onCreateViewer: (view, from, to, extension) =>
+                createViewerAsset(view, from, to, extension),
             }),
         ],
         activateOnTyping: true,

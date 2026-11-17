@@ -14,6 +14,8 @@ import {
 } from "@codemirror/view";
 
 import { assetKindFromPath } from "./assets";
+import { extensionOfPath, viewerTheme } from "../plugins/viewers";
+import { mountViewer, type ViewerMount } from "../plugins/viewerMount";
 import { normalizeLinkTarget, splitWikilink } from "./markdown";
 
 export type LinkTarget = { title: string; path: string };
@@ -24,6 +26,10 @@ export type LivePreviewOptions = {
   onOpenLink: (url: string) => void;
   onTag: (tag: string) => void;
   onOpenAsset: (assetPath: string) => void;
+  /** Viewer plugin for an extension, or null when no plugin handles it. */
+  viewerFor: (extension: string) => { id: string; src: string } | null;
+  /** Open the lightbox for a viewer-backed asset. */
+  onOpenViewer: (assetPath: string, extension: string) => void;
   readOnly: boolean;
   notePath: string;
   loadAsset: (path: string) => Promise<Blob>;
@@ -547,6 +553,27 @@ function buildDecorations(
       const assetKind = assetPath ? assetKindFromPath(assetPath) : null;
       const isEmbed = match[1] === "!";
 
+      const viewer = assetPath
+        ? options.viewerFor(extensionOfPath(assetPath))
+        : null;
+      if (isEmbed && assetPath && viewer) {
+        if (!active) {
+          replace(
+            start,
+            end,
+            new ViewerWidget(
+              assetPath,
+              extensionOfPath(assetPath),
+              viewer,
+              options.loadAsset,
+              options.onOpenViewer,
+            ),
+          );
+        }
+        claimed.push([start, end]);
+        return;
+      }
+
       if (
         assetPath &&
         (!isEmbed || assetKind === "document" || assetKind === "other")
@@ -1020,6 +1047,106 @@ class AssetFileWidget extends WidgetType {
       this.onOpenAsset(this.assetPath);
     });
     return button;
+  }
+}
+
+/**
+ * Sandboxed viewer embed (`viewer` plugin, read mode). The iframe mounts lazily
+ * when it scrolls into view, sizes itself from `resize` messages, and asks the
+ * host to open the lightbox on click.
+ */
+class ViewerWidget extends WidgetType {
+  constructor(
+    readonly assetPath: string,
+    readonly extension: string,
+    readonly viewer: { id: string; src: string },
+    readonly loadAsset: (path: string) => Promise<Blob>,
+    readonly onOpenViewer: (assetPath: string, extension: string) => void,
+  ) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof ViewerWidget &&
+      other.assetPath === this.assetPath &&
+      other.extension === this.extension &&
+      other.viewer.id === this.viewer.id
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-live-viewer";
+    wrapper.dataset.state = "loading";
+    wrapper.style.height = "9rem";
+
+    let mount: ViewerMount | null = null;
+    let observer: IntersectionObserver | null = null;
+    let destroyed = false;
+
+    const start = () => {
+      void this.loadAsset(this.assetPath)
+        .then((blob) => blob.text())
+        .then((content) => {
+          if (destroyed || !wrapper.isConnected) return;
+          wrapper.dataset.state = "ready";
+          mount = mountViewer(wrapper, {
+            src: this.viewer.src,
+            mode: "read",
+            content,
+            extension: this.extension,
+            theme: viewerTheme(),
+            onResize: (height) => {
+              wrapper.style.height = `${Math.min(height, 520)}px`;
+            },
+            onOpen: () => this.onOpenViewer(this.assetPath, this.extension),
+            onError: (message) => {
+              wrapper.dataset.state = "error";
+              wrapper.textContent = message;
+            },
+          });
+        })
+        .catch((cause) => {
+          if (destroyed) return;
+          wrapper.dataset.state = "error";
+          wrapper.textContent =
+            cause instanceof Error ? cause.message : "Could not load the drawing";
+        });
+    };
+
+    observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer?.disconnect();
+        observer = null;
+        start();
+      },
+      { rootMargin: "400px" },
+    );
+    // CodeMirror inserts the wrapper after `toDOM` returns.
+    window.requestAnimationFrame(() => {
+      if (wrapper.isConnected) observer?.observe(wrapper);
+    });
+
+    const cleanup = () => {
+      destroyed = true;
+      observer?.disconnect();
+      observer = null;
+      mount?.destroy();
+      mount = null;
+    };
+    (wrapper as HTMLElement & { viewerCleanup?: () => void }).viewerCleanup =
+      cleanup;
+    return wrapper;
+  }
+
+  destroy(dom: HTMLElement): void {
+    (dom as HTMLElement & { viewerCleanup?: () => void }).viewerCleanup?.();
+  }
+
+  ignoreEvent(): boolean {
+    return true;
   }
 }
 

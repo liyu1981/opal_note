@@ -1699,6 +1699,95 @@ impl Store {
         Ok(asset_entry(asset))
     }
 
+    /// Write a new text asset (Mermaid source, Excalidraw scene) into
+    /// `assets/<folder>/`. The name is sanitized and conflict-free; the caller
+    /// receives the stored entry so it can embed exactly that path.
+    pub fn write_asset(
+        &self,
+        notebook_id: &str,
+        name: &str,
+        extension: &str,
+        folder: Option<&str>,
+        content: &str,
+    ) -> Result<AssetEntry> {
+        let extension = extension.trim().trim_start_matches('.').to_ascii_lowercase();
+        if !files::EDITABLE_ASSET_EXTENSIONS.contains(&extension.as_str()) {
+            bail!(
+                "unsupported asset extension `{extension}`; use {}",
+                files::EDITABLE_ASSET_EXTENSIONS.join(", ")
+            );
+        }
+        let limit = files::editable_asset_max_bytes(&extension);
+        if content.len() as u64 > limit {
+            bail!("asset content exceeds the {limit} byte limit");
+        }
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            bail!("notebook not found");
+        }
+        let folder = sanitize_asset_folder(folder)?;
+        let dir = match folder.as_deref() {
+            Some(folder) => notebook.join(files::ASSET_DIR).join(folder),
+            None => notebook.join(files::ASSET_DIR),
+        };
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("creating asset directory {}", dir.display()))?;
+        let file_name = format!("{}.{extension}", files::sanitize_asset_name(name));
+        let target = files::unique_asset_path(&dir, &file_name);
+        files::write_atomic(&target, content)?;
+        let rel = files::relative_path(&notebook, &target);
+        let rel = rel
+            .strip_prefix(&format!("{}/", files::ASSET_DIR))
+            .unwrap_or(&rel)
+            .to_string();
+        Ok(asset_entry(files::asset_file(&notebook, &rel)?))
+    }
+
+    /// Overwrite an existing editable asset. `base_updated_at` is the
+    /// `updated_at` the editor started from: when it no longer matches, the
+    /// write is rejected so a stale lightbox cannot clobber a newer save.
+    pub fn update_asset(
+        &self,
+        notebook_id: &str,
+        path: &str,
+        content: &str,
+        base_updated_at: Option<&str>,
+    ) -> Result<AssetUpdate> {
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(AssetUpdate::NotFound);
+        }
+        let absolute = match files::resolve_asset_path(&notebook, path) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(AssetUpdate::NotFound);
+            }
+            Err(err) => return Err(err.into()),
+        };
+        let extension = absolute
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if !files::EDITABLE_ASSET_EXTENSIONS.contains(&extension.as_str()) {
+            bail!("asset `{path}` is not an editable text asset");
+        }
+        let limit = files::editable_asset_max_bytes(&extension);
+        if content.len() as u64 > limit {
+            bail!("asset content exceeds the {limit} byte limit");
+        }
+        if let Some(expected) = base_updated_at.map(str::trim).filter(|v| !v.is_empty()) {
+            let updated_at = files::asset_updated_at(&absolute)?;
+            if fmt_ts(updated_at) != expected {
+                return Ok(AssetUpdate::Conflict);
+            }
+        }
+        files::write_atomic(&absolute, content)?;
+        Ok(AssetUpdate::Updated(asset_entry(files::asset_file(
+            &notebook, path,
+        )?)))
+    }
+
     pub fn read_asset(&self, notebook_id: &str, path: &str) -> Result<Option<(Vec<u8>, String)>> {
         let notebook = self.notebook_dir(notebook_id)?;
         if !notebook.is_dir() {
@@ -2526,6 +2615,25 @@ fn normalize_archive_path(raw: &str) -> Option<String> {
     Some(format!("{dir}/{}", rest.join("/")))
 }
 
+#[derive(Debug, Clone)]
+pub enum AssetUpdate {
+    Updated(AssetEntry),
+    NotFound,
+    Conflict,
+}
+
+/// Folder segments for text assets: one optional, sanitized path component.
+fn sanitize_asset_folder(folder: Option<&str>) -> Result<Option<String>> {
+    let Some(folder) = folder.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(Some(files::DIAGRAM_ASSET_DIR.to_string()));
+    };
+    if folder.contains('/') || folder.contains('\\') || folder.contains("..") {
+        bail!("asset folder must be a single path segment");
+    }
+    let sanitized = files::sanitize_name(folder, files::DIAGRAM_ASSET_DIR);
+    Ok(Some(sanitized))
+}
+
 fn asset_entry(asset: files::AssetFile) -> AssetEntry {
     AssetEntry {
         path: asset.rel,
@@ -3013,6 +3121,81 @@ mod tests {
             .unwrap();
         assert_eq!(tagged.total, 1);
         assert_eq!(tagged.pages[0].id, "pages/Source.md");
+    }
+
+    #[test]
+    fn text_assets_are_created_updated_and_conflict_checked() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Diagrams", "").unwrap().unwrap();
+
+        let first = store
+            .write_asset(
+                &notebook.id,
+                "My [Page]",
+                "mermaid",
+                None,
+                "flowchart LR\n  A --> B",
+            )
+            .unwrap();
+        assert!(first.path.starts_with("diagrams/My Page"));
+        assert!(first.path.ends_with(".mermaid"));
+        assert_eq!(first.mime, "text/plain");
+        assert_eq!(first.kind, "document");
+
+        let second = store
+            .write_asset(&notebook.id, "My Page", "mermaid", None, "graph TD")
+            .unwrap();
+        assert_ne!(second.path, first.path);
+
+        let bytes = store.read_asset(&notebook.id, &first.path).unwrap().unwrap();
+        assert_eq!(bytes.0, b"flowchart LR\n  A --> B");
+        assert_eq!(bytes.1, "text/plain");
+
+        // Conflict detection on the entry the client started from.
+        let stale = store
+            .update_asset(
+                &notebook.id,
+                &first.path,
+                "flowchart LR\n  A --> C",
+                Some("1999-01-01T00:00:00Z"),
+            )
+            .unwrap();
+        assert!(matches!(stale, AssetUpdate::Conflict));
+
+        let fresh = match store
+            .update_asset(
+                &notebook.id,
+                &first.path,
+                "flowchart LR\n  A --> C",
+                Some(&first.updated_at),
+            )
+            .unwrap()
+        {
+            AssetUpdate::Updated(entry) => entry,
+            other => panic!("expected update, got {other:?}"),
+        };
+        assert_eq!(fresh.path, first.path);
+        let bytes = store.read_asset(&notebook.id, &first.path).unwrap().unwrap();
+        assert_eq!(bytes.0, b"flowchart LR\n  A --> C");
+
+        assert!(matches!(
+            store
+                .update_asset(&notebook.id, "diagrams/missing.mermaid", "x", None)
+                .unwrap(),
+            AssetUpdate::NotFound
+        ));
+
+        // Extension allow-list and size caps.
+        assert!(store
+            .write_asset(&notebook.id, "bad", "exe", None, "x")
+            .is_err());
+        let big = "x".repeat(2 * 1024 * 1024 + 1);
+        assert!(store
+            .write_asset(&notebook.id, "big", "mermaid", None, &big)
+            .is_err());
+        assert!(store
+            .write_asset(&notebook.id, "esc", "mermaid", Some("../evil"), "x")
+            .is_err());
     }
 
     #[test]

@@ -169,6 +169,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      pele:
+        specifier: ^1.13.0
+        version: 1.13.0
 
 packages:
 
@@ -333,6 +336,10 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  pele@1.13.0:
+    resolution: {integrity: sha512-Ie8UKY9x00MsuR3jO6AzUwzK2Z6MIV3Tf4EDdITiuk8Uaz8K7g0R082WqsqNaSU8DdgkrRvZThzhit83mi/uiw==}
+    engines: {node: '>=20'}
+
 snapshots:
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -441,3 +448,5 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.2
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
+
+  pele@1.13.0: {}

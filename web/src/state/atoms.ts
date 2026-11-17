@@ -282,6 +282,15 @@ export function createViewFocusRequest(
 /** One-shot focus handoff from navigation to the destination view. */
 export const pendingViewFocusAtom = atom<ViewFocusRequest | null>(null);
 
+/** Viewer lightbox target: a rich-content asset opened for preview/editing. */
+export type DiagramLightboxTarget = {
+  notebookId: string;
+  path: string;
+  extension: string;
+};
+
+export const diagramLightboxAtom = atom<DiagramLightboxTarget | null>(null);
+
 /** While recording a shortcut in Settings, global shortcuts are suspended. */
 export const shortcutRecordingAtom = atom(false);
 

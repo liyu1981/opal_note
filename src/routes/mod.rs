@@ -43,6 +43,10 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/settings", get(settings::get).put(settings::put))
         .route("/plugins", get(plugins::list))
         .route("/plugins/reload", post(plugins::reload))
+        .route(
+            "/plugins/files/{domain}/{extension}/{*path}",
+            get(plugins::file),
+        )
         .route("/backgrounds", get(backgrounds::list))
         .route("/backgrounds/reload", post(backgrounds::reload))
         .route("/backgrounds/asset", get(backgrounds::asset))
@@ -67,6 +71,10 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/notebooks/{id}/graph", get(notes::graph))
         .route("/notebooks/{id}/plugins", get(plugins::journal))
         .route(
+            "/notebooks/{id}/assets/content",
+            post(assets::create_content),
+        )
+        .route(
             "/notebooks/{id}/assets",
             get(assets::list).post(assets::upload).layer(
                 // Uploads stream to disk and enforce the user-configurable
@@ -77,7 +85,9 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         )
         .route(
             "/notebooks/{id}/assets/{*path}",
-            get(assets::content).delete(assets::delete),
+            get(assets::content)
+                .put(assets::update_content)
+                .delete(assets::delete),
         )
         .route(
             "/notebooks/{id}/asset",
