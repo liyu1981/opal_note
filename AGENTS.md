@@ -215,12 +215,40 @@ web/
   line as source and destroy the mark before a `click` could land on it.
   Modifier clicks fall through so text selection still works, and the block
   being edited exposes `#tag` as plain source text instead of a mark.
+- Asset uploads go through `POST /api/notebooks/{id}/assets` (multipart `file`,
+  streamed to disk). The per-file cap is the sparse setting `maxUploadMb`
+  (default 4096, clamped 1–102400; `SettingsStore::max_upload_bytes`), so the
+  assets route disables axum's fixed `DefaultBodyLimit` and enforces the
+  dynamic cap while streaming; the editor pre-checks the same limit from
+  `settingsAtom` before uploading. `Store::assets_dir` creates the folder
+  and `Store::finalize_asset` renames the temp file to
+  `files::unique_asset_path`, which first runs `files::sanitize_asset_name` —
+  it drops markdown-hostile characters (`[ ] ( ) < > { } \` * ~ | # ! " \`) and
+  lowercases the extension so the generated link needs no escaping — then keeps
+  the name and appends a unix timestamp on conflict. Only images, audio,
+  video, pdf/office/text documents and archives are accepted; asset responses
+  are served with `nosniff` and a sandboxing CSP because they share the app's
+  origin. Never write uploads outside `assets/`.
+- `assetUrl` (`src/lib/assets.ts`) emits `assets/<path>`, wrapping the
+  destination in `<...>` when the name still has spaces or punctuation;
+  sanitized upload names usually need neither. Asset rename sanitizes the new
+  name the same way and rewrites raw `assets/<path>` references.
+- In the live preview an asset reference renders by kind: `![](assets/x.png)` is
+  an image, `![](assets/x.mp4)`/`![](assets/x.mp3)` become `MediaWidget`
+  players with native controls, and everything else (plain links included) is an
+  `AssetFileWidget` (icon + name) that opens `/<notebook>/asset/<path>` through
+  the `onOpenAsset` live-preview option. `assetKindFromPath`/`assetMarkdown` in
+  `src/lib/assets.ts` are the single mapping used by both the editor and the
+  `/upload` command.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
   CodeMirror completion source after wikilinks. They trigger only when `/` is
   the first non-whitespace character of a source line and are suppressed inside
   fenced code blocks. Use `apply` callbacks to edit the line, keep Escape and
   arrow/Enter selection behavior from CodeMirror, and keep the wiki-link source
-  working after the "Link to page" command.
+  working after the "Link to page" command. "Upload file" is `kind: "upload"`:
+  it clears the typed `/upload`, opens the host file picker, and inserts
+  `assetMarkdown` for the uploaded entry once it returns (read-only editors skip
+  it).
 - Fenced code is block-scoped: `findCodeBlocks` scans the document so focusing
   any line (not just the opening fence) reveals the entire fenced source and
   restores the rendered block on blur. While editing, `.cm-live-code-edit`

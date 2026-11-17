@@ -267,6 +267,16 @@ export const api = {
   getAssetBlob: (notebookId: string, path: string) =>
     requestBlob(assetPath(notebookId, path)),
 
+  /** Upload one file into the notebook's `assets/` folder. */
+  uploadAsset: (notebookId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return request<AssetEntry>(`/notebooks/${encode(notebookId)}/assets`, {
+      method: "POST",
+      body,
+    });
+  },
+
   renameAsset: (notebookId: string, path: string, name: string) =>
     request<AssetEntry>(`/notebooks/${encode(notebookId)}/asset`, {
       method: "PATCH",

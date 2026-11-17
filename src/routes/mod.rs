@@ -66,7 +66,15 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/notebooks/{id}/orphans", get(notes::orphans))
         .route("/notebooks/{id}/graph", get(notes::graph))
         .route("/notebooks/{id}/plugins", get(plugins::journal))
-        .route("/notebooks/{id}/assets", get(assets::list))
+        .route(
+            "/notebooks/{id}/assets",
+            get(assets::list).post(assets::upload).layer(
+                // Uploads stream to disk and enforce the user-configurable
+                // `maxUploadMb` cap themselves; the fixed 2 MiB axum default
+                // would reject large videos before the handler runs.
+                DefaultBodyLimit::disable(),
+            ),
+        )
         .route(
             "/notebooks/{id}/assets/{*path}",
             get(assets::content).delete(assets::delete),

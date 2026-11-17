@@ -13,6 +13,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
+import { assetKindFromPath } from "./assets";
 import { normalizeLinkTarget, splitWikilink } from "./markdown";
 
 export type LinkTarget = { title: string; path: string };
@@ -22,6 +23,7 @@ export type LivePreviewOptions = {
   onWikiLink: (target: string) => void;
   onOpenLink: (url: string) => void;
   onTag: (tag: string) => void;
+  onOpenAsset: (assetPath: string) => void;
   readOnly: boolean;
   notePath: string;
   loadAsset: (path: string) => Promise<Blob>;
@@ -541,21 +543,54 @@ function buildDecorations(
 
       const label = match[2] ?? "";
       const url = match[3] ?? "";
-      if (match[1] === "!") {
+      const assetPath = resolveAssetPath(options.notePath, url);
+      const assetKind = assetPath ? assetKindFromPath(assetPath) : null;
+      const isEmbed = match[1] === "!";
+
+      if (
+        assetPath &&
+        (!isEmbed || assetKind === "document" || assetKind === "other")
+      ) {
+        // Files (and plain links to any asset) open in the asset view instead
+        // of being embedded; keeps pdfs, office docs and archives out of the
+        // editor surface.
         if (!active) {
           replace(
             start,
             end,
-            new ImageWidget(
-              url,
-              label,
-              resolveImageAsset(options.notePath, url),
-              options.loadAsset,
-              view,
-              options.notePath,
-              line.from,
-              line.to,
+            new AssetFileWidget(
+              assetPath,
+              label || assetPath.split("/").pop() || assetPath,
+              assetKind ?? "other",
+              options.onOpenAsset,
             ),
+          );
+        } else {
+          addMark(start, end, "cm-live-link");
+        }
+        claimed.push([start, end]);
+        return;
+      }
+
+      if (isEmbed) {
+        if (!active) {
+          const media = assetPath
+            ? mediaWidget(assetPath, assetKind, label, options, view, line)
+            : null;
+          replace(
+            start,
+            end,
+            media ??
+              new ImageWidget(
+                url,
+                label,
+                assetPath,
+                options.loadAsset,
+                view,
+                options.notePath,
+                line.from,
+                line.to,
+              ),
           );
         }
         claimed.push([start, end]);
@@ -652,7 +687,7 @@ function normalizePosixPath(path: string): string {
   return parts.join("/");
 }
 
-function resolveImageAsset(notePath: string, src: string): string | null {
+function resolveAssetPath(notePath: string, src: string): string | null {
   const raw = src.trim().replace(/^<|>$/gu, "");
   if (/^(https?:|data:|blob:)/iu.test(raw)) return null;
   let path = raw.split(/[?#]/u)[0] ?? "";
@@ -668,6 +703,40 @@ function resolveImageAsset(notePath: string, src: string): string | null {
   return resolved.startsWith("assets/")
     ? resolved.slice("assets/".length)
     : null;
+}
+
+type MediaKind = ReturnType<typeof assetKindFromPath>;
+
+/** Video/audio embeds; other asset kinds fall back to the file row widget. */
+function mediaWidget(
+  assetPath: string,
+  kind: MediaKind | null,
+  label: string,
+  options: LivePreviewOptions,
+  view: EditorView,
+  line: { from: number; to: number },
+): WidgetType | null {
+  if (kind === "video") {
+    return new MediaWidget(
+      "video",
+      assetPath,
+      label,
+      options.loadAsset,
+      view,
+      line.to,
+    );
+  }
+  if (kind === "audio") {
+    return new MediaWidget(
+      "audio",
+      assetPath,
+      label,
+      options.loadAsset,
+      view,
+      line.to,
+    );
+  }
+  return null;
 }
 
 /** Column where a source block's content starts, including list markers. */
@@ -806,6 +875,151 @@ class ImageWidget extends WidgetType {
   destroy(dom: HTMLElement): void {
     const url = dom.dataset.objectUrl;
     if (url) URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Video/audio embed. The player keeps its native controls, so pointer events
+ * stop at the wrapper instead of reaching CodeMirror's selection handling;
+ * clicking the line outside the player still reveals the markdown source.
+ */
+class MediaWidget extends WidgetType {
+  constructor(
+    readonly tag: "video" | "audio",
+    readonly assetPath: string,
+    readonly label: string,
+    readonly loadAsset: (path: string) => Promise<Blob>,
+    readonly view: EditorView,
+    readonly lineTo: number,
+  ) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof MediaWidget &&
+      other.tag === this.tag &&
+      other.assetPath === this.assetPath &&
+      other.label === this.label &&
+      other.lineTo === this.lineTo
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const wrapper = document.createElement("span");
+    wrapper.className = `cm-live-media cm-live-${this.tag}`;
+    wrapper.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+
+    const media = document.createElement(this.tag);
+    media.controls = true;
+    media.preload = "metadata";
+    media.setAttribute("aria-label", this.label || this.tag);
+    if (this.tag === "audio") media.className = "cm-live-audio-player";
+    else (media as HTMLVideoElement).playsInline = true;
+    wrapper.appendChild(media);
+
+    void this.loadAsset(this.assetPath)
+      .then((blob) => {
+        if (!wrapper.isConnected) return;
+        const url = URL.createObjectURL(blob);
+        wrapper.dataset.objectUrl = url;
+        media.src = url;
+      })
+      .catch(() => {
+        media.remove();
+        wrapper.classList.add("is-error");
+        wrapper.textContent = this.label || `${this.tag} unavailable`;
+      });
+
+    return wrapper;
+  }
+
+  destroy(dom: HTMLElement): void {
+    const media = dom.firstElementChild;
+    if (media instanceof HTMLMediaElement) media.pause();
+    const url = dom.dataset.objectUrl;
+    if (url) URL.revokeObjectURL(url);
+  }
+}
+
+const ASSET_ICONS: Record<string, string> = {
+  image:
+    '<path d="M3 5h18v14H3z"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m5 17 4.5-4.5L13 16l2.5-2.5L21 19"/>',
+  video:
+    '<path d="M3 6h13v12H3z"/><path d="m16 12 5-3v6l-5-3"/>',
+  audio:
+    '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+  document:
+    '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  other:
+    '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+};
+
+function assetIcon(kind: MediaKind): string {
+  const path = ASSET_ICONS[kind] ?? ASSET_ICONS.other;
+  return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
+
+const ASSET_KIND_LABELS: Record<string, string> = {
+  image: "Image",
+  video: "Video",
+  audio: "Audio",
+  document: "File",
+  other: "File",
+};
+
+/**
+ * Non-media asset reference (pdf, office docs, archives, and plain links to any
+ * asset). Renders an icon plus the file name and opens the asset view.
+ */
+class AssetFileWidget extends WidgetType {
+  constructor(
+    readonly assetPath: string,
+    readonly label: string,
+    readonly kind: MediaKind,
+    readonly onOpenAsset: (assetPath: string) => void,
+  ) {
+    super();
+  }
+
+  eq(other: WidgetType): boolean {
+    return (
+      other instanceof AssetFileWidget &&
+      other.assetPath === this.assetPath &&
+      other.label === this.label &&
+      other.kind === this.kind
+    );
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+
+  toDOM(): HTMLElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cm-live-file";
+    button.title = `Open assets/${this.assetPath}`;
+    const label = document.createElement("span");
+    label.className = "cm-live-file-name";
+    label.textContent = this.label;
+    const kind = document.createElement("span");
+    kind.className = "cm-live-file-kind";
+    kind.textContent = ASSET_KIND_LABELS[this.kind] ?? "File";
+    button.insertAdjacentHTML("afterbegin", assetIcon(this.kind));
+    button.append(label, kind);
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.onOpenAsset(this.assetPath);
+    });
+    return button;
   }
 }
 

@@ -43,6 +43,9 @@ export type FontChoice = {
 
 export const DEFAULT_TRASH_RETENTION_DAYS = 30;
 export const MAX_TRASH_RETENTION_DAYS = 3_650;
+/** Default per-file upload limit (4 GiB), mirrored by the server. */
+export const DEFAULT_MAX_UPLOAD_MB = 4_096;
+export const MAX_UPLOAD_MB = 102_400;
 export const DEFAULT_BACKGROUND_ID = "OpalNote/grid-scan";
 
 export type AppSettings = {
@@ -50,6 +53,7 @@ export type AppSettings = {
   keybindings: Record<string, string>;
   codeTheme: string;
   trashRetentionDays: number;
+  maxUploadMb: number;
   backgroundId: string;
   backgroundOptions: Record<string, Record<string, unknown>>;
   [key: string]: unknown;
@@ -65,6 +69,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   keybindings: {},
   codeTheme: DEFAULT_CODE_THEME,
   trashRetentionDays: DEFAULT_TRASH_RETENTION_DAYS,
+  maxUploadMb: DEFAULT_MAX_UPLOAD_MB,
   backgroundId: DEFAULT_BACKGROUND_ID,
   backgroundOptions: {},
 };
@@ -142,6 +147,14 @@ export function mergeSettings(value: unknown): AppSettings {
       ? root.trashRetentionDays
       : DEFAULT_TRASH_RETENTION_DAYS;
 
+  const maxUploadMb =
+    typeof root.maxUploadMb === "number" &&
+    Number.isInteger(root.maxUploadMb) &&
+    root.maxUploadMb >= 1 &&
+    root.maxUploadMb <= MAX_UPLOAD_MB
+      ? root.maxUploadMb
+      : DEFAULT_MAX_UPLOAD_MB;
+
   const backgroundId =
     typeof root.backgroundId === "string" &&
     root.backgroundId.trim() &&
@@ -158,6 +171,7 @@ export function mergeSettings(value: unknown): AppSettings {
     keybindings,
     codeTheme,
     trashRetentionDays,
+    maxUploadMb,
     backgroundId,
     backgroundOptions,
   };

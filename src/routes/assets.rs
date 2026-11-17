@@ -1,8 +1,10 @@
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::multipart::Field;
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{header, HeaderValue, Response, StatusCode};
 use axum::Json;
 use serde::Deserialize;
+use tokio::io::AsyncWriteExt;
 
 use crate::error::{ApiResult, AppError};
 use crate::routes::{clamp_limit, clamp_offset, db_call};
@@ -12,6 +14,150 @@ use crate::store::{AssetListOptions, AssetRename};
 
 fn default_limit() -> usize {
     24
+}
+
+/// Asset kinds the upload endpoint accepts: images, audio, video, documents
+/// (pdf/office/text) and common archives. Anything else is rejected so the
+/// server never stores executable payloads it would later serve same-origin.
+fn upload_type_allowed(file_name: &str) -> bool {
+    let essence = mime_guess::from_path(file_name)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_ascii_lowercase();
+    if essence.starts_with("image/")
+        || essence.starts_with("audio/")
+        || essence.starts_with("video/")
+    {
+        return true;
+    }
+    let extension = std::path::Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "pdf"
+            | "doc"
+            | "docx"
+            | "xls"
+            | "xlsx"
+            | "ppt"
+            | "pptx"
+            | "odt"
+            | "ods"
+            | "odp"
+            | "rtf"
+            | "txt"
+            | "md"
+            | "markdown"
+            | "csv"
+            | "tsv"
+            | "json"
+            | "yaml"
+            | "yml"
+            | "xml"
+            | "epub"
+            | "zip"
+            | "tar"
+            | "gz"
+            | "tgz"
+            | "7z"
+            | "rar"
+            | "log"
+    )
+}
+
+async fn discard(path: &std::path::Path) {
+    let _ = tokio::fs::remove_file(path).await;
+}
+
+/// Stream one multipart file field into `dir`, enforcing the configured cap.
+async fn write_upload(
+    field: &mut Field<'_>,
+    dir: &std::path::Path,
+    max_bytes: u64,
+) -> ApiResult<std::path::PathBuf> {
+    let temp = dir.join(format!(".upload-{}", uuid::Uuid::new_v4()));
+    let mut file = tokio::fs::File::create(&temp)
+        .await
+        .map_err(|err| AppError::Internal(err.into()))?;
+    let mut written = 0u64;
+    loop {
+        let chunk = match field.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(err) => {
+                drop(file);
+                discard(&temp).await;
+                return Err(AppError::bad_request(err.to_string()));
+            }
+        };
+        written = written.saturating_add(chunk.len() as u64);
+        if written > max_bytes {
+            drop(file);
+            discard(&temp).await;
+            return Err(AppError::PayloadTooLarge(format!(
+                "asset exceeds the {} MB upload limit (Settings → Files)",
+                max_bytes / (1024 * 1024)
+            )));
+        }
+        if let Err(err) = file.write_all(&chunk).await {
+            drop(file);
+            discard(&temp).await;
+            return Err(AppError::Internal(err.into()));
+        }
+    }
+    if let Err(err) = file.sync_all().await {
+        drop(file);
+        discard(&temp).await;
+        return Err(AppError::Internal(err.into()));
+    }
+    Ok(temp)
+}
+
+/// Multipart asset upload. The first file field wins; the original file name is
+/// kept (sanitized) and conflicts get a unix-timestamp suffix.
+pub async fn upload(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    mut multipart: Multipart,
+) -> ApiResult<Json<AssetEntry>> {
+    let store = state.store.clone();
+    let assets_dir = {
+        let notebook_id = notebook_id.clone();
+        db_call(move || store.assets_dir(&notebook_id), AppError::Internal).await?
+    }
+    .ok_or_else(|| AppError::not_found("notebook not found"))?;
+    let settings = state.settings.clone();
+    let max_bytes = db_call(move || Ok(settings.max_upload_bytes()), AppError::Internal).await?;
+
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|err| AppError::bad_request(err.to_string()))?
+    {
+        let Some(file_name) = field.file_name().map(str::to_string) else {
+            continue;
+        };
+        if !upload_type_allowed(&file_name) {
+            return Err(AppError::bad_request(format!(
+                "unsupported asset type for `{file_name}`; upload images, audio, video, \
+                 pdf/office documents or archives"
+            )));
+        }
+        let temp = write_upload(&mut field, &assets_dir, max_bytes).await?;
+        let store = state.store.clone();
+        let notebook_id = notebook_id.clone();
+        return db_call(
+            move || store.finalize_asset(&notebook_id, &file_name, &temp),
+            AppError::Internal,
+        )
+        .await
+        .map(Json);
+    }
+
+    Err(AppError::bad_request("file field is required"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,6 +253,17 @@ pub async fn content(
     headers.insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("private, max-age=3600"),
+    );
+    // Assets are user files served from the app's own origin: never let the
+    // browser sniff a different type, and sandbox documents (SVG) so inline
+    // scripts cannot run.
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox"),
     );
     Ok(response)
 }

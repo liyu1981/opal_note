@@ -402,7 +402,10 @@ editor shows the body without frontmatter.
 The note surface is a block-oriented live preview built on CodeMirror 6:
 
 - **Live** renders headings, emphasis, links, tags, lists, tasks, quotes,
-  images and code in place. The line under the cursor becomes plain markdown source —
+  images, video (`<video controls>`), audio (`<audio controls>`) and code in
+  place. Other asset references (pdf, office documents, archives) render as an
+  icon plus the file name and open the asset view when clicked. Type `/upload`
+  on an empty line to pick a file and insert its markdown at the cursor. The line under the cursor becomes plain markdown source —
   visible markers, normal text size and weight, no rendered inline styling —
   the way Obsidian live preview does. There is no separate source mode.
 - Fenced code blocks use configurable syntax themes (GitHub Light by default),
@@ -489,7 +492,7 @@ beside it, plus back/forward history controls.
   Light is the default. **Background** chooses an installed built-in or user
   background. **Keyboard** lists every workspace shortcut and lets you record a
   replacement chord sequence. **Trash** sets how many days deleted files stay
-  recoverable. Workspace and navigation commands share a leader chord
+  recoverable. **Files** sets the maximum upload size (default 4096 MB). Workspace and navigation commands share a leader chord
   (`Cmd+;` on macOS, `Ctrl+;` elsewhere), followed by `F` or `S` to focus the
   omni bar, `T` tag search, `Shift+T` trash, `H` home, `A` all pages, `D`
   todos, `G` graph, `L`/`R` sidebars, `O` settings, `M` command mode, `N` new page, `J`
@@ -511,7 +514,14 @@ beside it, plus back/forward history controls.
   `assets/` folder with search, type filters, sorting and pagination. Cards
   provide download and rename actions. Asset detail pages (`/<notebook>/asset/
   <path>`) provide image zoom/pan, video/audio players, metadata, and links to
-  every page that references the asset.
+  every page that references the asset. Files are uploaded with the editor's
+  `/upload` slash command (or `POST /api/notebooks/{id}/assets`): images,
+  audio, video, pdf/office documents and archives up to `maxUploadMb` (4096 MB
+  / 4 GB by default, configurable in Settings → Files). Names are sanitized
+  (markdown characters such as `[]()*#` are dropped, extensions lowercased) so
+  the generated link always parses; uploads keep
+  the file name and a conflict gets a unix-timestamp suffix
+  (`photo-1731000000.png`) instead of overwriting anything.
 - **Navigation** — TanStack Router browser routes are scoped by notebook name:
   `/<notebook>/home`, `/<notebook>/journal`, `/<notebook>/pages`,
   `/<notebook>/tasks`, `/<notebook>/graph`, `/<notebook>/tag/<tag>`, and
@@ -823,6 +833,7 @@ request failing.
 | GET    | `/notebooks/{id}/orphans`                    | Empty pages with no backlinks                  |
 | GET    | `/notebooks/{id}/graph`                      | Nodes/links; `?include_tags=true` adds tag nodes |
 | GET    | `/notebooks/{id}/assets`                     | Paged/filtered asset list                      |
+| POST   | `/notebooks/{id}/assets`                     | Multipart `file` upload into `assets/`          |
 | GET    | `/notebooks/{id}/assets/{*path}`             | Asset bytes with MIME type                     |
 | DELETE | `/notebooks/{id}/assets/{*path}`             | Move the asset to the trash                    |
 | GET    | `/notebooks/{id}/asset?path=`                | Asset metadata + page references               |

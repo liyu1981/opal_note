@@ -1,5 +1,5 @@
 import { api } from "../api/client";
-import type { AssetEntry } from "../api/types";
+import type { AssetEntry, AssetKind } from "../api/types";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -23,6 +23,102 @@ export async function downloadAsset(
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "avif",
+  "bmp",
+  "svg",
+  "ico",
+]);
+const VIDEO_EXTENSIONS = new Set([
+  "mp4",
+  "webm",
+  "mov",
+  "m4v",
+  "ogv",
+  "avi",
+  "mkv",
+]);
+const AUDIO_EXTENSIONS = new Set([
+  "mp3",
+  "wav",
+  "ogg",
+  "oga",
+  "m4a",
+  "flac",
+  "aac",
+  "opus",
+]);
+const DOCUMENT_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "odt",
+  "ods",
+  "odp",
+  "rtf",
+  "txt",
+  "md",
+  "markdown",
+  "csv",
+  "tsv",
+  "json",
+  "yaml",
+  "yml",
+  "xml",
+  "epub",
+  "zip",
+  "tar",
+  "gz",
+  "tgz",
+  "7z",
+  "rar",
+  "log",
+]);
+
+function extensionOf(path: string): string {
+  const name = path.split("/").pop() ?? path;
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+
+/** Classify an asset by its file extension, matching the server's kinds. */
+export function assetKindFromPath(path: string): AssetKind {
+  const extension = extensionOf(path);
+  if (IMAGE_EXTENSIONS.has(extension)) return "image";
+  if (VIDEO_EXTENSIONS.has(extension)) return "video";
+  if (AUDIO_EXTENSIONS.has(extension)) return "audio";
+  if (DOCUMENT_EXTENSIONS.has(extension)) return "document";
+  return "other";
+}
+
+/**
+ * Markdown link target for an asset. Uploaded names are sanitized server-side,
+ * so the path is usually safe as-is; names with spaces or leftover punctuation
+ * use the CommonMark `<...>` destination form so the link still parses.
+ */
+export function assetUrl(path: string): string {
+  const url = `assets/${path}`;
+  return /[\s<>()]/.test(path) ? `<${url}>` : url;
+}
+
+/** Markdown for a freshly uploaded asset: media embeds, other files link. */
+export function assetMarkdown(asset: AssetEntry): string {
+  const kind = assetKindFromPath(asset.path);
+  const url = assetUrl(asset.path);
+  return kind === "image" || kind === "video" || kind === "audio"
+    ? `![${asset.name}](${url})`
+    : `[${asset.name}](${url})`;
 }
 
 export function assetKindLabel(kind: AssetEntry["kind"]): string {

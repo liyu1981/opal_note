@@ -131,6 +131,108 @@ pub fn unique_file_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     candidate
 }
 
+/// Characters that break the markdown link an uploaded asset turns into
+/// (`[label](assets/name.ext)`). They are dropped from the stored name so the
+/// generated link never needs escaping.
+const ASSET_UNSAFE_CHARS: &[char] = &[
+    '[', ']', '(', ')', '<', '>', '{', '}', '`', '*', '~', '|', '#', '!', '\\', '"',
+];
+
+/// Make a file name safe both on disk and inside markdown: path separators are
+/// replaced, link/format characters are dropped, whitespace runs collapse and
+/// the extension is lowercased to ASCII alphanumerics.
+pub fn sanitize_asset_name(file_name: &str) -> String {
+    let base = sanitize_name(file_name, "file");
+    let path = Path::new(&base);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("file");
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+
+    let mut cleaned = String::with_capacity(stem.len());
+    let mut last_space = false;
+    for ch in stem.chars() {
+        if ASSET_UNSAFE_CHARS.contains(&ch) || ch.is_control() {
+            continue;
+        }
+        if ch.is_whitespace() {
+            if !last_space && !cleaned.is_empty() {
+                cleaned.push(' ');
+            }
+            last_space = true;
+            continue;
+        }
+        last_space = false;
+        cleaned.push(ch);
+    }
+    let cleaned = cleaned
+        .trim()
+        .trim_matches(|ch: char| ch == '.' || ch == '-')
+        .trim()
+        .to_string();
+    let stem = if cleaned.is_empty() {
+        "file".to_string()
+    } else {
+        cleaned
+    };
+    let extension: String = extension
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    if extension.is_empty() {
+        stem
+    } else {
+        format!("{stem}.{extension}")
+    }
+}
+
+/// Pick a free path for an uploaded asset. A conflict appends the current unix
+/// timestamp (`photo-1731000000.png`); if that is taken too the suffix counts up
+/// so two uploads in the same second never collide.
+pub fn unique_asset_path(assets_dir: &Path, file_name: &str) -> PathBuf {
+    let name = sanitize_asset_name(file_name);
+    let path = Path::new(&name);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("file");
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    let with_ext = |stem: &str| {
+        if ext.is_empty() {
+            assets_dir.join(stem)
+        } else {
+            assets_dir.join(format!("{stem}.{ext}"))
+        }
+    };
+
+    let first = with_ext(stem);
+    if !first.exists() {
+        return first;
+    }
+
+    let mut suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0);
+    loop {
+        let candidate = with_ext(&format!("{stem}-{suffix}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
 /// Pick `name`, `name 2`, … so a restored notebook never overwrites one that
 /// already exists.
 pub fn unique_dir_path(parent: &Path, name: &str) -> PathBuf {

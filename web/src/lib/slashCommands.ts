@@ -11,7 +11,14 @@ type SlashCommand = {
   label: string;
   detail: string;
   keywords: string;
+  /** `upload` opens the host's file picker instead of editing the line. */
+  kind?: "upload";
   apply: (view: EditorView, from: number, to: number) => void;
+};
+
+export type SlashCommandOptions = {
+  /** Provided by the editor host; opens a picker and inserts the asset link. */
+  onUpload?: (view: EditorView, from: number, to: number) => void;
 };
 
 function applyPrefix(prefix: string) {
@@ -121,6 +128,13 @@ const COMMANDS: SlashCommand[] = [
     keywords: "code inline backtick",
     apply: applyWrapped("`", "`"),
   },
+  {
+    label: "Upload file",
+    detail: "Asset",
+    keywords: "upload attach image video audio file asset pdf document",
+    kind: "upload",
+    apply: () => {},
+  },
 ];
 
 /**
@@ -144,6 +158,7 @@ function insideFencedCode(context: CompletionContext): boolean {
 
 export function slashCommandSource(
   context: CompletionContext,
+  slashOptions: SlashCommandOptions = {},
 ): CompletionResult | null {
   if (insideFencedCode(context)) return null;
 
@@ -161,7 +176,13 @@ export function slashCommandSource(
   }).map((command) => ({
     label: command.label,
     detail: command.detail,
-    apply: (view, _completion, from, to) => command.apply(view, from, to),
+    apply: (view, _completion, from, to) => {
+      if (command.kind === "upload") {
+        slashOptions.onUpload?.(view, from, to);
+        return;
+      }
+      command.apply(view, from, to);
+    },
     type: "text",
   }));
 

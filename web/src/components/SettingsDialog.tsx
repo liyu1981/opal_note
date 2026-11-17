@@ -17,10 +17,12 @@ import type {
 import { CODE_THEMES } from "../lib/codeThemes";
 import {
   DEFAULT_BACKGROUND_ID,
+  DEFAULT_MAX_UPLOAD_MB,
   DEFAULT_TRASH_RETENTION_DAYS,
   FONT_PRESETS,
   FONT_ROLES,
   MAX_TRASH_RETENTION_DAYS,
+  MAX_UPLOAD_MB,
   applySettings,
   settingsAtom,
   type AppSettings,
@@ -66,6 +68,7 @@ type Tab =
   | "background"
   | "shortcuts"
   | "trash"
+  | "files"
   | "connection"
   | "index"
   | "plugins"
@@ -97,6 +100,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "trash",
     label: "Trash",
     description: "How long deleted files stay recoverable.",
+  },
+  {
+    id: "files",
+    label: "Files",
+    description: "Upload limits for images, media and documents.",
   },
   {
     id: "connection",
@@ -276,6 +284,14 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateMaxUpload(megabytes: number) {
+    const next: AppSettings = { ...draft, maxUploadMb: megabytes };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   function updateTrashRetention(days: number) {
     const next: AppSettings = { ...draft, trashRetentionDays: days };
     setDraft(next);
@@ -414,6 +430,7 @@ export function SettingsDialog() {
                 tab === "code" ||
                 tab === "shortcuts" ||
                 tab === "trash" ||
+                tab === "files" ||
                 tab === "background") && (
               <span
                 className={`mt-1 font-mono text-[14px] ${
@@ -477,6 +494,13 @@ export function SettingsDialog() {
               <TrashTab
                 settings={draft}
                 onChange={updateTrashRetention}
+                error={fontError}
+              />
+            )}
+            {tab === "files" && (
+              <FilesTab
+                settings={draft}
+                onChange={updateMaxUpload}
                 error={fontError}
               />
             )}
@@ -1121,6 +1145,93 @@ function TrashTab({
         <p className="mt-2 text-muted">
           Restoring puts a file back at its original path. If that path is
           occupied, the server appends a number instead of overwriting.
+        </p>
+      </div>
+
+      {error && (
+        <p className="rounded-lg bg-danger/10 px-3 py-2 font-mono text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function FilesTab({
+  settings,
+  onChange,
+  error,
+}: {
+  settings: AppSettings;
+  onChange: (megabytes: number) => void;
+  error: string | null;
+}) {
+  const [value, setValue] = useState(String(settings.maxUploadMb));
+
+  useEffect(() => {
+    setValue(String(settings.maxUploadMb));
+  }, [settings.maxUploadMb]);
+
+  function commit(raw: string) {
+    const parsed = Number.parseInt(raw, 10);
+    const megabytes = Number.isFinite(parsed)
+      ? Math.min(MAX_UPLOAD_MB, Math.max(1, parsed))
+      : DEFAULT_MAX_UPLOAD_MB;
+    setValue(String(megabytes));
+    if (megabytes !== settings.maxUploadMb) onChange(megabytes);
+  }
+
+  const gigabytes = settings.maxUploadMb / 1024;
+
+  return (
+    <section className="max-w-2xl space-y-5">
+      <label className="block">
+        <span className="font-sans text-[16px] font-medium text-ink">
+          Maximum upload size
+        </span>
+        <span className="mt-1 flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            max={MAX_UPLOAD_MB}
+            value={value}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setValue(raw);
+              const parsed = Number.parseInt(raw, 10);
+              if (Number.isFinite(parsed) && parsed >= 1 && parsed <= MAX_UPLOAD_MB) {
+                onChange(parsed);
+              }
+            }}
+            onBlur={(event) => commit(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commit(value);
+                event.currentTarget.blur();
+              }
+            }}
+            className="w-28 rounded-md border border-line bg-white px-2.5 py-1.5 font-mono text-[14px] text-ink outline-none focus:border-accent"
+            aria-label="Maximum upload size in megabytes"
+          />
+          <span className="font-mono text-[14px] text-muted">MB</span>
+          <span className="font-mono text-[14px] text-faint">
+            {gigabytes >= 1
+              ? `≈ ${gigabytes.toFixed(gigabytes >= 10 ? 0 : 1)} GB`
+              : ""}
+          </span>
+        </span>
+      </label>
+
+      <div className="rounded-lg border border-line bg-panel/40 px-4 py-3 font-mono text-[14px] leading-relaxed text-ink-soft">
+        <p>
+          The server rejects larger files and stops reading the upload as soon
+          as it passes this limit, so a huge file never fills the disk.
+        </p>
+        <p className="mt-2 text-muted">
+          Applies to the editor&apos;s <span className="text-ink-soft">/upload</span>{" "}
+          command and to <span className="text-ink-soft">POST /assets</span>.
+          Default is 4096 MB (4 GB).
         </p>
       </div>
 

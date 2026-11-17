@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
+import { useAtomValue } from "jotai";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
@@ -23,6 +24,8 @@ import { languages } from "@codemirror/language-data";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 
 import { api } from "../../api/client";
+import { assetMarkdown, formatBytes } from "../../lib/assets";
+import { useAppNavigate } from "../../lib/appNavigation";
 import { safeExternalUrl } from "../../lib/markdown";
 import {
   livePreview,
@@ -31,6 +34,7 @@ import {
   type LivePreviewOptions,
 } from "../../lib/livePreview";
 import { noteEditorTheme, noteMarkdownHighlighting } from "../../lib/editorTheme";
+import { settingsAtom } from "../../lib/settings";
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
 import { slashCommandSource } from "../../lib/slashCommands";
 
@@ -93,7 +97,16 @@ export const LiveMarkdownEditor = forwardRef<
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const readOnlyCompartment = useRef(new Compartment());
+  const readOnlyRef = useRef(readOnly);
+  const settings = useAtomValue(settingsAtom);
+  const maxUploadBytesRef = useRef(settings.maxUploadMb * 1024 * 1024);
+  maxUploadBytesRef.current = settings.maxUploadMb * 1024 * 1024;
+  const navigate = useAppNavigate();
+  const openAssetRef = useRef<(assetPath: string) => void>(() => {});
+  openAssetRef.current = (assetPath) =>
+    navigate({ view: "asset", path: assetPath });
 
+  readOnlyRef.current = readOnly;
   const onChangeRef = useRef(onChange);
   const onWikiLinkRef = useRef(onWikiLink);
   const onTagRef = useRef(onTag);
@@ -118,6 +131,7 @@ export const LiveMarkdownEditor = forwardRef<
       window.open(safe, "_blank", "noopener,noreferrer");
     },
     onTag: (tag) => onTagRef.current(tag),
+    onOpenAsset: (assetPath) => openAssetRef.current(assetPath),
     readOnly,
     notePath,
     loadAsset: (path) => api.getAssetBlob(notebookId, path),
@@ -128,7 +142,85 @@ export const LiveMarkdownEditor = forwardRef<
     readOnly,
     notePath,
     loadAsset: (path) => api.getAssetBlob(notebookId, path),
+    onOpenAsset: (assetPath) => openAssetRef.current(assetPath),
   };
+
+  /** Upload a file chosen from the `/upload` command and insert its markdown. */
+  function insertUploadedAsset(file: File, from: number) {
+    const limit = maxUploadBytesRef.current;
+    if (file.size > limit) {
+      window.alert(
+        `“${file.name}” is ${formatBytes(file.size)}, larger than the ${formatBytes(limit)} upload limit (Settings → Files).`,
+      );
+      return;
+    }
+    void api
+      .uploadAsset(notebookId, file)
+      .then((asset) => {
+        const view = viewRef.current;
+        if (!view) return;
+        const markdown = assetMarkdown(asset);
+        const at = Math.min(from, view.state.doc.length);
+        view.dispatch({
+          changes: { from: at, insert: markdown },
+          selection: { anchor: at + markdown.length },
+          scrollIntoView: true,
+        });
+        view.focus();
+      })
+      .catch((cause) => {
+        window.alert(
+          cause instanceof Error ? cause.message : "Could not upload the file",
+        );
+      });
+  }
+
+  function requestUpload(view: EditorView, from: number, to: number) {
+    if (readOnlyRef.current) return;
+    // Drop the `/upload` text first; the markdown lands where it was typed once
+    // the server has stored the file.
+    view.dispatch({
+      changes: { from, to, insert: "" },
+      selection: { anchor: from },
+    });
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = [
+      "image/*",
+      "audio/*",
+      "video/*",
+      ".pdf",
+      ".doc",
+      ".docx",
+      ".xls",
+      ".xlsx",
+      ".ppt",
+      ".pptx",
+      ".odt",
+      ".ods",
+      ".odp",
+      ".rtf",
+      ".txt",
+      ".md",
+      ".csv",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".xml",
+      ".epub",
+      ".zip",
+      ".tar",
+      ".gz",
+      ".tgz",
+      ".7z",
+      ".rar",
+    ].join(",");
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file) insertUploadedAsset(file, from);
+    });
+    input.click();
+  }
 
   useImperativeHandle(
     ref,
@@ -186,7 +278,10 @@ export const LiveMarkdownEditor = forwardRef<
       autocompletion({
         override: [
           wikiLinkCompletionSource(linkTargetsRef),
-          slashCommandSource,
+          (context) =>
+            slashCommandSource(context, {
+              onUpload: (view, from, to) => requestUpload(view, from, to),
+            }),
         ],
         activateOnTyping: true,
         icons: false,

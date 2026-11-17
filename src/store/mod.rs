@@ -1657,6 +1657,48 @@ impl Store {
         }))
     }
 
+    /// Directory holding a notebook's assets, created on demand.
+    pub fn assets_dir(&self, notebook_id: &str) -> Result<Option<PathBuf>> {
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(None);
+        }
+        let dir = notebook.join(files::ASSET_DIR);
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("creating asset directory {}", dir.display()))?;
+        Ok(Some(dir))
+    }
+
+    /// Move a fully written temporary upload into `assets/` under a
+    /// conflict-free name. The temp file is always consumed.
+    pub fn finalize_asset(
+        &self,
+        notebook_id: &str,
+        file_name: &str,
+        temp: &Path,
+    ) -> Result<AssetEntry> {
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            let _ = fs::remove_file(temp);
+            bail!("notebook not found");
+        }
+        let dir = notebook.join(files::ASSET_DIR);
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("creating asset directory {}", dir.display()))?;
+        let target = files::unique_asset_path(&dir, file_name);
+        let stored = target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("file")
+            .to_string();
+        if let Err(err) = fs::rename(temp, &target) {
+            let _ = fs::remove_file(temp);
+            return Err(err).with_context(|| format!("storing asset {}", target.display()));
+        }
+        let asset = files::asset_file(&notebook, &stored)?;
+        Ok(asset_entry(asset))
+    }
+
     pub fn read_asset(&self, notebook_id: &str, path: &str) -> Result<Option<(Vec<u8>, String)>> {
         let notebook = self.notebook_dir(notebook_id)?;
         if !notebook.is_dir() {
@@ -1685,7 +1727,7 @@ impl Store {
             }
             Err(err) => return Err(err.into()),
         };
-        let new_name = files::sanitize_name(name, "asset");
+        let new_name = files::sanitize_asset_name(name);
         let parent = Path::new(path).parent().unwrap_or(Path::new(""));
         let new_rel = if parent.as_os_str().is_empty() {
             new_name
@@ -2971,6 +3013,88 @@ mod tests {
             .unwrap();
         assert_eq!(tagged.total, 1);
         assert_eq!(tagged.pages[0].id, "pages/Source.md");
+    }
+
+    #[test]
+    fn asset_uploads_sanitize_markdown_characters() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Names", "").unwrap().unwrap();
+        let assets = store.assets_dir(&notebook.id).unwrap().unwrap();
+        let temp = assets.join(".upload-brackets");
+        fs::write(&temp, b"epub").unwrap();
+        let entry = store
+            .finalize_asset(
+                &notebook.id,
+                "冷血 (杜鲁门•卡波特 [杜鲁门•卡波特]) (z-library.sk, 1lib.sk, z-lib.sk).epub",
+                &temp,
+            )
+            .unwrap();
+        assert_eq!(
+            entry.path,
+            "冷血 杜鲁门•卡波特 杜鲁门•卡波特 z-library.sk, 1lib.sk, z-lib.sk.epub"
+        );
+        for unsafe_char in ['[', ']', '(', ')', '*', '`', '|', '#', '!'] {
+            assert!(
+                !entry.path.contains(unsafe_char),
+                "{} still contains {unsafe_char}",
+                entry.path
+            );
+        }
+    }
+
+    #[test]
+    fn asset_uploads_get_conflict_free_names() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Assets", "").unwrap().unwrap();
+        let assets = store.assets_dir(&notebook.id).unwrap().unwrap();
+        assert!(assets.is_dir());
+
+        let temp = assets.join(".upload-one");
+        fs::write(&temp, b"one").unwrap();
+        let first = store
+            .finalize_asset(&notebook.id, "photo.png", &temp)
+            .unwrap();
+        assert_eq!(first.path, "photo.png");
+        assert_eq!(first.kind, "image");
+        assert!(!temp.exists());
+
+        let temp2 = assets.join(".upload-two");
+        fs::write(&temp2, b"two").unwrap();
+        let second = store
+            .finalize_asset(&notebook.id, "photo.png", &temp2)
+            .unwrap();
+        assert_ne!(second.path, "photo.png");
+        assert!(second.path.ends_with(".png"));
+        assert!(second.path.starts_with("photo-"));
+        assert!(assets.join(&second.path).is_file());
+        assert_eq!(fs::read(assets.join("photo.png")).unwrap(), b"one");
+        assert_eq!(fs::read(assets.join(&second.path)).unwrap(), b"two");
+
+        // A traversal-looking name stays a flat file inside assets/.
+        let temp3 = assets.join(".upload-three");
+        fs::write(&temp3, b"three").unwrap();
+        let third = store
+            .finalize_asset(&notebook.id, "../../escape.png", &temp3)
+            .unwrap();
+        assert!(!third.path.contains('/'));
+        assert!(third.path.ends_with(".png"));
+        assert!(assets.join(&third.path).is_file());
+
+        let listed = store
+            .list_assets(
+                &notebook.id,
+                AssetListOptions {
+                    limit: 20,
+                    offset: 0,
+                    query: None,
+                    kind: None,
+                    sort: Some("name"),
+                    direction: Some("asc"),
+                },
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(listed.total, 3);
     }
 
     #[test]

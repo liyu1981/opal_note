@@ -8,6 +8,10 @@ use serde_json::Value;
 const MAX_SETTINGS_BYTES: usize = 256 * 1024;
 pub const DEFAULT_TRASH_RETENTION_DAYS: u64 = 30;
 const MAX_TRASH_RETENTION_DAYS: u64 = 3_650;
+/// Default per-file upload limit: 4 GiB.
+pub const DEFAULT_MAX_UPLOAD_MB: u64 = 4_096;
+const MIN_MAX_UPLOAD_MB: u64 = 1;
+const MAX_MAX_UPLOAD_MB: u64 = 102_400;
 
 /// Sparse user settings stored as one JSON object at `<data-dir>/settings.json`.
 /// System defaults live in the client; the file only contains overrides.
@@ -59,6 +63,20 @@ impl SettingsStore {
             .and_then(|value| value.get("trashRetentionDays").and_then(Value::as_u64))
             .unwrap_or(DEFAULT_TRASH_RETENTION_DAYS)
             .clamp(1, MAX_TRASH_RETENTION_DAYS)
+    }
+
+    /// Maximum size of a single uploaded asset in bytes. Sparse settings may
+    /// omit `maxUploadMb`; bad values clamp instead of failing uploads.
+    pub fn max_upload_mb(&self) -> u64 {
+        self.load()
+            .ok()
+            .and_then(|value| value.get("maxUploadMb").and_then(Value::as_u64))
+            .unwrap_or(DEFAULT_MAX_UPLOAD_MB)
+            .clamp(MIN_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB)
+    }
+
+    pub fn max_upload_bytes(&self) -> u64 {
+        self.max_upload_mb().saturating_mul(1024 * 1024)
     }
 
     pub fn save(&self, value: &Value) -> Result<()> {
@@ -125,6 +143,26 @@ mod tests {
             .save(&json!({ "trashRetentionDays": "seven" }))
             .unwrap();
         assert_eq!(store.trash_retention_days(), DEFAULT_TRASH_RETENTION_DAYS);
+    }
+
+    #[test]
+    fn max_upload_defaults_and_clamps() {
+        let dir = tempdir().unwrap();
+        let store = SettingsStore::new(dir.path()).unwrap();
+        assert_eq!(store.max_upload_mb(), 4_096);
+        assert_eq!(store.max_upload_bytes(), 4_096 * 1024 * 1024);
+
+        store.save(&json!({ "maxUploadMb": 12 })).unwrap();
+        assert_eq!(store.max_upload_bytes(), 12 * 1024 * 1024);
+
+        store.save(&json!({ "maxUploadMb": 0 })).unwrap();
+        assert_eq!(store.max_upload_mb(), 1);
+
+        store.save(&json!({ "maxUploadMb": 999_999 })).unwrap();
+        assert_eq!(store.max_upload_mb(), 102_400);
+
+        store.save(&json!({ "maxUploadMb": "lots" })).unwrap();
+        assert_eq!(store.max_upload_mb(), DEFAULT_MAX_UPLOAD_MB);
     }
 
     #[test]
