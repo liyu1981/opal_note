@@ -51,14 +51,18 @@ export function extensionOfPath(path: string): string {
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
-/** URL of a viewer bundle file (`/api/plugins/files/<domain>/<ext>/<file>`). */
+/**
+ * URL of a public viewer bundle file
+ * (`/static/plugins/<domain>/<ext>/<file>`). Public on purpose: the viewer runs
+ * in an opaque-origin sandbox, where module and font fetches carry no cookies.
+ */
 export function viewerFileUrl(pluginId: string, file: string): string {
   const [domain, extension] = pluginId.split("/");
   const encoded = file
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
-  return `/api/plugins/files/${encodeURIComponent(domain ?? pluginId)}/${encodeURIComponent(
+  return `/static/plugins/${encodeURIComponent(domain ?? pluginId)}/${encodeURIComponent(
     extension ?? "",
   )}/${encoded}`;
 }

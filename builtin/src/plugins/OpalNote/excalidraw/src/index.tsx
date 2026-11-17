@@ -27,11 +27,25 @@ try {
     },
   });
 }
-// Excalidraw resolves `./fonts/<family>/<file>.woff2` against this base, and it
-// fetches fonts with `fetch()`, so the plugin manifest also allows
-// `connect-src 'self'`.
+// Excalidraw resolves `./fonts/<family>/<file>.woff2` against this base and
+// fetches fonts with `fetch()`. The frame has an opaque origin, so the base must
+// be an absolute URL: derive it from this module's own URL (the bundle sits at
+// the viewer root). The build also rewrites Excalidraw's esm.sh font fallback to
+// this same base, so nothing reaches a CDN.
 (window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH =
-  "/api/plugins/files/OpalNote/excalidraw/";
+  viewerAssetBase();
+
+function viewerAssetBase(): string {
+  try {
+    const url = new URL(import.meta.url);
+    url.pathname = url.pathname.replace(/[^/]*$/u, "");
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return "/";
+  }
+}
 
 type ViewerInit = {
   type: "opalnote-viewer/init";

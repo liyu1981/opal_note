@@ -12,19 +12,12 @@
   "inline": "read",
   "lightbox": "edit",
   "csp": {
-    "connect-src": [
-      "'self'"
-    ],
-    "font-src": [
-      "'self'",
-      "data:",
-      "blob:",
-      "https://esm.sh"
-    ],
     "script-src": [
-      "'self'",
       "'wasm-unsafe-eval'"
+    ],
+    "worker-src": [
+      "blob:"
     ]
   },
-  "sandbox": "same-origin"
+  "sandbox": "opaque"
 }

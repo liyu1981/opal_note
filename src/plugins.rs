@@ -514,17 +514,11 @@ const VIEWER_CSP_DIRECTIVES: &[&str] = &[
     "script-src",
 ];
 
-/// The only remote source a viewer may name: Excalidraw appends an esm.sh
-/// font fallback to every @font-face declaration, and browsers report the
-/// blocked fallback even when the same-origin font loads first.
-const VIEWER_FONT_FALLBACK_ORIGIN: &str = "https://esm.sh";
-
 fn viewer_csp_source_allowed(directive: &str, source: &str) -> bool {
     match source {
         "'self'" | "data:" | "blob:" => true,
         "'unsafe-inline'" => directive == "style-src",
         "'wasm-unsafe-eval'" => directive == "script-src",
-        VIEWER_FONT_FALLBACK_ORIGIN => directive == "font-src",
         _ => false,
     }
 }
@@ -680,54 +674,73 @@ fn parse_plugin(
     })
 }
 
-/// Base CSP for viewer bundles: no network, no framing by others, only the
-/// plugin's own files. Viewers may extend a few directives from their manifest.
-pub fn base_viewer_csp() -> BTreeMap<String, Vec<String>> {
-    let mut csp = BTreeMap::new();
-    let entry = |values: &[&str]| values.iter().map(|value| value.to_string()).collect();
-    csp.insert("default-src".to_string(), entry(&["'none'"]));
-    csp.insert("script-src".to_string(), entry(&["'self'"]));
-    csp.insert(
-        "style-src".to_string(),
-        entry(&["'self'", "'unsafe-inline'"]),
-    );
-    csp.insert("img-src".to_string(), entry(&["'self'", "data:", "blob:"]));
-    csp.insert("font-src".to_string(), entry(&["'self'", "data:"]));
-    csp.insert("connect-src".to_string(), entry(&["'none'"]));
-    csp.insert("frame-ancestors".to_string(), entry(&["'self'"]));
-    csp
-}
+/// Viewer CSP: viewer documents get an opaque origin (sandbox), so `'self'` is
+/// unreliable — the CSP names the request host and the plugin's own static
+/// prefix explicitly, then merges the directives the manifest declared.
+pub fn viewer_csp_for(
+    host: &str,
+    plugin_id: &str,
+    extra: &BTreeMap<String, Vec<String>>,
+) -> String {
+    let base_https = format!("https://{host}/static/plugins/{plugin_id}/");
+    let base_http = format!("http://{host}/static/plugins/{plugin_id}/");
+    let mut csp: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut extend = |directive: &str, values: &[&str]| {
+        let slot = csp.entry(directive.to_string()).or_default();
+        for value in values {
+            let value = value.to_string();
+            if !slot.iter().any(|existing| existing == &value) {
+                slot.push(value);
+            }
+        }
+    };
 
-fn render_csp(csp: &BTreeMap<String, Vec<String>>) -> String {
-    csp.iter()
-        .map(|(directive, sources)| format!("{directive} {}", sources.join(" ")))
+    extend("default-src", &["'none'"]);
+    extend("script-src", &[&base_https, &base_http]);
+    extend("style-src", &[&base_https, &base_http, "'unsafe-inline'"]);
+    extend("img-src", &[&base_https, &base_http, "data:", "blob:"]);
+    extend("font-src", &[&base_https, &base_http, "data:", "blob:"]);
+    extend("connect-src", &[&base_https, &base_http]);
+    extend("worker-src", &[&base_https, &base_http, "blob:"]);
+    extend("frame-ancestors", &["'self'"]);
+
+    for (directive, values) in extra {
+        if !VIEWER_CSP_DIRECTIVES.contains(&directive.as_str()) {
+            continue;
+        }
+        let owned: Vec<String> = values.clone();
+        for value in owned {
+            let slot = csp.entry(directive.clone()).or_default();
+            if !slot.iter().any(|existing| existing == &value) {
+                slot.push(value);
+            }
+        }
+    }
+
+    let mut rendered = csp
+        .iter()
+        .map(|(directive, values)| format!("{directive} {}", values.join(" ")))
         .collect::<Vec<_>>()
-        .join("; ")
+        .join("; ");
+    // Keep a document opened as a top-level tab opaque as well.
+    rendered.push_str("; sandbox allow-scripts");
+    rendered
 }
 
 impl PluginRegistry {
-    /// Composed CSP for a viewer's files: the host policy plus the directives
-    /// the plugin declared in `opal_note.csp`.
-    pub fn viewer_csp(&self, id: &str) -> String {
-        let mut csp = base_viewer_csp();
+    /// CSP directives a viewer declared in `opal_note.csp`.
+    pub fn viewer_csp_extra(&self, id: &str) -> BTreeMap<String, Vec<String>> {
         let state = self
             .state
             .read()
             .unwrap_or_else(|poison| poison.into_inner());
-        if let Some(viewer) = state
+        state
             .plugins
             .iter()
             .find(|plugin| plugin.id == id)
             .and_then(|plugin| plugin.viewer.as_ref())
-        {
-            // A declared directive replaces the host default for that
-            // directive (e.g. `connect-src 'self'` instead of `'none'`); the
-            // manifest validator only permits self/data/blob sources.
-            for (directive, sources) in &viewer.csp {
-                csp.insert(directive.clone(), sources.clone());
-            }
-        }
-        render_csp(&csp)
+            .map(|viewer| viewer.csp.clone())
+            .unwrap_or_default()
     }
 
     /// Serve one file of a viewer bundle (`viewer.html`, `viewer.js`, fonts…).
@@ -1321,33 +1334,36 @@ mod tests {
 
     #[test]
     fn composes_viewer_csp_from_the_manifest() {
-        let base = render_csp(&base_viewer_csp());
-        assert!(base.contains("connect-src 'none'"));
-        assert!(base.contains("frame-ancestors 'self'"));
-        assert!(base.contains("script-src 'self'"));
-
         let manifest = r#"{
             "id": "A/canvas",
             "title": "Canvas",
-            "description": "Viewer with fetches",
+            "description": "Viewer with wasm",
             "type": "viewer",
             "extensions": ["canvas"],
             "entry": "viewer.html",
             "role": "editor",
-            "csp": { "connect-src": ["'self'"], "font-src": ["'self'", "data:"] }
+            "csp": { "script-src": ["'wasm-unsafe-eval'"], "worker-src": ["blob:"] }
         }"#;
         let plugin = parse_plugin("case", manifest, "", PluginSource::Data, "case", None).unwrap();
-        let mut csp = base_viewer_csp();
-        for (directive, sources) in &plugin.viewer.as_ref().unwrap().csp {
-            csp.insert(directive.clone(), sources.clone());
-        }
-        let rendered = render_csp(&csp);
-        assert!(rendered.contains("connect-src 'self'"), "{rendered}");
+        let rendered = viewer_csp_for(
+            "notes.example:7827",
+            "A/canvas",
+            &plugin.viewer.as_ref().unwrap().csp,
+        );
         assert!(
-            !rendered.contains("connect-src 'none' 'self'"),
+            rendered.contains("https://notes.example:7827/static/plugins/A/canvas/"),
             "{rendered}"
         );
-        assert!(rendered.contains("frame-ancestors 'self'"));
+        assert!(rendered.contains("'wasm-unsafe-eval'"), "{rendered}");
+        assert!(rendered.contains("blob:"), "{rendered}");
+        assert!(rendered.contains("frame-ancestors 'self'"), "{rendered}");
+        assert!(rendered.contains("sandbox allow-scripts"), "{rendered}");
+        assert!(!rendered.contains("'unsafe-eval'"), "{rendered}");
+        assert!(!rendered.contains("esm.sh"), "{rendered}");
+        assert!(
+            !rendered.contains("script-src 'self'"),
+            "host-scoped script-src expected: {rendered}"
+        );
     }
 
     #[test]

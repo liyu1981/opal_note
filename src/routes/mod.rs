@@ -43,10 +43,6 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/settings", get(settings::get).put(settings::put))
         .route("/plugins", get(plugins::list))
         .route("/plugins/reload", post(plugins::reload))
-        .route(
-            "/plugins/files/{domain}/{extension}/{*path}",
-            get(plugins::file),
-        )
         .route("/backgrounds", get(backgrounds::list))
         .route("/backgrounds/reload", post(backgrounds::reload))
         .route("/backgrounds/asset", get(backgrounds::asset))
@@ -113,6 +109,12 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
 
     let mut app = Router::new()
         .nest("/api", api)
+        // Viewer plugin bundles: public (client-shipped code, no secrets) so an
+        // opaque-origin frame can fetch modules and fonts without cookies.
+        .route(
+            "/static/plugins/{domain}/{extension}/{*path}",
+            get(plugins::static_file),
+        )
         .fallback(crate::assets::static_handler)
         .with_state(state)
         .layer(tower_http::compression::CompressionLayer::new())

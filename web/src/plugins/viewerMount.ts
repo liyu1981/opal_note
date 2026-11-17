@@ -49,6 +49,9 @@ export function mountViewer(
   const token = randomToken();
   const iframe = document.createElement("iframe");
   iframe.className = "opalnote-viewer-frame";
+  // Opaque origin: no cookies, storage or same-origin access. Viewer files are
+  // served publicly with `Access-Control-Allow-Origin: null` so module and
+  // font fetches still work.
   iframe.setAttribute(
     "sandbox",
     options.sandbox === "same-origin"

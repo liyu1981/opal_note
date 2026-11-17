@@ -388,8 +388,9 @@ web/
   Preserve this distinction and the ResizeObserver-driven full-page sizing.
 - Plugins have three kinds. `server` plugins run in QuickJS; `client` plugins are
   built into the web bundle; `viewer` plugins are sandboxed iframe bundles
-  (`type: "viewer"` with `extensions`, `entry`, `role`) served from
-  `/api/plugins/files/{domain}/{extension}/{*path}` with a frame-friendly CSP.
+  (`type: "viewer"` with `extensions`, `entry`, `role`) served from the public
+  `/static/plugins/{domain}/{extension}/{*path}` route with a host-scoped CSP
+  and `Access-Control-Allow-Origin: null` for opaque-origin module/font fetches.
   Built-in viewers (`builtin/src/plugins/OpalNote/mermaid`,
   `OpalNote/excalidraw`) bundle their engine into
   `builtin/plugins/<id>/viewer.js` and are excluded from the client plugin

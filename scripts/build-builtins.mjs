@@ -47,13 +47,45 @@ const VIEWER_CSP_DIRECTIVES = [
   "script-src",
 ];
 
-const VIEWER_FONT_FALLBACK_ORIGIN = "https://esm.sh";
+/**
+ * Excalidraw appends a hard-coded CDN candidate to every font URL:
+ * `https://esm.sh/@excalidraw/excalidraw@<ver>/dist/prod/`. The viewer bundle is
+ * fully self-contained, so that fallback is rewritten to the viewer's own asset
+ * base (set at runtime from `import.meta.url`). A version bump that changes the
+ * literal fails the build instead of silently reintroducing the CDN.
+ */
+const EXCALIDRAW_CDN_FALLBACK =
+  'https://esm.sh/${M.PKG_NAME?`${M.PKG_NAME}@${M.PKG_VERSION}`:"@excalidraw/excalidraw"}/dist/prod/';
+
+function stripCdnFontFallback() {
+  return {
+    name: "opalnote:strip-cdn-font-fallback",
+    setup(build) {
+      build.onLoad({ filter: /\.js$/ }, async (args) => {
+        const source = await readFile(args.path, "utf8");
+        if (!source.includes("https://esm.sh/")) return undefined;
+        if (!source.includes(EXCALIDRAW_CDN_FALLBACK)) {
+          throw new Error(
+            `${args.path}: unexpected third-party font fallback; update the viewer build patch`,
+          );
+        }
+        const patched = source.replace(
+          EXCALIDRAW_CDN_FALLBACK,
+          '${String(globalThis.EXCALIDRAW_ASSET_PATH||"/")}',
+        );
+        if (patched.includes("https://esm.sh/")) {
+          throw new Error(`${args.path}: CDN font fallback survived the patch`);
+        }
+        return { contents: patched, loader: "js" };
+      });
+    },
+  };
+}
 
 function viewerCspAllowed(directive, source) {
   if (source === "'self'" || source === "data:" || source === "blob:") return true;
   if (source === "'unsafe-inline'") return directive === "style-src";
   if (source === "'wasm-unsafe-eval'") return directive === "script-src";
-  if (source === VIEWER_FONT_FALLBACK_ORIGIN) return directive === "font-src";
   return false;
 }
 
@@ -346,6 +378,7 @@ async function buildViewerPlugin(packageDir, manifest, buildConfig = {}) {
       conditions: ["production", "browser"],
       write: false,
       logLevel: "silent",
+      plugins: [stripCdnFontFallback()],
       loader: {
         ".woff2": "file",
         ".woff": "file",
@@ -375,6 +408,12 @@ async function buildViewerPlugin(packageDir, manifest, buildConfig = {}) {
     }
     if (!files["viewer.js"]) {
       throw new Error(`${manifest.id}: esbuild produced no viewer script`);
+    }
+    for (const [name, content] of Object.entries(files)) {
+      if (!name.endsWith(".js")) continue;
+      if (content.includes("https://esm.sh/")) {
+        throw new Error(`${manifest.id}: ${name} still references esm.sh`);
+      }
     }
     if (css) files["viewer.css"] = css;
 
