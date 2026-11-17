@@ -37,11 +37,24 @@ const MAX_PLUGIN_BYTES = 20_000;
 // ranges), so viewer bundles need more room than code-only plugins.
 const MAX_VIEWER_BYTES = 32 * 1024 * 1024;
 const MAX_VIEWER_EXTENSIONS = 8;
-const VIEWER_CSP_DIRECTIVES = ["connect-src", "font-src", "img-src", "media-src", "style-src"];
+const VIEWER_CSP_DIRECTIVES = [
+  "connect-src",
+  "font-src",
+  "img-src",
+  "media-src",
+  "style-src",
+  "worker-src",
+  "script-src",
+];
+
+const VIEWER_FONT_FALLBACK_ORIGIN = "https://esm.sh";
 
 function viewerCspAllowed(directive, source) {
   if (source === "'self'" || source === "data:" || source === "blob:") return true;
-  return source === "'unsafe-inline'" && directive === "style-src";
+  if (source === "'unsafe-inline'") return directive === "style-src";
+  if (source === "'wasm-unsafe-eval'") return directive === "script-src";
+  if (source === VIEWER_FONT_FALLBACK_ORIGIN) return directive === "font-src";
+  return false;
 }
 
 function validateViewerCsp(sourceLabel, csp) {
@@ -321,7 +334,11 @@ async function buildViewerPlugin(packageDir, manifest, buildConfig = {}) {
       entryPoints: [entry],
       outdir,
       bundle: true,
-      format: "iife",
+      // ESM + code splitting: viewers (Excalidraw) use dynamic imports for
+      // workers, and `import.meta.url` must resolve for them.
+      format: "esm",
+      splitting: true,
+      chunkNames: "chunks/[name]-[hash]",
       jsx: "automatic",
       platform: "browser",
       target: buildConfig.target ?? "es2020",
@@ -345,7 +362,10 @@ async function buildViewerPlugin(packageDir, manifest, buildConfig = {}) {
     let css = null;
     for (const file of result.outputFiles) {
       const rel = path.relative(outdir, file.path).split(path.sep).join("/");
-      if (rel.endsWith(".js") && !files["viewer.js"]) {
+      // The entry chunk is the only root-level `.js` file; chunks live under
+      // `chunks/` and must keep their relative imports intact.
+      const isEntry = !rel.includes("/") && rel.endsWith(".js");
+      if (isEntry) {
         files["viewer.js"] = file.contents;
       } else if (rel.endsWith(".css") && !css) {
         css = file.contents;
@@ -373,7 +393,7 @@ async function buildViewerPlugin(packageDir, manifest, buildConfig = {}) {
             "</head>",
             "<body>",
             '<div id="root"></div>',
-            '<script src="viewer.js"></script>',
+            '<script type="module" src="viewer.js"></script>',
             "</body>",
             "</html>",
             "",

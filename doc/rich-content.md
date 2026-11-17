@@ -254,12 +254,27 @@ as files).
   only trusted built-in bundles should opt in — a same-origin frame can reach
   the app's DOM and API with the user's cookie.
 - `csp` (optional) lets a viewer extend the sandbox policy for its own files:
-  only `connect-src`, `font-src`, `img-src`, `media-src` and `style-src` are
-  accepted, and only `'self'`, `data:` and `blob:` sources (`'unsafe-inline'`
-  just for `style-src`). A declared directive replaces the host default for that
-  directive; `default-src`, `script-src`, `frame-ancestors`, `base-uri` and
-  `form-action` stay host-controlled. Excalidraw uses
-  `{"connect-src": ["'self'"]}` because it fetches its fonts.
+  `connect-src`, `font-src`, `img-src`, `media-src`, `style-src`,
+  `worker-src` and `script-src` are accepted, with `'self'`, `data:` and
+  `blob:` sources, `'unsafe-inline'` only for `style-src`,
+  `'wasm-unsafe-eval'` only for `script-src` (WebAssembly compilation; JS
+  `eval`/`new Function` stay blocked), and `https://esm.sh` only for
+  `font-src` (Excalidraw appends an esm.sh fallback URL to every `@font-face`,
+  which Chrome would otherwise report as blocked even when the local font
+  loads). A declared directive replaces the host
+  default for that directive; `default-src`, `frame-ancestors`, `base-uri` and
+  `form-action` stay host-controlled. Excalidraw declares:
+
+  ```json
+  {"connect-src": ["'self'"],
+   "font-src": ["'self'", "data:", "blob:"],
+   "script-src": ["'self'", "'wasm-unsafe-eval'"]}
+  ```
+
+  because it fetches fonts, subsets glyphs with HarfBuzz (WebAssembly) and
+  renders subset fonts from `blob:`/`data:` URLs. Viewers are built as ESM with
+  code splitting, so dynamic imports (Excalidraw's worker chunks) resolve
+  `import.meta.url` and load from the plugin route.
 - The manifest is validated by both the build tool and the server registry, with
   the same limits as other plugins (id, title, description) plus extension and
   entry rules.
@@ -464,6 +479,20 @@ only the host contract (§4.3), never code.
   cross-origin (`Origin: null`) and fails both CSP (`font-src 'self'`) and CORS.
   With the app origin the fonts load from the plugin route, and the CSP still
   blocks the esm.sh fallback.
+
+  Glyph subsetting runs in a module worker (`chunks/subset-worker-*.js`) that
+  needs `'wasm-unsafe-eval'`; if a browser is too slow for Excalidraw's 1 s
+  worker TTL it falls back to a main-thread path that uses `new Function`, which
+  the CSP blocks, so Excalidraw logs "Skipped glyph subsetting" and uses the full
+  font. Text still renders with the loaded fonts; subsetting only matters for
+  embedded-font exports. JS `eval` stays blocked on purpose — a slow worker is
+  not a reason to allow `'unsafe-eval'` in a frame that renders user scenes.
+
+  Browsers also log `Permissions-Policy: Unrecognized feature` notices
+  (`attribution-reporting`, `private-aggregation`, `browsing-topics`, …) for
+  worker/frame documents. OpalNote only sends
+  `permissions-policy: camera=(), microphone=(), geolocation=()`; those warnings
+  come from the browser (or a proxy in front of a dev server), not from the app.
   Viewer documents carry no inline scripts — the viewer CSP is
   `script-src 'self'` — so a shipped `viewer.html` only links `viewer.css` and
   `viewer.js`; the sandbox has an opaque origin, so the bundle also installs a
@@ -590,7 +619,9 @@ Common behaviour:
 - Viewers never run with app privileges by default: opaque origin, no cookies,
   no storage, `connect-src 'none'`, message-only data exchange. `same-origin`
   is only for trusted built-in engines (Excalidraw needs same-origin font
-  fetches); a data viewer should stay `opaque`.
+  fetches); a data viewer should stay `opaque`. Browsers warn that
+  `allow-scripts allow-same-origin` "can escape its sandboxing" — that is
+  expected for these trusted bundles and why the option stays opt-in.
 - Host validates `event.source`, the per-mount token, message types, content
   size (8 MiB), height bounds, and times out silent viewers.
 - Mermaid: Pele escapes labels, filters styles and allows no scripts/handlers;

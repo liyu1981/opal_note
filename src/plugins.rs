@@ -427,7 +427,8 @@ fn load_data_plugins(directory: &Path) -> Vec<(String, Result<PluginDefinition>)
                 &path.display().to_string(),
                 Some(path.display().to_string()),
             )?;
-            if let (PluginKind::Viewer, Some(viewer)) = (definition.kind, definition.viewer.as_ref())
+            if let (PluginKind::Viewer, Some(viewer)) =
+                (definition.kind, definition.viewer.as_ref())
             {
                 let entry = path.join(&viewer.entry);
                 if !entry.is_file() {
@@ -496,7 +497,6 @@ struct PluginManifest {
     sandbox: String,
 }
 
-
 fn is_viewer_manifest(manifest: &Value) -> bool {
     manifest.get("type").and_then(Value::as_str) == Some("viewer")
 }
@@ -509,12 +509,22 @@ const VIEWER_CSP_DIRECTIVES: &[&str] = &[
     "img-src",
     "media-src",
     "style-src",
+    "worker-src",
+    // `script-src` may only add WebAssembly compilation, never JS eval.
+    "script-src",
 ];
+
+/// The only remote source a viewer may name: Excalidraw appends an esm.sh
+/// font fallback to every @font-face declaration, and browsers report the
+/// blocked fallback even when the same-origin font loads first.
+const VIEWER_FONT_FALLBACK_ORIGIN: &str = "https://esm.sh";
 
 fn viewer_csp_source_allowed(directive: &str, source: &str) -> bool {
     match source {
         "'self'" | "data:" | "blob:" => true,
         "'unsafe-inline'" => directive == "style-src",
+        "'wasm-unsafe-eval'" => directive == "script-src",
+        VIEWER_FONT_FALLBACK_ORIGIN => directive == "font-src",
         _ => false,
     }
 }
@@ -566,7 +576,9 @@ pub fn is_safe_viewer_path(path: &str) -> bool {
         && !path.starts_with('/')
         && !path.contains('\\')
         && !path.contains("//")
-        && !path.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+        && !path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
 }
 
 fn parse_plugin(
@@ -617,11 +629,12 @@ fn parse_plugin(
             .filter(|value| !value.is_empty())
             .collect();
         if extensions.is_empty() || extensions.len() > MAX_VIEWER_EXTENSIONS {
-            bail!(
-                "viewer plugin `{folder}` must declare 1-{MAX_VIEWER_EXTENSIONS} extensions"
-            );
+            bail!("viewer plugin `{folder}` must declare 1-{MAX_VIEWER_EXTENSIONS} extensions");
         }
-        if let Some(bad) = extensions.iter().find(|value| !valid_viewer_extension(value)) {
+        if let Some(bad) = extensions
+            .iter()
+            .find(|value| !valid_viewer_extension(value))
+        {
             bail!(
                 "viewer plugin `{folder}` has invalid extension `{bad}`; use lower-case letters and digits"
             );
@@ -674,7 +687,10 @@ pub fn base_viewer_csp() -> BTreeMap<String, Vec<String>> {
     let entry = |values: &[&str]| values.iter().map(|value| value.to_string()).collect();
     csp.insert("default-src".to_string(), entry(&["'none'"]));
     csp.insert("script-src".to_string(), entry(&["'self'"]));
-    csp.insert("style-src".to_string(), entry(&["'self'", "'unsafe-inline'"]));
+    csp.insert(
+        "style-src".to_string(),
+        entry(&["'self'", "'unsafe-inline'"]),
+    );
     csp.insert("img-src".to_string(), entry(&["'self'", "data:", "blob:"]));
     csp.insert("font-src".to_string(), entry(&["'self'", "data:"]));
     csp.insert("connect-src".to_string(), entry(&["'none'"]));
@@ -769,7 +785,6 @@ impl PluginRegistry {
             }
         }
     }
-
 }
 
 fn run_plugin(
@@ -1274,13 +1289,34 @@ mod tests {
         assert!(registry
             .viewer_file("Acme/mermaid", "../../secret")
             .is_err());
-        assert!(registry.viewer_file("Acme/missing", "viewer.html").unwrap().is_none());
+        assert!(registry
+            .viewer_file("Acme/missing", "viewer.html")
+            .unwrap()
+            .is_none());
 
         // Viewers never run as journal plugins.
         let store = Arc::new(Store::open(dir.path(), 1.0).unwrap());
         store.create_notebook("Notes", "").unwrap();
         let results = registry.run_journal(&store, "Notes", 0.5);
         assert!(results.iter().all(|result| result.id != "Acme/mermaid"));
+    }
+
+    #[test]
+    fn allows_wasm_but_not_js_eval_in_viewer_csp() {
+        let wasm = r#"{"id":"A/canvas","title":"C","description":"D","type":"viewer",
+            "extensions":["canvas"],"entry":"viewer.html","role":"editor",
+            "csp":{"script-src":["'self'","'wasm-unsafe-eval'"]}}"#;
+        assert!(parse_plugin("case", wasm, "", PluginSource::Data, "case", None).is_ok());
+
+        let eval = r#"{"id":"A/canvas","title":"C","description":"D","type":"viewer",
+            "extensions":["canvas"],"entry":"viewer.html","role":"editor",
+            "csp":{"script-src":["'self'","'unsafe-eval'"]}}"#;
+        assert!(parse_plugin("case", eval, "", PluginSource::Data, "case", None).is_err());
+
+        let inline = r#"{"id":"A/canvas","title":"C","description":"D","type":"viewer",
+            "extensions":["canvas"],"entry":"viewer.html","role":"editor",
+            "csp":{"script-src":["'self'","'unsafe-inline'"]}}"#;
+        assert!(parse_plugin("case", inline, "", PluginSource::Data, "case", None).is_err());
     }
 
     #[test]
@@ -1300,22 +1336,17 @@ mod tests {
             "role": "editor",
             "csp": { "connect-src": ["'self'"], "font-src": ["'self'", "data:"] }
         }"#;
-        let plugin = parse_plugin(
-            "case",
-            manifest,
-            "",
-            PluginSource::Data,
-            "case",
-            None,
-        )
-        .unwrap();
+        let plugin = parse_plugin("case", manifest, "", PluginSource::Data, "case", None).unwrap();
         let mut csp = base_viewer_csp();
         for (directive, sources) in &plugin.viewer.as_ref().unwrap().csp {
             csp.insert(directive.clone(), sources.clone());
         }
         let rendered = render_csp(&csp);
         assert!(rendered.contains("connect-src 'self'"), "{rendered}");
-        assert!(!rendered.contains("connect-src 'none' 'self'"), "{rendered}");
+        assert!(
+            !rendered.contains("connect-src 'none' 'self'"),
+            "{rendered}"
+        );
         assert!(rendered.contains("frame-ancestors 'self'"));
     }
 
@@ -1323,7 +1354,7 @@ mod tests {
     fn rejects_unsafe_viewer_csp_declarations() {
         let cases = [
             r#""csp": { "default-src": ["'self'"] }"#,
-            r#""csp": { "script-src": ["'self'"] }"#,
+            r#""csp": { "frame-ancestors": ["'self'"] }"#,
             r#""csp": { "connect-src": ["https://evil.example"] }"#,
             r#""csp": { "img-src": ["'unsafe-inline'"] }"#,
             r#""csp": { "connect-src": [] }"#,
@@ -1350,15 +1381,7 @@ mod tests {
         ];
         for manifest in cases {
             assert!(
-                parse_plugin(
-                    "case",
-                    manifest,
-                    "",
-                    PluginSource::Data,
-                    "case",
-                    None
-                )
-                .is_err(),
+                parse_plugin("case", manifest, "", PluginSource::Data, "case", None).is_err(),
                 "manifest should be rejected: {manifest}"
             );
         }

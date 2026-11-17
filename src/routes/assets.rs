@@ -173,15 +173,7 @@ pub async fn create_content(
     let content = body.content;
     let store = state.store.clone();
     let entry = db_call(
-        move || {
-            store.write_asset(
-                &notebook_id,
-                &name,
-                &extension,
-                folder.as_deref(),
-                &content,
-            )
-        },
+        move || store.write_asset(&notebook_id, &name, &extension, folder.as_deref(), &content),
         AppError::Internal,
     )
     .await?;

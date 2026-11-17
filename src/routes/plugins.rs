@@ -52,11 +52,7 @@ pub async fn file(
     let plugins = state.plugins.clone();
     let csp = plugins.viewer_csp(&id);
     let rel = path.clone();
-    let bytes = db_call(
-        move || plugins.viewer_file(&id, &rel),
-        AppError::Internal,
-    )
-    .await?;
+    let bytes = db_call(move || plugins.viewer_file(&id, &rel), AppError::Internal).await?;
     let Some(bytes) = bytes else {
         return Err(AppError::not_found("viewer file not found"));
     };

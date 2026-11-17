@@ -1710,7 +1710,10 @@ impl Store {
         folder: Option<&str>,
         content: &str,
     ) -> Result<AssetEntry> {
-        let extension = extension.trim().trim_start_matches('.').to_ascii_lowercase();
+        let extension = extension
+            .trim()
+            .trim_start_matches('.')
+            .to_ascii_lowercase();
         if !files::EDITABLE_ASSET_EXTENSIONS.contains(&extension.as_str()) {
             bail!(
                 "unsupported asset extension `{extension}`; use {}",
@@ -3147,7 +3150,10 @@ mod tests {
             .unwrap();
         assert_ne!(second.path, first.path);
 
-        let bytes = store.read_asset(&notebook.id, &first.path).unwrap().unwrap();
+        let bytes = store
+            .read_asset(&notebook.id, &first.path)
+            .unwrap()
+            .unwrap();
         assert_eq!(bytes.0, b"flowchart LR\n  A --> B");
         assert_eq!(bytes.1, "text/plain");
 
@@ -3175,7 +3181,10 @@ mod tests {
             other => panic!("expected update, got {other:?}"),
         };
         assert_eq!(fresh.path, first.path);
-        let bytes = store.read_asset(&notebook.id, &first.path).unwrap().unwrap();
+        let bytes = store
+            .read_asset(&notebook.id, &first.path)
+            .unwrap()
+            .unwrap();
         assert_eq!(bytes.0, b"flowchart LR\n  A --> C");
 
         assert!(matches!(
