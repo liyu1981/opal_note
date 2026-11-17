@@ -8,6 +8,18 @@ use rust_embed::RustEmbed;
 
 use crate::error::AppError;
 
+/// Web MIME for served assets. `mime_guess` covers the hashed bundle; the PWA
+/// files need the types browsers expect.
+fn asset_mime(path: &str) -> String {
+    if path.ends_with(".webmanifest") {
+        return "application/manifest+json".to_string();
+    }
+    mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string()
+}
+
 /// Assets emitted by `vite build`. Release builds embed them; debug builds
 /// read the same files from disk so frontend-only changes do not trigger a
 /// Rust rebuild.
@@ -100,9 +112,26 @@ base-uri 'self'; \
 form-action 'self'; \
 frame-ancestors 'none'";
 
+/// Files that must always be revalidated: the shell, the service worker, the
+/// manifest and the icons they reference. Everything else is a hashed build
+/// asset and can be cached forever.
+fn must_revalidate(path: &str) -> bool {
+    matches!(
+        path,
+        "index.html"
+            | "sw.js"
+            | "manifest.webmanifest"
+            | "offline.html"
+            | "favicon.svg"
+            | "icons/apple-touch-icon.png"
+            | "icons/icon-192.png"
+            | "icons/icon-512.png"
+    )
+}
+
 fn asset_response(path: &str, bytes: Vec<u8>) -> Response {
-    let mime = mime_guess::from_path(path).first_or_octet_stream();
-    let cache = if path == "index.html" {
+    let mime = asset_mime(path);
+    let cache = if must_revalidate(path) {
         "no-cache"
     } else {
         "public, max-age=31536000, immutable"
@@ -110,7 +139,7 @@ fn asset_response(path: &str, bytes: Vec<u8>) -> Response {
 
     Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, mime.as_ref())
+        .header(header::CONTENT_TYPE, mime)
         .header(header::CACHE_CONTROL, cache)
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
         .header("content-security-policy", CONTENT_SECURITY_POLICY)
@@ -122,4 +151,35 @@ fn asset_response(path: &str, bytes: Vec<u8>) -> Response {
         )
         .body(Body::from(bytes))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pwa_files_are_revalidated_and_typed() {
+        for path in [
+            "index.html",
+            "sw.js",
+            "manifest.webmanifest",
+            "offline.html",
+            "favicon.svg",
+            "icons/icon-192.png",
+            "icons/icon-512.png",
+            "icons/apple-touch-icon.png",
+        ] {
+            assert!(must_revalidate(path), "{path} must not be cached forever");
+        }
+        for path in ["assets/index-abc123.js", "assets/index-abc123.css"] {
+            assert!(!must_revalidate(path), "{path} is a hashed asset");
+        }
+        assert_eq!(
+            asset_mime("manifest.webmanifest"),
+            "application/manifest+json"
+        );
+        assert_eq!(asset_mime("sw.js"), "text/javascript");
+        assert_eq!(asset_mime("offline.html"), "text/html");
+        assert_eq!(asset_mime("icons/icon-192.png"), "image/png");
+    }
 }

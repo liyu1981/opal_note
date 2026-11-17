@@ -177,6 +177,16 @@ web/
   reindex) use `refreshAtom`; note content/title/tag saves use
   `refreshNotesAtom`. Do not call global refresh from the autosave path.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
+- The web client is an installable **PWA** with deliberately minimal offline
+  support: `web/public/manifest.webmanifest` + `icons/` (192/512/maskable and
+  an apple-touch 180) describe the app, and `web/public/sw.js` caches only
+  `/offline.html` and turns a failed navigation into that placeholder. Nothing
+  else is cached — notes are server-canonical. `main.tsx` registers the worker
+  in production bundles only. `src/assets.rs` serves `sw.js`,
+  `manifest.webmanifest`, `offline.html`, `favicon.svg` and the icons with
+  `Cache-Control: no-cache` (`must_revalidate`) and maps `.webmanifest` to
+  `application/manifest+json`; hashed `assets/` stay immutable for a year. When
+  changing the placeholder, bump `CACHE` in `sw.js`.
 - Release builds embed `web/dist`, `builtin/plugins` and `builtin/backgrounds`
   via `rust-embed`; debug
   builds read them from disk. `scripts/lib.mjs` owns the web build/sync step.

@@ -14,3 +14,14 @@ createRoot(container).render(
     <App />
   </StrictMode>,
 );
+
+// Installable PWA: the service worker only provides an offline placeholder for
+// navigations (notes live on the server), so registration stays optional and
+// failures are ignored.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+      // A plain browser tab is a perfectly good fallback.
+    });
+  });
+}

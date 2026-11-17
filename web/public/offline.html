@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpalNote · Offline</title>
+    <style>
+      :root { color-scheme: light; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #d6d7d0;
+        color: #171a1b;
+        font-family: "Google Sans", ui-sans-serif, system-ui, sans-serif;
+        padding: 1.5rem;
+      }
+      main {
+        max-width: 26rem;
+        border: 1px solid #b9bab2;
+        border-radius: 1rem;
+        background: #f8f5ec;
+        padding: 1.75rem;
+        text-align: center;
+        box-shadow: 0 8px 24px -20px rgb(17 24 39 / 0.2);
+      }
+      img { width: 64px; height: 64px; }
+      h1 { margin: 0.75rem 0 0.35rem; font-size: 1.15rem; }
+      p { margin: 0; color: #565a5b; font-size: 0.9rem; line-height: 1.5; }
+      a {
+        display: inline-block;
+        margin-top: 1.25rem;
+        border: 1px solid #b9bab2;
+        border-radius: 0.5rem;
+        padding: 0.4rem 1rem;
+        color: #2563eb;
+        font-size: 0.9rem;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/favicon.svg" alt="" />
+      <h1>You are offline</h1>
+      <p>
+        OpalNote keeps notes on the server, so the app needs a connection.
+        Everything you saved is safe; reconnect and reload.
+      </p>
+      <a href="/">Try again</a>
+    </main>
+  </body>
+</html>

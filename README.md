@@ -807,6 +807,22 @@ Writes touching a note plus its tags/links/tasks use MnesticDB's `multi_transact
 and every filesystem mutation holds a store-wide lock so scans and sends do not
 interleave.
 
+## PWA
+
+The web client is installable: `web/public/manifest.webmanifest` plus
+`icons/` (192, 512, maskable and an Apple touch icon) give browsers the app
+name, standalone display and theme colour, and `web/public/sw.js` registers a
+minimal service worker. Offline support is intentionally minimal — the app is
+server-first, so the worker caches **only** a placeholder page: an offline
+navigation (reload, deep link, installed app launch) shows
+`/offline.html` ("You are offline") instead of the browser error page. No API
+response, note data or build asset is cached, so a reload always gets the
+current shell. `/sw.js`, the manifest, the icons and the placeholder are served
+`Cache-Control: no-cache`; hashed `assets/` stay immutable.
+
+`pnpm dev` serves production bundles, so the worker is active there too; open
+`/` once, stop the server and reload to see the placeholder.
+
 ## HTTP API
 
 Base path `/api`. Errors use
