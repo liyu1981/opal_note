@@ -1062,3 +1062,27 @@ web/
   notebook folder.
 - Static assets are served without auth so the SPA can load and prompt for a
   token.
+
+### Third-party secret in the generated viewer bundle
+
+GitHub secret scanning reports a Google API key
+(`AIzaSyAd15pYlMci…`) in `builtin/plugins/OpalNote/excalidraw/`. It is **not an
+OpalNote credential**: it is the default Firebase web config that
+[`@excalidraw/excalidraw`](https://www.npmjs.com/package/@excalidraw/excalidraw)
+ships for its own collaboration backend (`excalidraw-room-persistence`), and it
+appears here only because viewer bundles are committed build artifacts and
+embedded into the binary.
+
+- Firebase web API keys are public identifiers by design — they ship in every
+  Excalidraw deployment and are guarded by Firebase security rules, not by
+  secrecy.
+- The Firebase project belongs to Excalidraw, so there is nothing for us to
+  rotate or revoke; close the alert as a **false positive**, noting the upstream
+  package and version.
+- OpalNote never enables Excalidraw collaboration, so the config is inert.
+- A rebuild re-introduces the literal. If the alerts become noisy, exclude the
+  generated output rather than editing it, e.g. `.github/secret_scanning.yml`
+  with `paths-ignore: [builtin/plugins/**]`.
+
+The same reasoning applies to other strings baked into third-party bundles under
+`builtin/plugins/`: check the upstream package before treating an alert as ours.
