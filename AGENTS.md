@@ -249,6 +249,13 @@ web/
   the `onOpenAsset` live-preview option. `assetKindFromPath`/`assetMarkdown` in
   `src/lib/assets.ts` are the single mapping used by both the editor and the
   `/upload` command.
+- Tag completion lives in `src/lib/tagCompletion.ts` and is the third
+  CodeMirror completion source (after wikilinks and slash commands). Typing `#`
+  at the start of a line or after whitespace/opening punctuation opens a picker
+  over the notebook's tags with page counts, sorted by count. It inserts
+  `#tag ` (no extra space before punctuation) and stays out of fenced/inline
+  code, links and `[[Page#Heading]]` targets; a bare `#` at line start is a
+  markdown heading, so there it waits for the first tag character.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
   CodeMirror completion source after wikilinks. They trigger only when `/` is
   the first non-whitespace character of a source line and are suppressed inside

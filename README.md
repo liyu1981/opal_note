@@ -407,7 +407,9 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   images, video (`<video controls>`), audio (`<audio controls>`) and code in
   place. Other asset references (pdf, office documents, archives) render as an
   icon plus the file name and open the asset view when clicked. Type `/upload`
-  on an empty line to pick a file and insert its markdown at the cursor. The line under the cursor becomes plain markdown source —
+  on an empty line to pick a file and insert its markdown at the cursor. Typing
+  `#` in prose opens a tag picker over the notebook's tags (with page counts);
+  pick one to insert `#tag`, the same way `[[` completes page links. The line under the cursor becomes plain markdown source —
   visible markers, normal text size and weight, no rendered inline styling —
   the way Obsidian live preview does. There is no separate source mode.
 - Fenced code blocks use configurable syntax themes (GitHub Light by default),

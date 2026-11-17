@@ -40,9 +40,14 @@ import {
   viewerPluginsAtom,
 } from "../../plugins/viewers";
 import { settingsAtom } from "../../lib/settings";
-import { assetRevisionAtom, diagramLightboxAtom } from "../../state/atoms";
+import {
+  assetRevisionAtom,
+  diagramLightboxAtom,
+  tagsAtom,
+} from "../../state/atoms";
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
 import { slashCommandSource } from "../../lib/slashCommands";
+import { tagCompletionSource } from "../../lib/tagCompletion";
 
 const STARTERS: Record<string, string> = {
   mermaid: "flowchart LR\n  A[Start] --> B[End]\n",
@@ -143,6 +148,9 @@ export const LiveMarkdownEditor = forwardRef<
   const onTagRef = useRef(onTag);
   const onNavigateRef = useRef(onNavigate);
   const linkTargetsRef = useRef<LinkTarget[]>(linkTargets);
+  const tags = useAtomValue(tagsAtom);
+  const tagsRef = useRef(tags);
+  tagsRef.current = tags;
   const initialValueRef = useRef(value);
   const initialReadOnlyRef = useRef(readOnly);
   const autoFocusRef = useRef(autoFocus);
@@ -369,6 +377,7 @@ export const LiveMarkdownEditor = forwardRef<
       autocompletion({
         override: [
           wikiLinkCompletionSource(linkTargetsRef),
+          tagCompletionSource(tagsRef),
           (context) =>
             slashCommandSource(context, {
               onUpload: (view, from, to) => requestUpload(view, from, to),
