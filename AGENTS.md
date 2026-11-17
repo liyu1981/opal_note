@@ -25,6 +25,15 @@ OpalNote is a **server-first, file-first** note app.
 Production is a **single binary** with the built web client embedded via
 `rust-embed`.
 
+## Design docs
+
+Longer design notes live in `doc/`:
+
+- `doc/plugin-system.md` — journal plugin pipeline and UI schema
+- `doc/plugin-ui-expansion.md` — plugin UI expansion phases
+- `doc/rich-content.md` — planned asset-backed diagrams: Mermaid (Pele) and
+  Excalidraw as two sandboxed iframe `viewer` plugins (a new plugin type)
+
 ## Stack
 
 - Server: Rust 2021, Axum 0.8, Tokio, rquickjs for sandboxed journal plugins

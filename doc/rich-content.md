@@ -1,0 +1,683 @@
+# Rich content: Mermaid diagrams and Excalidraw drawings
+
+Status: **planned** (no implementation yet). This document is the working plan
+for asset-backed rich content in OpalNote: **Mermaid diagrams** rendered with
+[Pele](https://pele.run/) and **Excalidraw drawings** rendered with
+[Excalidraw](https://github.com/excalidraw/excalidraw), each inside its own
+sandboxed iframe. Both ship as **two independent `viewer` plugins** in the
+existing plugin system — no separate plugin folder, registry or API.
+
+Related code:
+
+- `src/store/files.rs` — `ASSET_DIR`, `sanitize_asset_name`,
+  `unique_asset_path`, `asset_mime`, `write_atomic`
+- `src/store/mod.rs` — `assets_dir`, `finalize_asset`, `read_asset`,
+  `rename_asset`, reference scanning
+- `src/routes/assets.rs` — asset list/content/upload/rename/delete
+- `src/settings.rs` — sparse settings (`maxUploadMb`)
+- `src/plugins.rs` — plugin registry (server/client today, `viewer` to add)
+- `src/routes/plugins.rs` — `/api/plugins`, `/api/plugins/reload`,
+  `/notebooks/{id}/plugins`
+- `web/src/lib/livePreview.ts` — live-preview widgets
+- `web/src/lib/assets.ts` — `assetKindFromPath`, `assetUrl`, `assetMarkdown`
+- `web/src/components/editor/LiveMarkdownEditor.tsx`, `web/src/lib/slashCommands.ts`
+- `scripts/build-builtins.mjs`, `builtin/plugins/index.js` — built-in bundling
+
+## 1. Goals
+
+1. Rich content items are **asset files** created from a note, named from the
+   page title with a conflict-free suffix.
+2. The editor renders them **inline, read-only**, small enough to read in the
+   text column.
+3. Clicking one opens a **lightbox**: bigger view with editing, then saving
+   back to the same asset file. For Mermaid the source pane can be collapsed so
+   the preview fills the dialog.
+4. **Mermaid** uses **Pele** (`pele` npm package) — not Mermaid.js — inside its
+   own iframe viewer plugin, so its CSS, fonts and SVG styles cannot leak into
+   or be affected by the host app.
+5. **Excalidraw** uses the real **`@excalidraw/excalidraw`** editor inside its
+   own iframe viewer plugin, so the canvas UI, its CSS and fonts stay isolated
+   from the app.
+6. Both are **separate `viewer` plugins** (`OpalNote/mermaid`,
+   `OpalNote/excalidraw`) — separate packages, bundles, extensions and build
+   entries — sharing only the host-side viewer contract. Viewers are a new
+   `type` in the existing plugin system: same folders
+   (`builtin/src/plugins/…`, `<data-dir>/plugins/…`), same registry, same
+   reload endpoint, same rust-embed coverage.
+
+Why iframes for renderers, not in-process rendering:
+
+- **Style isolation.** Pele and Excalidraw ship their own class names, CSS
+  variables, fonts and container expectations. Inside an iframe none of that
+  can collide with Tailwind utilities, `.cm-live-*` rules or host
+  `line-height`/`font` inheritance, and a viewer upgrade cannot regress the
+  app's styles.
+- **Plugin surface.** Both plugins follow one mechanism, and third-party
+  viewers can be added later without bundling their code into the app.
+- **Fault isolation.** A viewer that throws, loops or loads a huge drawing
+  cannot break the editor; the host can tear the frame down.
+
+Trade-offs, and how the plan addresses them:
+
+- An iframe per item is heavier than in-process rendering. Mitigate with
+  visibility-based mounting, one frame per item, message-driven updates, and a
+  static preview cache as a later optimisation (§8).
+- The host cannot read the iframe DOM (opaque origin), so sizing and state
+  travel over `postMessage` (§4.3).
+- Keystrokes inside the frame are not the app's; the Mermaid viewer is a pure
+  renderer and keeps its source editor in the host (§7), while the Excalidraw
+  viewer owns its canvas editor inside the frame.
+
+Non-goals for the first phases:
+
+- No server-side rendering or on-disk preview cache.
+- No collaborative editing or multi-user conflict resolution.
+- No diagram content in Datalog; assets stay filesystem-derived.
+
+## 2. Storage model
+
+Plain asset files, exactly like images and videos:
+
+| Kind | Extension | MIME | Content |
+| --- | --- | --- | --- |
+| Mermaid | `.mermaid` (accept `.mmd`) | `text/plain` | Mermaid source |
+| Excalidraw | `.excalidraw` | `application/json` | Excalidraw scene JSON (`elements`, `appState`, `files`) |
+
+- Location: `assets/diagrams/` (created on demand; still inside `assets/` so
+  `resolve_asset_path` safety, trash, rename and reference scanning apply).
+- Name: `<sanitized page title>-<unix timestamp>.<ext>`, e.g.
+  `My Page-1794891717.mermaid`. The page title comes from the note filename
+  stem (journals use their date). `files::sanitize_asset_name` strips
+  markdown-hostile characters; `files::unique_asset_path` appends the timestamp
+  suffix instead of overwriting. The lightbox header shows the stored name.
+- Add explicit MIME mappings for `.mermaid`/`.excalidraw` in
+  `files::asset_mime` (fall back to `text/plain` / `application/json` instead
+  of `application/octet-stream`).
+- References use the existing embed syntax, so live preview, rename rewriting
+  and asset backlinks work unchanged:
+  `![My Page-1794891717.mermaid](<assets/diagrams/My Page-1794891717.mermaid>)`
+  (the `<...>` destination form is emitted by `assetUrl` when the name has
+  spaces).
+
+## 3. Server APIs
+
+### 3.1 Text assets
+
+Assets are not indexed, so writes only need the filesystem and the existing
+reindex-free code paths.
+
+Create:
+
+```
+POST /api/notebooks/{id}/assets/content
+{ "name": "My Page", "extension": "mermaid",
+  "content": "flowchart LR\n  A --> B", "folder": "diagrams" }
+
+200 { "path": "diagrams/My Page-1794891717.mermaid", "name": "...",
+      "kind": "document", "mime": "text/plain", "size": 25,
+      "updated_at": "2026-11-17T05:00:00Z" }
+```
+
+- `extension` allow-list: `mermaid`, `mmd`, `excalidraw` (extend as viewers are
+  added). Anything else is `400`.
+- `folder` optional, sanitized to a single path segment; defaults to
+  `diagrams`.
+- Size caps per format: `MAX_TEXT_ASSET_BYTES` 2 MiB for Mermaid source,
+  8 MiB for `.excalidraw` (scenes embed images in `files` as data URLs). Must
+  be valid UTF-8.
+- Writes atomically (`files::write_atomic`) and returns the final entry, so the
+  client inserts exactly what was stored.
+
+Update:
+
+```
+PUT /api/notebooks/{id}/assets/{*path}
+{ "content": "...", "base_updated_at": "2026-11-17T05:00:00Z" }
+
+200 AssetEntry | 404 | 409 (base_updated_at mismatch) | 413 (too large)
+```
+
+- Only allow-listed editable extensions; refuses paths outside `assets/`.
+- `base_updated_at` is optional optimistic concurrency (single-user app, but it
+  prevents a stale lightbox from clobbering a newer save); compare against the
+  file mtime the API reports as `updated_at`.
+- Reads reuse `GET /api/notebooks/{id}/assets/{*path}`; the host fetches the
+  blob text and hands it to the viewer over `postMessage`.
+
+### 3.2 Plugin type `viewer`
+
+Viewers are **not** a new registry. `src/plugins.rs` already loads built-in and
+data plugin folders, validates manifests and reloads atomically; `viewer`
+becomes a third `type` next to `server` and `client`.
+
+- **Registry** (`src/plugins.rs`):
+  - `PluginManifest`/`PluginDefinition` gain `type` (`server` | `client` |
+    `viewer`) and viewer metadata (`extensions`, `entry`, `role`).
+  - `parse_plugin` accepts `viewer`: `plugin.js` is not read or required;
+    instead validate `extensions` (1–8 entries, lower-case `[a-z0-9]{1,16}`,
+    no dots), `entry` (relative, inside the folder, ends with `.html`) and
+    `role` (`renderer` | `editor`).
+  - `load_builtin_plugins` skips reading `plugin.js` for viewers and keeps
+    `plugin.json` + bundle files embeddable.
+  - `load_data_plugins` reads `plugin.json` first and only then decides whether
+    to read `plugin.js` (server) or validate the viewer entry.
+  - Viewers never run in QuickJS: `GET /notebooks/{id}/plugins` and the
+    `run_plugin` path filter to `type == "server"`.
+- **API** (`src/routes/plugins.rs` + `src/routes/mod.rs`):
+  - `GET /api/plugins` → each entry gains `type` and, for viewers,
+    `extensions`, `role`, `entry`.
+  - `POST /api/plugins/reload` — unchanged, reloads the whole registry.
+  - **New** `GET /api/plugins/files/{domain}/{extension}/{*path}` — serves a
+    viewer bundle file (`viewer.html`, `viewer.js`, `viewer.css`, fonts,
+    images) with traversal checks, size caps, `mime_guess` content types and
+    the frame-friendly CSP from §4.2. The path form is required: it gives
+    viewers a directory-style base URL, which Excalidraw needs for
+    `EXCALIDRAW_ASSET_PATH` (it appends font filenames to that base). Built-in
+    files come from `BuiltinPluginAssets` (rust-embed) or `builtin/plugins/` on
+    disk in debug; data files come from the plugin folder in `<data-dir>`.
+  - Route layout is unambiguous: `/api/plugins`, `/api/plugins/reload`,
+    `/api/plugins/files/{domain}/{extension}/{*path}`.
+- **Built-in packages** live next to today's plugins:
+  `builtin/src/plugins/<domain>/<extension>/package.json` with
+  `opal_note.type: "viewer"`, built into `builtin/plugins/<id>/`. The existing
+  `#[derive(RustEmbed)] #[folder = "builtin/plugins/"]` already embeds every
+  file, so release builds need no new embed rule; debug builds already read that
+  directory from disk.
+- **Data plugins**: `<data-dir>/plugins/<folder>/plugin.json` plus
+  `viewer.html`/bundle files. Built-in ids still win over data folders, and bad
+  folders are reported as load errors like today.
+- Settings → Plugins already lists the registry; it gains the plugin `type` and,
+  for viewers, their extensions.
+
+## 4. Viewer plugin details
+
+### 4.1 Manifest
+
+Built-in source: `builtin/src/plugins/<domain>/<extension>/package.json`.
+Two packages in this plan: `OpalNote/mermaid` and `OpalNote/excalidraw`.
+
+```json
+{
+  "name": "@opalnote/plugin-mermaid",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "opal_note": {
+    "id": "OpalNote/mermaid",
+    "title": "Mermaid diagram",
+    "description": "Render and edit Mermaid diagrams with Pele.",
+    "type": "viewer",
+    "api": 1,
+    "extensions": ["mermaid", "mmd"],
+    "entry": "viewer.html",
+    "role": "renderer",
+    "inline": "read",
+    "lightbox": "edit"
+  },
+  "opal_note_build": {
+    "entry": "src/index.ts",
+    "target": "es2020",
+    "minify": true
+  }
+}
+```
+
+The Excalidraw package is identical in shape with
+`"extensions": ["excalidraw"]`, `"role": "editor"`,
+`"description": "Draw and edit Excalidraw scenes."`, and its own
+`dependencies` (`@excalidraw/excalidraw`, `react`, `react-dom`).
+
+Data plugin: `<data-dir>/plugins/<folder>/plugin.json` with the same
+`opal_note` object (no build section; `viewer.html` and its bundle are shipped
+as files).
+
+- `role: "renderer"` — the viewer renders content; the host owns the editor
+  (Mermaid: host CodeMirror, Pele preview inside the frame).
+- `role: "editor"` — the viewer owns its content UI (Excalidraw canvas).
+- `inline: "read"` and `lightbox: "edit"` declare the modes the host uses.
+- The manifest is validated by both the build tool and the server registry, with
+  the same limits as other plugins (id, title, description) plus extension and
+  entry rules.
+
+### 4.2 Serving and CSP
+
+Viewer bundles are served by
+`GET /api/plugins/files/{domain}/{extension}/{*path}`, not by the static
+handler. This matters: `src/assets.rs` currently sends
+`X-Frame-Options: DENY` and `frame-ancestors 'none'`, which would block our own
+iframe.
+
+Viewer responses:
+
+```
+Content-Security-Policy: default-src 'none'; script-src 'self';
+  style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;
+  font-src 'self' data:; connect-src 'none'; frame-ancestors 'self'
+X-Content-Type-Options: nosniff
+Cache-Control: private, max-age=3600
+```
+
+- `frame-ancestors 'self'` (not `none`), **no** `X-Frame-Options`.
+- `connect-src 'none'`: the viewer cannot call the OpalNote API or the network.
+  All content arrives and leaves through `postMessage`.
+- `font-src 'self' data:`: Excalidraw's fonts are copied into the plugin folder
+  and loaded from this route (see §5.2), so no CDN request is needed.
+- Bundle paths go through the same traversal checks as other plugin/background
+  assets, stay inside the plugin folder, and are size-capped.
+- The app page's `frame-src` falls back to `default-src 'self'`, so
+  same-origin viewer URLs are allowed without changing the app CSP.
+- `/api/plugins/*` sits behind the normal auth middleware, like other `/api`
+  routes.
+
+### 4.3 Sandbox and message protocol
+
+`<iframe sandbox="allow-scripts">` — an **opaque origin**, so the viewer has no
+cookies, no `localStorage`, no same-origin access and no API fetches. The host
+keeps full control of data.
+
+Handshake (host → frame):
+
+```jsonc
+{ "type": "opalnote-viewer/init", "v": 1, "token": "<random>",
+  "role": "renderer", "mode": "read" | "edit",
+  "extension": "mermaid", "content": "<source or JSON string>",
+  "theme": { "background": "...", "foreground": "...", "font": "..." },
+  "linkSchemes": ["http", "https", "mailto"] }
+```
+
+Frame → host:
+
+```jsonc
+{ "type": "opalnote-viewer/ready", "token": "..." }
+{ "type": "opalnote-viewer/resize", "token": "...", "height": 320 }
+{ "type": "opalnote-viewer/save", "token": "...", "content": "..." }
+{ "type": "opalnote-viewer/cancel", "token": "..." }
+{ "type": "opalnote-viewer/open", "token": "..." }   // click in read mode
+{ "type": "opalnote-viewer/error", "token": "...", "message": "..." }
+```
+
+Host rules:
+
+- Accept a message only when `event.source === iframe.contentWindow` and the
+  echoed `token` matches the per-mount random token (opaque origins make
+  `targetOrigin` unusable).
+- Cap `content` (8 MiB) and `height` (0–8000 px), ignore unknown types, and
+  time out a silent viewer (e.g. 5 s) into the error state.
+- Renderer updates after init use
+  `{ "type": "opalnote-viewer/render", "content": "..." }` so the lightbox can
+  re-render on every keystroke without reloading the frame.
+- For `role: "editor"` viewers a `save` message is a **draft**, not a write:
+  the host keeps it in lightbox state and only persists on the lightbox Save
+  button, so Cancel discards.
+- Tear down by removing the iframe; no `destroy` handshake needed.
+
+### 4.4 Build pipeline
+
+Extend the existing plugin pipeline in `scripts/build-builtins.mjs` — the same
+script that already builds `server`/`client` packages into
+`builtin/plugins/<id>/`:
+
+- Add a third branch for `opal_note.type === "viewer"`:
+  - esbuild the package entry as a **browser** bundle (platform `browser`,
+    format `esm`, `minify` per `opal_note_build`) into `viewer.js` — no QuickJS
+    IIFE wrapper, no `plugin.js`.
+  - collect **all** esbuild outputs, not just the first: a viewer that imports
+    CSS emits `viewer.css` alongside `viewer.js`; the generated `viewer.html`
+    loads both.
+  - set esbuild `conditions: ["production", "browser"]` for viewer builds:
+    `@excalidraw/excalidraw`'s export map keys `./index.css` behind
+    `production`/`development` conditions.
+  - copy the package's `viewer.html` (or generate a minimal one that sets up the
+    mount root and loads `viewer.css` + `viewer.js`) and any static assets into
+    `builtin/plugins/<id>/`.
+  - copy viewer-specific assets: for Excalidraw,
+    `@excalidraw/excalidraw/dist/prod/fonts/**` into `fonts/` so fonts are
+    self-hosted (§5.2).
+  - write `plugin.json` with the validated `opal_note` manifest so the server
+    registry sees `type: "viewer"` at runtime.
+  - enforce a per-viewer bundle cap (16 MiB; Mermaid is ~250 kB gzip,
+    Excalidraw a few MB) and validate `entry` is a relative `.html` path inside
+    the package.
+- Viewers are **excluded from `writeClientIndex`** (`BUILTIN_CLIENT_PLUGINS`
+  only lists `type: "client"` packages; make the split explicit so a viewer
+  never lands in the Home plugin bundle).
+- `pnpm build:builtins:check` covers viewer output through the existing
+  `compareTree` check.
+- Release embedding is free: `BuiltinPluginAssets` (`builtin/plugins/`) picks up
+  the new files; debug reads the same directory from disk.
+- Third-party packages resolve through esbuild from the repo `node_modules`, so
+  `pele`, `@excalidraw/excalidraw`, `react` and `react-dom` are declared in the
+  viewer packages and installed at the repo root; they are bundled into each
+  `viewer.js`, so **the main web bundle never contains them**.
+
+## 5. The two built-in viewer plugins
+
+| Plugin id | Extensions | Role | Engine | Bundle |
+| --- | --- | --- | --- | --- |
+| `OpalNote/mermaid` | `mermaid`, `mmd` | `renderer` | Pele | ~250 kB gzip |
+| `OpalNote/excalidraw` | `excalidraw` | `editor` | `@excalidraw/excalidraw` (React) | several MB |
+
+They are independent packages under `builtin/src/plugins/OpalNote/<ext>/` with
+their own `package.json`, entry, dependencies and generated output. They share
+only the host contract (§4.3), never code.
+
+### 5.1 Mermaid viewer (`OpalNote/mermaid`)
+
+- `role: "renderer"`, `extensions: ["mermaid", "mmd"]`.
+- The bundle imports `pele` and renders with
+  `mount(host, source, { zoom: false, links: false, images: false,
+  fontFamily, idPrefix })`:
+  - `links: false`, `images: false` for embeds: diagrams cannot navigate or
+    fetch. If clickable diagrams are wanted later, enable `links` with
+    `linkSchemes: ["http", "https", "mailto"]` and forward clicks to the host
+    as `open`/`external` messages; internal targets arrive via
+    `RenderResult.links` with `internal: true`.
+  - Keep Pele's defaults for `limit` (50 000 chars), `outputLimit`
+    (4 000 000 chars) and `maxEdges` (5 000); the host does not pass diagram
+    text into options.
+  - `idPrefix` is generated per mount so multiple diagrams on one page do not
+    share SVG ids.
+  - No `icons`/`math` resolvers initially (Pele inserts their markup
+    unfiltered).
+- Errors: `PeleError` (line/column/snippet) is shown with `textContent` inside
+  the frame and forwarded as `error`; never inserted as HTML.
+- Height: the viewer measures its rendered diagram and posts `resize`; the host
+  applies the height with a `max-height` clamp and scrolls on overflow.
+- Theming: the host sends the computed OpalNote tokens in `init.theme`; the
+  viewer applies them as `--pele-*` variables on its root:
+
+  ```css
+  .pele {
+    --pele-bg: var(--on-bg);
+    --pele-fg: var(--on-fg);
+    --pele-muted: var(--on-muted);
+    --pele-line: var(--on-line);
+    --pele-surface: var(--on-surface);
+    --pele-surface-alt: var(--on-surface-alt);
+    --pele-border: var(--on-border);
+    --pele-accent: var(--on-accent);
+    --pele-critical: var(--on-critical);
+    --pele-font: var(--on-font);
+    --pele-font-mono: var(--on-font-mono);
+    --pele-radius: 4px;
+  }
+  ```
+
+  The host derives those values from `--color-paper`, `--color-ink`,
+  `--color-line`, `--color-panel`, `--color-accent`, `--color-danger`,
+  `--font-sans`/`--font-mono` so the diagram matches the app theme without the
+  app's CSS being applied to the SVG.
+
+### 5.2 Excalidraw viewer (`OpalNote/excalidraw`)
+
+- `role: "editor"`, `extensions: ["excalidraw"]`.
+- Dependency: `@excalidraw/excalidraw@^0.18` (MIT,
+  [github.com/excalidraw/excalidraw](https://github.com/excalidraw/excalidraw)),
+  React peer `^19` (React and ReactDOM are bundled into the viewer; the host
+  app's React stays out of the iframe).
+- Import the CSS by path (`@excalidraw/excalidraw/dist/prod/index.css`) so
+  resolution does not depend on esbuild conditions, and so the production
+  stylesheet is the one bundled; the build emits it as `viewer.css`.
+- Fonts: copy `@excalidraw/excalidraw/dist/prod/fonts/**` into the plugin
+  output and set, before loading the bundle:
+
+  ```html
+  <script>
+    window.EXCALIDRAW_ASSET_PATH =
+      "/api/plugins/files/OpalNote/excalidraw/";
+  </script>
+  ```
+
+  The route (§4.2) serves the same folder, and its CSP allows `font-src 'self'`,
+  so Excalidraw's `Virgil`/`Cascadia`/`Assistant` fonts load without a CDN.
+- Read mode (inline embeds): `exportToSvg({ elements, appState, files })` from
+  the package, inserted into the iframe DOM, then `resize` from the SVG size.
+  No canvas, no interactivity, no Excalidraw UI chrome: the embed only reports
+  `open` when clicked.
+- Edit mode (lightbox): the full `<Excalidraw initialData={scene}
+  onChange={(elements, appState, files) => …} />` with a trimmed
+  `UIOptions` (hide the library menu, keep the toolbar), `theme="light"`.
+  `onChange` is debounced (~500 ms) into `save` messages carrying the scene as
+  `{ type: "excalidraw", version: 2, source, elements, appState, files }`; the
+  host treats them as drafts until the lightbox Save button writes them.
+- Size: scenes with embedded images can be large; `.excalidraw` gets the 8 MiB
+  text-asset cap from §3.1. Moving `files` to separate assets is a later
+  optimisation.
+- The host never inspects scene JSON; it stores exactly what the viewer saved.
+
+## 6. Editor integration
+
+- `web/src/plugins/viewers.ts`: read `GET /api/plugins`, keep `type ===
+  "viewer"` entries in a Jotai atom, map extension → viewer, and expose
+  `useViewerFor(path)`; refresh on app load and `POST /api/plugins/reload`.
+  Fall back to the existing image/media/file widgets when no viewer matches.
+- `livePreview.ts`: before the generic asset fallback, if the embed's extension
+  has a viewer, render a `ViewerWidget` instead:
+  - fetches the text with `loadAsset` (authenticated blob),
+  - mounts a sandboxed iframe asynchronously (the app bundle only contains the
+    frame component, never Pele or Excalidraw),
+  - sends `init{ mode: "read" }`, follows `resize`, and tears the frame down on
+    unmount or when the block becomes the focused source line (existing
+    live-preview rule: focusing a line reveals its markdown).
+- Visibility: mount the frame only when the widget intersects the viewport
+  (IntersectionObserver) and unmount when it leaves with a large margin, so
+  long journal/tag feeds do not keep many frames alive.
+- Clicking the item (viewer posts `open`) or the host-side expand affordance
+  opens the lightbox. Plain `[](…)` links stay file rows.
+- Slash commands: `/mermaid` (keywords: diagram, flowchart, sequence, mermaid)
+  and `/draw` (keywords: excalidraw, drawing, canvas, sketch, whiteboard) each
+  create the matching asset from the page title, insert
+  `![name](<assets/diagrams/name.ext>)` at the cursor (same insertion path as
+  `/upload`), and open the lightbox in edit mode.
+- `LiveMarkdownEditor` passes `notebookId`, `notePath` and an `onOpenViewer`
+  callback into the live-preview options.
+
+## 7. Lightbox
+
+App-level dialog (`DiagramLightbox` + `diagramLightboxAtom:
+{ notebookId, path, extension } | null`).
+
+`role: "renderer"` viewers (Mermaid):
+
+- Split view: **host-owned** source editor on the left (CodeMirror in
+  plain-text mode with the note theme, no markdown decorations, no live
+  preview) and the iframe preview on the right.
+- **Collapsible source pane** so the preview can be maximized:
+  - A chevron toggle in the header (`aria-expanded`, label “Hide source” /
+    “Show source”) and `Cmd/Ctrl+\` collapse or restore the editor.
+  - Collapsed, the editor is unmounted and the preview takes the full dialog
+    width; the draft text and its dirty state stay in the lightbox state, so
+    Save keeps working, the header keeps showing `Unsaved`, and closing still
+    prompts before discarding.
+  - Re-expanding remounts the editor with the draft and sends a fresh `render`
+    message so the preview reflects current text.
+  - The toggle state persists across lightboxes in this browser
+    (`opalnote.diagram-editor-open`, `atomWithStorage`), defaulting to open.
+  - Collapsing widens the iframe; the viewer's own container observer (Pele
+    `mount`) re-renders at the new width, so the host does not resend content.
+  - Live `render` messages pause while the editor is hidden (nothing can change
+    the draft) and resume on expand; no iframe reload is needed.
+- Typing sends debounced `render` messages (150 ms); the frame keeps its
+  iframe, Pele re-renders in well under a millisecond.
+- Zoom/pan: `init.zoom = true` in edit mode so the viewer enables Pele's zoom
+  (`enableZoom`), with wheel+Ctrl, drag, double-click and keyboard support.
+
+`role: "editor"` viewers (Excalidraw):
+
+- The dialog hosts the iframe at full size in `mode: "edit"`; the viewer owns
+  the canvas UI, toolbar and its own keyboard handling.
+- Draft `save` messages update lightbox state (dirty badge); Save writes through
+  the asset API, Cancel discards and closes.
+- Nothing else in the host renders Excalidraw; the lightbox only sizes the
+  frame (`h-[80vh]`), passes the scene in `init`, and shows the common header.
+
+Common behaviour:
+
+- Header: stored file name, size, `Saved/Unsaved/Saving/Failed` status, Save and
+  Cancel; `Cmd/Ctrl+S` saves.
+- Save → `PUT …/assets/{*path}` with `base_updated_at` → bump
+  `assetRevisionAtom` → dispatch `refreshLivePreview` so the inline embed and
+  the asset browser update.
+- Presentation lock (`readOnlyAtom`) disables editing entirely; inline embeds
+  remain read-only renders.
+- Escape closes; unsaved changes confirm before discarding.
+- Assets browser: `AssetsView`/`AssetDetailView` get an **Edit** action for
+  viewer-backed assets that opens the same lightbox.
+
+## 8. Performance and caching
+
+- Frames mount only when visible; one iframe per item, never per render.
+- Source text is cached in memory as `Map<"<path>@<updated_at>", string>` so
+  re-mounting after a scroll does not refetch.
+- Each viewer bundle is fetched once per origin and cached by the browser
+  (`Cache-Control` on the bundle route, keyed by app build version); the app
+  bundle stays flat because Pele/Excalidraw live in the viewers.
+- Later optimisation (P3): renderers can post their rendered SVG back with the
+  theme variables inlined (Pele directly, Excalidraw via `exportToSvg`); the
+  host stores that as a static preview for lists (journal cards, tag cards) to
+  avoid spinning up many frames in feeds. Invalidate on the asset's
+  `updated_at`.
+
+## 9. Security and limits
+
+- Viewers never run with app privileges: opaque origin, no cookies, no
+  storage, `connect-src 'none'`, message-only data exchange.
+- Host validates `event.source`, the per-mount token, message types, content
+  size (8 MiB), height bounds, and times out silent viewers.
+- Mermaid: Pele escapes labels, filters styles and allows no scripts/handlers;
+  links/images are disabled for embeds, and errors are inserted with
+  `textContent`. Render options stay app-owned; diagram text can never supply
+  `options`/`config`.
+- Excalidraw: the scene JSON is never executed and never inspected by the host;
+  the editor runs only inside the sandboxed frame, with no network and no API
+  access. Its fonts are served from our own plugin route.
+- Text assets: 2 MiB (Mermaid) / 8 MiB (Excalidraw) caps, extension allow-list,
+  UTF-8 only, atomic writes, path safety through `resolve_asset_path`.
+- Asset responses keep `nosniff` + sandboxing CSP; viewer responses use the
+  frame-friendly CSP from §4.2.
+- Viewer plugins are only loaded from `<data-dir>/plugins/<folder>` (no remote
+  URLs), and built-in ids win over data folders.
+
+## 10. Phases
+
+Both viewer plugins reuse the same plugin infrastructure, so P0 builds the
+`viewer` type + registry + serving + build branch, then each plugin lands as its
+own step.
+
+### P0 — Mermaid viewer plugin, inline rendering
+
+Server
+- `files::asset_mime` mappings for `.mermaid`/`.mmd`/`.excalidraw`.
+- `Store::write_asset`/`update_asset`: sanitize folder + name, unique path,
+  `write_atomic`, per-extension caps, editable extension allow-list.
+- `POST /notebooks/{id}/assets/content`, `PUT /notebooks/{id}/assets/{*path}`.
+- `src/plugins.rs`: `type: "viewer"` manifests, validation, loading, and
+  exclusion from QuickJS runs.
+- `src/routes/plugins.rs`: extend `GET /api/plugins`, add
+  `GET /api/plugins/files/{domain}/{extension}/{*path}` with the frame-friendly
+  CSP and traversal checks.
+
+Build
+- `scripts/build-builtins.mjs` viewer branch (JS + CSS + static assets, 16 MiB
+  cap, client-index exclusion); `build:builtins:check` coverage;
+  `builtin/src/plugins/OpalNote/mermaid` with `pele` bundled.
+
+Client
+- `web/src/plugins/viewers.ts` (registry atom, extension map),
+  `web/src/components/viewers/ViewerFrame.tsx` (sandbox, handshake, resize,
+  timeout), `ViewerWidget` in `livePreview.ts` with visibility-based mounting.
+- `/mermaid` slash command (create asset + insert embed).
+
+Tests
+- Rust: text-asset create/update (caps, allow-list, traversal, timestamp
+  naming); MIME mapping; viewer manifest validation, bundle serving traversal,
+  CSP headers, viewers excluded from `/notebooks/{id}/plugins`.
+- Web: `pnpm typecheck` + build; CDP check that a `.mermaid` embed renders an
+  iframe, focusing the line reveals source, a malformed diagram shows an error
+  (no HTML injection), and the app's own styles are unaffected.
+
+### P1 — Lightbox editing (renderer viewers)
+
+- `DiagramLightbox` + atom, split host editor / iframe preview for `renderer`
+  viewers, collapsible source pane (toggle + `Cmd/Ctrl+\`, persisted state),
+  `zoom: true`, Save/Cancel, `Cmd/Ctrl+S`, unsaved-change guard.
+- `PUT` with `base_updated_at` conflict handling; `assetRevisionAtom` +
+  `refreshLivePreview` after save.
+- Assets browser **Edit** action; presentation lock disables editing.
+- CDP: open from an embed, edit, save, confirm the inline diagram updates and
+  the asset bytes changed.
+
+### P2 — Excalidraw viewer plugin
+
+- `builtin/src/plugins/OpalNote/excalidraw` (`role: "editor"`,
+  `@excalidraw/excalidraw@^0.18`, React bundled, `index.css` → `viewer.css`,
+  fonts copied + `EXCALIDRAW_ASSET_PATH`).
+- Build script support for multiple output files and static asset copies
+  (already part of the viewer branch from P0).
+- `/draw` slash command with a starter scene (`{ type: "excalidraw", version: 2,
+  source, elements: [], appState: {}, files: {} }`).
+- Lightbox `role: "editor"` mode: full-size iframe, draft `save` messages,
+  Save/Cancel.
+- CDP smoke test: create via `/draw`, add an element in the lightbox, save,
+  confirm the inline read-only embed renders and the asset JSON changed.
+
+### P3 — Polish
+
+- Static preview cache for feeds (viewer posts SVG with inlined theme
+  variables); invalidate on `updated_at`.
+- Optional inline ```` ```mermaid ```` code-fence previews (read-only, Pele in
+  the Mermaid viewer); the asset-backed flow stays canonical.
+- Settings → Diagrams: theme preset and default direction/size, stored sparsely
+  and passed through `init.theme`.
+- User viewer plugins under `<data-dir>/plugins/`, shown with their type and
+  extensions in Settings → Plugins.
+
+## 11. Decisions and open questions
+
+Settled by this plan:
+
+- **Two separate viewer plugins**: `OpalNote/mermaid` (Pele) and
+  `OpalNote/excalidraw` (`@excalidraw/excalidraw`, MIT,
+  https://github.com/excalidraw/excalidraw). No shared viewer code.
+- Viewer plugins are a new `type: "viewer"` in the **existing plugin system**:
+  same `builtin/src/plugins/<domain>/<extension>/` sources, same
+  `builtin/plugins/<id>/` output, same `<data-dir>/plugins/<folder>/`, same
+  `GET /api/plugins` / `POST /api/plugins/reload`, same rust-embed coverage. No
+  `src/viewers.rs`, no `viewers/` folder, no separate asset registry.
+- Mermaid and Excalidraw both run inside sandboxed iframes; no in-process
+  renderer in the app bundle.
+- Assets live under `assets/diagrams/`, named from the page title with a unix
+  timestamp suffix, sanitized for markdown by `sanitize_asset_name`.
+- Text assets are written through a dedicated JSON API, not the multipart
+  upload endpoint.
+- Mermaid embeds are read-only and link/image-free; its editing happens in the
+  lightbox with a host-owned source editor.
+- Viewer bundle cap: 16 MiB per viewer (Mermaid ~250 kB gzip, Excalidraw a few
+  MB).
+
+Open, with current recommendation:
+
+1. **Slash command names** — `/mermaid` and `/draw` (recommended) vs
+   `/diagram` and `/canvas`.
+2. **Source editor in the Mermaid lightbox** — CodeMirror in plain-text mode
+   (recommended, consistent theme/keybindings) vs a bare textarea. Either way
+   the pane is collapsible per §7.
+3. **Inline height** — content height from `resize` with a `max-height` clamp
+   (recommended) vs a fixed aspect box with internal scroll.
+4. **Conflict policy** — optimistic `base_updated_at` with a 409 and a
+   “reload / save anyway” prompt (recommended) vs last-write-wins.
+5. **Diagram themes** — one theme derived from the OpalNote palette in v1
+   (recommended); per-diagram frontmatter themes later.
+6. **Static preview cache timing** — P3 (recommended) vs shipping it with P0 to
+   keep feeds cheap from day one.
+
+## 12. References
+
+- Pele: https://pele.run/ — API `/api`, theming `/theming`, security
+  `/security`, compatibility `/compatibility`, playground `/playground`
+- Pele npm: `pele@^1.13` (MIT, zero dependencies),
+  https://github.com/obsidianmd/pele
+- Excalidraw: https://github.com/excalidraw/excalidraw,
+  npm `@excalidraw/excalidraw@^0.18` (MIT); `EXCALIDRAW_ASSET_PATH` and
+  `exportToSvg` are documented in its package README
+- Mermaid syntax reference: https://mermaid.js.org
