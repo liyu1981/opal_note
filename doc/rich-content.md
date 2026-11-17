@@ -337,6 +337,24 @@ headers) can be covered by configuration:
 OPALNOTE_CSP_HOSTS=notes.example:8443,10.0.0.5:7827   # or --csp-host … (repeatable)
 ```
 
+Console notices you may see (neither is an OpalNote error):
+
+- `An iframe which has both allow-scripts and allow-same-origin … can escape its
+  sandboxing.` — Chrome's generic warning for same-origin viewer frames. It is
+  intentional for the **built-in** viewers (trusted bundles that need
+  same-origin font/module fetches); third-party viewers stay `opaque`
+  (`allow-scripts` only) and never produce it. Dropping the iframe `sandbox`
+  attribute would silence it, but keeps the CSP `sandbox` directive as the only
+  guard if an edge proxy strips our headers — not recommended.
+- `Error with Permissions-Policy header: Unrecognized feature: …` — the app
+  sends only `permissions-policy: camera=(), microphone=(), geolocation=()` and
+  no Permissions-Policy on viewer pages. These five features
+  (`attribution-reporting`, `private-aggregation`, `join-ad-interest-group`,
+  `run-ad-auction`, `browsing-topics`) are no longer recognised by Chrome, so a
+  proxy, tunnel or browser extension that adds a modern policy header produces
+  one notice per feature per document. Check the response headers (or a private
+  window with extensions disabled) and drop the header there; the app is done.
+
 Operational notes:
 
 - `/static/plugins/…` must be reachable through the edge proxy/CDN unchanged.
@@ -374,7 +392,7 @@ Frame → host:
 
 ```jsonc
 { "type": "opalnote-viewer/ready", "token": "..." }
-{ "type": "opalnote-viewer/resize", "token": "...", "height": 320 }
+{ "type": "opalnote-viewer/resize", "token": "...", "height": 320, "width": 480 }
 { "type": "opalnote-viewer/save", "token": "...", "content": "..." }
 { "type": "opalnote-viewer/cancel", "token": "..." }
 { "type": "opalnote-viewer/open", "token": "..." }   // click in read mode
@@ -386,8 +404,11 @@ Host rules:
 - Accept a message only when `event.source === iframe.contentWindow` and the
   echoed `token` matches the per-mount random token (opaque origins make
   `targetOrigin` unusable).
-- Cap `content` (8 MiB) and `height` (0–8000 px), ignore unknown types, and
-  time out a silent viewer (e.g. 5 s) into the error state.
+- Cap `content` (8 MiB), `height` and `width` (0–8000 px), ignore unknown
+  types, and time out a silent viewer (e.g. 5 s) into the error state.
+- `width` is the content's **natural** width: inline embeds shrink to it
+  (clamped to the line width), so a small diagram no longer paints a
+  full-width box. The lightbox ignores it and uses the dialog size.
 - Renderer updates after init use
   `{ "type": "opalnote-viewer/render", "content": "..." }` so the lightbox can
   re-render on every keystroke without reloading the frame.
@@ -581,6 +602,13 @@ only the host contract (§4.3), never code.
 - Visibility: mount the frame only when the widget intersects the viewport
   (IntersectionObserver) and unmount when it leaves with a large margin, so
   long journal/tag feeds do not keep many frames alive.
+- Sizing: the embed box follows the `resize` message — height is clamped and
+  the width is set to the reported natural width (`max-width: 100%` clamps
+  wider diagrams). Mermaid reports Pele's natural width and stays responsive;
+  Excalidraw reports the exported SVG size in read mode and its viewer CSS
+  scales the SVG down (`max-width: 100%; height: auto`) when the embed is
+  narrower. Applying a new width only when it differs by >4 px avoids a
+  measure/resize feedback loop.
 - Clicking the item (viewer posts `open`) or the host-side expand affordance
   opens the lightbox. Plain `[](…)` links stay file rows.
 - Slash commands: `/mermaid` (keywords: diagram, flowchart, sequence, mermaid)

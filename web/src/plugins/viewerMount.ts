@@ -21,7 +21,12 @@ export type ViewerMountOptions = {
   theme?: Record<string, string>;
   /** Seconds to wait for the viewer's `ready` before failing. */
   readyTimeoutSecs?: number;
-  onResize?: (height: number) => void;
+  /**
+   * Content size reported by the viewer. `width` is the diagram's natural
+   * width (0 when unknown), so embeds can shrink to it instead of spanning the
+   * whole line.
+   */
+  onResize?: (height: number, width: number) => void;
   onOpen?: () => void;
   onSave?: (content: string) => void;
   onError?: (message: string, reason: "timeout" | "viewer") => void;
@@ -95,7 +100,14 @@ export function mountViewer(
   const onMessage = (event: MessageEvent) => {
     if (destroyed || event.source !== iframe.contentWindow) return;
     const data = event.data as
-      | { type?: string; token?: string; content?: string; height?: number; message?: string }
+      | {
+          type?: string;
+          token?: string;
+          content?: string;
+          height?: number;
+          width?: number;
+          message?: string;
+        }
       | null;
     if (!data || typeof data !== "object" || typeof data.type !== "string") return;
     if (data.type === "opalnote-viewer/ready") {
@@ -109,7 +121,15 @@ export function mountViewer(
       case "opalnote-viewer/resize": {
         const height = Number(data.height);
         if (Number.isFinite(height) && height > 0) {
-          options.onResize?.(Math.min(Math.max(Math.round(height), 24), 8000));
+          const rawWidth = Number((data as { width?: number }).width);
+          const width =
+            Number.isFinite(rawWidth) && rawWidth > 0
+              ? Math.min(Math.max(Math.round(rawWidth), 24), 8000)
+              : 0;
+          options.onResize?.(
+            Math.min(Math.max(Math.round(height), 24), 8000),
+            width,
+          );
         }
         break;
       }

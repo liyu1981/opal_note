@@ -8,6 +8,9 @@
   html, body { margin: 0; height: 100%; }
   body { overflow: hidden; }
   #root { height: 100%; }
+  /* Read mode injects an SVG at its natural size; scale it down when the
+     embed is narrower. */
+  #root svg { display: block; max-width: 100%; height: auto; }
 </style>
 </head>
 <body>

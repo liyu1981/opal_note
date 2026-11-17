@@ -392,6 +392,8 @@ web/
   `/static/plugins/{domain}/{extension}/{*path}` route (public, code-only) with
   a CSP of `'self'` plus host-derived sources and
   `Access-Control-Allow-Origin: null` for opaque-origin module/font fetches.
+  `resize` messages carry the content's natural `width`, so inline embeds
+  shrink to the diagram instead of spanning the line (clamped to 100%).
   Built-in viewers are `sandbox: "same-origin"` so `'self'` keeps them working
   behind any proxy; opaque data viewers use `X-Forwarded-Host`/`Forwarded`/`Host`
   and the `--csp-host` / `OPALNOTE_CSP_HOSTS` escape hatch.

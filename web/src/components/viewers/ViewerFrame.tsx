@@ -27,7 +27,7 @@ export function ViewerFrame({
   sandbox?: ViewerSandbox;
   theme?: Record<string, string>;
   className?: string;
-  onResize?: (height: number) => void;
+  onResize?: (height: number, width: number) => void;
   onOpen?: () => void;
   onSave?: (content: string) => void;
   onError?: (message: string, reason: "timeout" | "viewer") => void;

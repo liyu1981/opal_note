@@ -1095,6 +1095,7 @@ class ViewerWidget extends WidgetType {
     let mount: ViewerMount | null = null;
     let observer: IntersectionObserver | null = null;
     let destroyed = false;
+    let appliedWidth = 0;
 
     const start = () => {
       void this.loadAsset(this.assetPath)
@@ -1109,8 +1110,14 @@ class ViewerWidget extends WidgetType {
             content,
             extension: this.extension,
             theme: viewerTheme(),
-            onResize: (height) => {
+            onResize: (height, width) => {
               wrapper.style.height = `${Math.min(height, 520)}px`;
+              // Constrain the frame to the diagram's own width instead of
+              // spanning the whole line; `max-width: 100%` clamps wider ones.
+              if (width > 0 && Math.abs(width - appliedWidth) > 4) {
+                appliedWidth = width;
+                wrapper.style.width = `${width + 2}px`;
+              }
             },
             onOpen: () => this.onOpenViewer(this.assetPath, this.extension),
             onError: (message, reason) => {

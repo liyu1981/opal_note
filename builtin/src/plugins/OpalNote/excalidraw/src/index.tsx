@@ -118,10 +118,16 @@ async function renderRead(content: string) {
   });
   root.innerHTML = "";
   root.appendChild(svg);
-  const height = Math.ceil(svg.getBoundingClientRect().height || svg.height.baseVal?.value || 0);
-  window.requestAnimationFrame(() =>
-    post({ type: "opalnote-viewer/resize", height: Math.max(height, 64) }),
-  );
+  window.requestAnimationFrame(() => {
+    const rect = svg.getBoundingClientRect();
+    const height = Math.ceil(rect.height || svg.height.baseVal?.value || 0);
+    const width = Math.ceil(rect.width || svg.width.baseVal?.value || 0);
+    post({
+      type: "opalnote-viewer/resize",
+      height: Math.max(height, 64),
+      ...(width > 0 ? { width } : {}),
+    });
+  });
 }
 
 async function renderEdit(content: string) {

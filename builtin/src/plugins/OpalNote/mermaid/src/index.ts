@@ -30,9 +30,15 @@ function applyTheme(theme?: Record<string, string>) {
   }
 }
 
-function reportSize() {
+function reportSize(naturalWidth = 0) {
   const height = Math.ceil(root.getBoundingClientRect().height);
-  if (height > 0) post({ type: "opalnote-viewer/resize", height });
+  if (height <= 0) return;
+  const width = Math.ceil(naturalWidth);
+  post({
+    type: "opalnote-viewer/resize",
+    height,
+    ...(width > 0 ? { width } : {}),
+  });
 }
 
 function reportError(error: unknown) {
@@ -53,7 +59,9 @@ function render(content: string) {
     links: false,
     images: false,
     fontFamily,
-    onRender: () => window.requestAnimationFrame(reportSize),
+    onRender: (result: { width?: number }) => {
+      window.requestAnimationFrame(() => reportSize(result.width ?? 0));
+    },
     onError: reportError,
   };
   if (!mounted) {
