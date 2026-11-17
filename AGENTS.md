@@ -296,7 +296,21 @@ web/
   the first line hands it to the previous card; crossing the last loaded card
   queues and loads the next journal batch. Opening the feed ensures today's
   `journals/YYYY-MM-DD.md` exists (unless the presentation lock is active); the
-  sidebar `Today` action opens that page.
+  sidebar `Today` action opens that page. A `ListFilter` bar (`src/lib/filter.ts`)
+  narrows the entries already loaded on the client — no server query — and
+  shows `x of y loaded`; keyboard navigation must follow the filtered list. The
+  bar matches the entry width. Collapsed — the default — the bar is not
+  rendered at all (no space); only an absolutely positioned Filter button sits
+  beside the first entry, level with its top. It sits on a sticky, transparent,
+  zero-height layer that stays put while the list scrolls; the layer is
+  `pointer-events-none` and only the button re-enables pointer events, so it
+  never swallows clicks meant for the list. `ListFilter` measures the gutter
+  between the list column and its scroll container and floats the button there
+  when it fits (wide panes), otherwise it falls back to a compact row above the
+  list so it is never clipped. The parent must be `relative` and start at the
+  first entry's top. Clicking the button hides it and renders the full-width
+  field in flow, which pushes the first entry down, with its own hide button.
+  Hiding clears the query so entries never stay silently filtered.
 - `Pages` opens the All-pages directory (`pagesViewAtom`, `PagesView`), not a
   scroll target. It covers both `pages/` and `journals/` and paginates through
   `GET /notebooks/{id}/pages` (default 20/page, user-selectable 10/20/50/100/200)
@@ -416,8 +430,10 @@ web/
   list. Edits are merged back into the full page content by block range. Tag
   clicks everywhere (journal cards, inline editor tags, page tags, right panel,
   pages table) go through `useAppNavigate`. Tag cards use the same cross-card
-  arrow-key navigation as journal cards. Keep the tag route as a splat so tags
-  containing `/` remain one logical tag.
+  arrow-key navigation as journal cards. Its `ListFilter` narrows the loaded
+  cards and the jump list together, resets when the tag changes, and follows
+  the same collapsed-button → full-width-field pattern as the journal feed. Keep the
+  tag route as a splat so tags containing `/` remain one logical tag.
 - Sidebar section expansion is persisted in `sidebarSectionsAtom`
   (`opalnote.sidebar-sections.v2`), keyed by section title. Panel
   expand/collapse is persisted separately by `leftPanelOpenAtom` and

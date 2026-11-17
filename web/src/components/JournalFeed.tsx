@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { api } from "../api/client";
 import type { JournalPage } from "../api/types";
+import { filterTerms, matchesFilter } from "../lib/filter";
 import { ensureJournalPage } from "../lib/journal";
 import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAppNavigate } from "../lib/appNavigation";
@@ -11,6 +12,7 @@ import {
   normalizeLinkTarget,
 } from "../lib/markdown";
 import { JournalCard, type JournalCardHandle } from "./JournalCard";
+import { ListFilter } from "./ListFilter";
 import {
   activeNotebookIdAtom,
   notesAtom,
@@ -28,6 +30,7 @@ export function JournalFeed() {
   const refreshNotes = useSetAtom(refreshNotesAtom);
 
   const [pages, setPages] = useState<JournalPage[]>([]);
+  const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,10 +41,23 @@ export function JournalFeed() {
   const cardRefs = useRef<Array<JournalCardHandle | null>>([]);
   const pendingNextPageRef = useRef<number | null>(null);
 
+  // The filter only narrows entries already loaded; older pages still arrive
+  // from the feed and are matched as they come in.
+  const terms = useMemo(() => filterTerms(filter), [filter]);
+  const visiblePages = useMemo(
+    () =>
+      terms.length === 0
+        ? pages
+        : pages.filter((page) =>
+            matchesFilter(`${page.title}\n${page.content}`, terms),
+          ),
+    [pages, terms],
+  );
+
   useViewAutoFocus(
     "journal",
     () => firstCardRef.current?.focus(),
-    pages.length > 0,
+    visiblePages.length > 0,
   );
 
   const linkTargets = notes.map((note) => ({
@@ -128,7 +144,7 @@ export function JournalFeed() {
     } else if (!loading && !hasMore) {
       pendingNextPageRef.current = null;
     }
-  }, [hasMore, loading, pages]);
+  }, [hasMore, loading, visiblePages]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -152,7 +168,7 @@ export function JournalFeed() {
   function focusSibling(index: number, direction: "up" | "down"): boolean {
     const next = direction === "down" ? index + 1 : index - 1;
     if (next < 0) return false;
-    if (next >= pages.length) {
+    if (next >= visiblePages.length) {
       if (direction === "up" || !hasMore || pages.length === 0) return false;
       // The feed loads older pages on demand. Queue focus for the first card
       // in the next batch instead of trapping the caret on the last page.
@@ -192,54 +208,75 @@ export function JournalFeed() {
   return (
     <main className="flex min-h-0 flex-1 bg-transparent">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl px-6 py-6">
-        {pages.length === 0 && !loading && !error && (
-          <div className="mt-16 text-center">
-            <p className="font-sans text-[14px] text-muted">
-              No journal pages yet.
-            </p>
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          {pages.map((page, index) => (
-            <JournalCard
-              key={page.id}
-              ref={(node) => {
-                cardRefs.current[index] = node;
-                if (index === 0) firstCardRef.current = node;
-              }}
-              page={page}
-              notebookId={notebookId}
-              linkKeys={linkKeys}
-              linkTargets={linkTargets}
-              readOnly={locked}
-              onOpenPage={openPage}
-              onWikiLink={openWiki}
-              onTag={(tag) => navigate({ view: "tag", tag })}
-              onNavigate={(direction) => focusSibling(index, direction)}
+        <div className="mx-auto w-full max-w-4xl px-6 py-5">
+          <div className="relative">
+            <ListFilter
+              value={filter}
+              onChange={setFilter}
+              matched={visiblePages.length}
+              total={pages.length}
+              className="mb-3"
             />
-          ))}
-        </div>
 
-        {error && (
-          <p className="mt-4 rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
-            {error}
-          </p>
-        )}
+            <div className="space-y-3">
+              {pages.length === 0 && !loading && !error && (
+                <div className="mt-16 text-center">
+                  <p className="font-sans text-[14px] text-muted">
+                    No journal pages yet.
+                  </p>
+                </div>
+              )}
 
-        <div
-          ref={sentinelRef}
-          className="py-8 text-center font-mono text-[14px] uppercase tracking-[0.12em] text-faint"
-        >
-          {loading
-            ? "Loading older entries…"
-            : hasMore
-              ? "Scroll for older journal pages"
-              : pages.length > 0
-                ? "Start of journal"
-                : ""}
-        </div>
+              {pages.length > 0 && visiblePages.length === 0 && (
+                <div className="mt-16 text-center">
+                  <p className="font-sans text-[14px] text-muted">
+                    No loaded entries match “{filter.trim()}”.
+                  </p>
+                  <p className="mt-1 font-mono text-[14px] text-faint">
+                    Older entries are still loaded as you scroll.
+                  </p>
+                </div>
+              )}
+
+              {visiblePages.map((page, index) => (
+                <JournalCard
+                  key={page.id}
+                  ref={(node) => {
+                    cardRefs.current[index] = node;
+                    if (index === 0) firstCardRef.current = node;
+                  }}
+                  page={page}
+                  notebookId={notebookId}
+                  linkKeys={linkKeys}
+                  linkTargets={linkTargets}
+                  readOnly={locked}
+                  onOpenPage={openPage}
+                  onWikiLink={openWiki}
+                  onTag={(tag) => navigate({ view: "tag", tag })}
+                  onNavigate={(direction) => focusSibling(index, direction)}
+                />
+              ))}
+
+              {error && (
+                <p className="rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+                  {error}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div
+            ref={sentinelRef}
+            className="py-8 text-center font-mono text-[14px] uppercase tracking-[0.12em] text-faint"
+          >
+            {loading
+              ? "Loading older entries…"
+              : hasMore
+                ? "Scroll for older journal pages"
+                : pages.length > 0
+                  ? "Start of journal"
+                  : ""}
+          </div>
         </div>
       </div>
     </main>

@@ -450,7 +450,14 @@ beside it, plus back/forward history controls.
   live block editor and autosaves. ArrowDown on a card's last line moves into
   the next card, and ArrowUp on the first line moves into the previous card;
   crossing the last loaded card loads the next batch. Opening the journal feed
-  creates today's empty page automatically when it does not exist.
+  creates today's empty page automatically when it does not exist. A small
+  **Filter** button floats in the margin beside the first entry, level with its
+  top and taking no space; it stays in place while the list scrolls and lets
+  clicks through everywhere except the button itself. Clicking it swaps the button for a full-width bar
+  (which does take space) that narrows the entries already loaded in the
+  browser (no server query), reports how many of them match, and can be hidden
+  again (which clears the filter and removes the bar). A pane too narrow for
+  that margin gets a compact button row above the list instead.
 - **Center** — every view sits on a selectable **background**, defaulting to
   the slow Grid Scan room. Backgrounds are adapted from
   [React Bits](https://reactbits.dev/backgrounds) and scoped to the route
@@ -546,8 +553,11 @@ beside it, plus back/forward history controls.
   reloads the data plugin folder.
 - **Tag view** — `/<notebook>/tag/<tag>` shows every page carrying `#tag` as
   editable cards containing only the tagged block, with a page-title list for
-  fast jumping. Clicking a tag in a journal card, page, pages table, right
-  panel, or inline in a note opens the corresponding tag view.
+  fast jumping. Its in-page filter narrows both the cards and that list to the
+  entries already loaded, without another server query. Like the journal feed,
+  it shows only a small floating **Filter** button beside the first card until
+  clicked; the bar then takes space and can be hidden again. Clicking a tag in a journal card, page, pages table,
+  right panel, or inline in a note opens the corresponding tag view.
 
 ### Plugins
 
