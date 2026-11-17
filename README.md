@@ -887,16 +887,39 @@ installable. Things worth knowing:
   Access-protected `/manifest.webmanifest` is answered with a 302 to the login
   page; the manifest fails to parse, `Page.getInstallabilityErrors` reports
   `manifest-parsing-or-network-error`, and the install entry never appears even
-  while you are signed in. Add Access applications with a **Bypass** policy for
-  these public, secret-free paths (the most specific path wins):
+  while you are signed in.
 
+  Keep the existing application for the hostname and add a second self-hosted
+  application covering only the public, secret-free PWA paths, with a single
+  **Bypass** policy that includes everyone (Access matches the most specific
+  path, and five destinations fit in one application):
+
+  ```json
+  {
+    "name": "notes - PWA assets",
+    "type": "self_hosted",
+    "app_launcher_visible": false,
+    "domain": "notes.example.com/manifest.webmanifest",
+    "self_hosted_domains": [
+      "notes.example.com/manifest.webmanifest",
+      "notes.example.com/sw.js",
+      "notes.example.com/offline.html",
+      "notes.example.com/icons",
+      "notes.example.com/favicon.svg"
+    ],
+    "policies": [
+      {
+        "name": "Public PWA assets",
+        "decision": "bypass",
+        "include": [{ "everyone": {} }]
+      }
+    ]
+  }
   ```
-  /manifest.webmanifest
-  /sw.js
-  /offline.html
-  /icons
-  /favicon.svg
-  ```
+
+  With the API, `cf zero-trust access applications create --body "$(cat
+  pwa-assets.json)"` creates it in one call; otherwise repeat the
+  Zero Trust → Access → Applications dialog for each path.
 
   The app shell (`/`) and `/api/*` can stay protected: the installed app opens
   the Access login in its own window on first launch, and once the Access
