@@ -15,5 +15,6 @@
     "connect-src": [
       "'self'"
     ]
-  }
+  },
+  "sandbox": "same-origin"
 }

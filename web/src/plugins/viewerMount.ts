@@ -8,6 +8,7 @@
  */
 
 export type ViewerMode = "read" | "edit";
+export type ViewerSandbox = "opaque" | "same-origin";
 
 export type ViewerMountOptions = {
   /** Absolute or root-relative URL of the viewer entry HTML. */
@@ -15,6 +16,8 @@ export type ViewerMountOptions = {
   mode: ViewerMode;
   content: string;
   extension: string;
+  /** Frame sandbox policy; `same-origin` is only for trusted built-ins. */
+  sandbox?: ViewerSandbox;
   theme?: Record<string, string>;
   /** Seconds to wait for the viewer's `ready` before failing. */
   readyTimeoutSecs?: number;
@@ -46,7 +49,12 @@ export function mountViewer(
   const token = randomToken();
   const iframe = document.createElement("iframe");
   iframe.className = "opalnote-viewer-frame";
-  iframe.setAttribute("sandbox", "allow-scripts");
+  iframe.setAttribute(
+    "sandbox",
+    options.sandbox === "same-origin"
+      ? "allow-scripts allow-same-origin"
+      : "allow-scripts",
+  );
   iframe.setAttribute("loading", "lazy");
   iframe.setAttribute("referrerpolicy", "no-referrer");
   iframe.title = `Viewer: ${options.extension}`;

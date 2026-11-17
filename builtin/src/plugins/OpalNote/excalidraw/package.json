@@ -26,7 +26,8 @@
       "connect-src": [
         "'self'"
       ]
-    }
+    },
+    "sandbox": "same-origin"
   },
   "opal_note_build": {
     "entry": "src/index.tsx",

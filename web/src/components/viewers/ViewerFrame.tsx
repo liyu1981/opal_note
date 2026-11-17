@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 
-import { mountViewer, type ViewerMode } from "../../plugins/viewerMount";
+import {
+  mountViewer,
+  type ViewerMode,
+  type ViewerSandbox,
+} from "../../plugins/viewerMount";
 
 /** Sandboxed viewer iframe used by the lightbox (React wrapper). */
 export function ViewerFrame({
@@ -8,6 +12,7 @@ export function ViewerFrame({
   mode,
   content,
   extension,
+  sandbox,
   theme,
   className = "",
   onResize,
@@ -19,6 +24,7 @@ export function ViewerFrame({
   mode: ViewerMode;
   content: string;
   extension: string;
+  sandbox?: ViewerSandbox;
   theme?: Record<string, string>;
   className?: string;
   onResize?: (height: number) => void;
@@ -41,6 +47,7 @@ export function ViewerFrame({
       mode,
       content: contentRef.current,
       extension,
+      sandbox,
       theme,
       onResize,
       onOpen,
@@ -53,7 +60,7 @@ export function ViewerFrame({
       mount.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, mode, extension]);
+  }, [src, mode, extension, sandbox]);
 
   useEffect(() => {
     mountRef.current?.render(content);

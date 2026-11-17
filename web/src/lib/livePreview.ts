@@ -27,7 +27,9 @@ export type LivePreviewOptions = {
   onTag: (tag: string) => void;
   onOpenAsset: (assetPath: string) => void;
   /** Viewer plugin for an extension, or null when no plugin handles it. */
-  viewerFor: (extension: string) => { id: string; src: string } | null;
+  viewerFor: (
+    extension: string,
+  ) => { id: string; src: string; sandbox: "opaque" | "same-origin" } | null;
   /** Open the lightbox for a viewer-backed asset. */
   onOpenViewer: (assetPath: string, extension: string) => void;
   /** Changes when a text asset is saved, so viewer widgets re-mount. */
@@ -1062,7 +1064,11 @@ class ViewerWidget extends WidgetType {
   constructor(
     readonly assetPath: string,
     readonly extension: string,
-    readonly viewer: { id: string; src: string },
+    readonly viewer: {
+      id: string;
+      src: string;
+      sandbox: "opaque" | "same-origin";
+    },
     readonly loadAsset: (path: string) => Promise<Blob>,
     readonly onOpenViewer: (assetPath: string, extension: string) => void,
     readonly revision: number,
@@ -1098,6 +1104,7 @@ class ViewerWidget extends WidgetType {
           wrapper.dataset.state = "ready";
           mount = mountViewer(wrapper, {
             src: this.viewer.src,
+            sandbox: this.viewer.sandbox,
             mode: "read",
             content,
             extension: this.extension,

@@ -156,6 +156,12 @@ export interface ViewerInfo {
   role: "renderer" | "editor";
   /** Entry HTML file served from the plugin bundle. */
   entry: string;
+  /**
+   * `opaque` sandboxes the frame to an opaque origin (no cookies, storage or
+   * same-origin fetches); `same-origin` keeps the app origin for trusted
+   * built-in engines that must load same-origin font/asset URLs.
+   */
+  sandbox: "opaque" | "same-origin";
 }
 
 export interface PluginInfo {

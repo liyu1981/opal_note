@@ -266,6 +266,7 @@ function DiagramDialog({
                   mode="edit"
                   content={preview}
                   extension={extension}
+                  sandbox={viewer.viewer.sandbox}
                   theme={viewerTheme()}
                   onSave={setContent}
                   onError={(message) => setError(message)}

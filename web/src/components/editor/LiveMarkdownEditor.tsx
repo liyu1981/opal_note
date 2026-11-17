@@ -180,7 +180,13 @@ export const LiveMarkdownEditor = forwardRef<
     onOpenAsset: (assetPath) => openAssetRef.current(assetPath),
     viewerFor: (extension) => {
       const plugin = viewerMap.get(extension);
-      return plugin ? { id: plugin.id, src: viewerEntryUrl(plugin) } : null;
+      return plugin
+        ? {
+            id: plugin.id,
+            src: viewerEntryUrl(plugin),
+            sandbox: plugin.viewer.sandbox,
+          }
+        : null;
     },
     onOpenViewer: (assetPath, extension) => {
       onOpenViewerRef.current?.(assetPath, extension);

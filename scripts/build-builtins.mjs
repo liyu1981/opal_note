@@ -170,6 +170,15 @@ function validateManifest(pkg, sourceLabel, expectedKind) {
       );
     }
     validateViewerCsp(sourceLabel, manifest.csp);
+    if (
+      manifest.sandbox !== undefined &&
+      manifest.sandbox !== "opaque" &&
+      manifest.sandbox !== "same-origin"
+    ) {
+      throw new Error(
+        `${sourceLabel}: viewer opal_note.sandbox must be "opaque" or "same-origin"`,
+      );
+    }
   }
   if (expectedKind === "background") {
     if (typeof manifest.kind !== "string" || !manifest.kind.trim()) {

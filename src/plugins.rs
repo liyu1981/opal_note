@@ -74,6 +74,10 @@ pub struct ViewerInfo {
     /// weakened for scripts or framing.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub csp: BTreeMap<String, Vec<String>>,
+    /// `opaque` (default) sandboxes the frame to an opaque origin; `same-origin`
+    /// keeps the app origin so same-origin fetches and fonts work. Only safe
+    /// for trusted, built-in bundles.
+    pub sandbox: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -488,7 +492,10 @@ struct PluginManifest {
     role: String,
     #[serde(default)]
     csp: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    sandbox: String,
 }
+
 
 fn is_viewer_manifest(manifest: &Value) -> bool {
     manifest.get("type").and_then(Value::as_str) == Some("viewer")
@@ -631,11 +638,19 @@ fn parse_plugin(
         if role != "renderer" && role != "editor" {
             bail!("viewer plugin `{folder}` role must be `renderer` or `editor`");
         }
+        let sandbox = match manifest.sandbox.trim() {
+            "" | "opaque" => "opaque",
+            "same-origin" => "same-origin",
+            other => bail!(
+                "viewer plugin `{folder}` sandbox `{other}` must be `opaque` or `same-origin`"
+            ),
+        };
         viewer = Some(ViewerInfo {
             extensions,
             role: role.to_string(),
             entry: entry.to_string(),
             csp: parse_viewer_csp(folder, &manifest.csp)?,
+            sandbox: sandbox.to_string(),
         });
     }
 
