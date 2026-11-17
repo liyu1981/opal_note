@@ -155,6 +155,14 @@ const COMMANDS: SlashCommand[] = [
     extension: "mermaid",
     apply: () => {},
   },
+  {
+    label: "Excalidraw drawing",
+    detail: "Drawing",
+    keywords: "excalidraw drawing canvas sketch whiteboard",
+    kind: "viewer",
+    extension: "excalidraw",
+    apply: () => {},
+  },
 ];
 
 /**

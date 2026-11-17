@@ -33,7 +33,9 @@ const PLUGIN_OUTPUT = path.join(ROOT, "builtin", "plugins");
 const BACKGROUND_OUTPUT = path.join(ROOT, "builtin", "backgrounds");
 
 const MAX_PLUGIN_BYTES = 20_000;
-const MAX_VIEWER_BYTES = 16 * 1024 * 1024;
+// Excalidraw ships ~14 MB of self-hosted fonts (including the CJK Xiaolai
+// ranges), so viewer bundles need more room than code-only plugins.
+const MAX_VIEWER_BYTES = 32 * 1024 * 1024;
 const MAX_VIEWER_EXTENSIONS = 8;
 const MAX_MANIFEST_BYTES = 16 * 1024;
 const MAX_ID_CHARS = 96;

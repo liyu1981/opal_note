@@ -32,7 +32,7 @@ function applyTheme(theme?: Record<string, string>) {
 
 function reportSize() {
   const height = Math.ceil(root.getBoundingClientRect().height);
-  post({ type: "opalnote-viewer/resize", height });
+  if (height > 0) post({ type: "opalnote-viewer/resize", height });
 }
 
 function reportError(error: unknown) {
@@ -87,8 +87,8 @@ root.addEventListener("click", () => {
 });
 
 window.addEventListener("resize", () => {
+  // `refresh()` re-renders and reports the new size through onRender.
   mounted?.refresh();
-  reportSize();
 });
 
 post({ type: "opalnote-viewer/ready" });

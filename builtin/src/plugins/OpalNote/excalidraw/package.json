@@ -1,0 +1,35 @@
+{
+  "name": "@opalnote/plugin-excalidraw",
+  "version": "1.0.0",
+  "description": "Draw and edit Excalidraw scenes.",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "opal_note": {
+    "id": "OpalNote/excalidraw",
+    "title": "Excalidraw drawing",
+    "description": "Draw and edit Excalidraw scenes.",
+    "type": "viewer",
+    "api": 1,
+    "extensions": ["excalidraw"],
+    "entry": "viewer.html",
+    "role": "editor",
+    "inline": "read",
+    "lightbox": "edit"
+  },
+  "opal_note_build": {
+    "entry": "src/index.tsx",
+    "target": "es2020",
+    "minify": true,
+    "copy": [
+      {
+        "from": "@excalidraw/excalidraw/dist/prod/fonts",
+        "to": "fonts"
+      }
+    ]
+  }
+}

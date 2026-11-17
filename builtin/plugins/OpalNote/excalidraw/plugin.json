@@ -1,0 +1,14 @@
+{
+  "id": "OpalNote/excalidraw",
+  "title": "Excalidraw drawing",
+  "description": "Draw and edit Excalidraw scenes.",
+  "type": "viewer",
+  "api": 1,
+  "extensions": [
+    "excalidraw"
+  ],
+  "entry": "viewer.html",
+  "role": "editor",
+  "inline": "read",
+  "lightbox": "edit"
+}
