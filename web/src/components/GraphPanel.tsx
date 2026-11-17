@@ -37,6 +37,7 @@ export function GraphPanel({
   defaultScope = "local",
   defaultIncludeTags = true,
   fill = false,
+  panel = false,
   title,
 }: {
   notebookId: string;
@@ -45,7 +46,10 @@ export function GraphPanel({
   height?: number;
   defaultScope?: Scope;
   defaultIncludeTags?: boolean;
+  /** Full-page layout: header row plus a canvas that fills the view. */
   fill?: boolean;
+  /** Right-panel layout: compact controls over a canvas that fills the panel. */
+  panel?: boolean;
   title?: string;
 }) {
   const revision = useAtomValue(notesRevisionAtom);
@@ -177,8 +181,8 @@ export function GraphPanel({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className={panel ? "flex h-full min-h-0 flex-col gap-2" : "space-y-3"}>
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 font-mono text-[14px] font-semibold uppercase tracking-[0.12em] text-faint">
           <IconGraph className="h-3 w-3" />
           {local ? "Page graph" : "Notebook graph"}
@@ -218,25 +222,50 @@ export function GraphPanel({
         </div>
       </div>
 
-      <p className="font-mono text-[14px] text-faint">
+      <p
+        className={`shrink-0 font-mono text-[14px] text-faint ${
+          panel ? "order-last truncate" : ""
+        }`}
+      >
         {shown.nodes.length} {shown.nodes.length === 1 ? "node" : "nodes"} ·{" "}
         {shown.edges.length} {shown.edges.length === 1 ? "link" : "links"}
+        {panel
+          ? isolated
+            ? " · no connections yet"
+            : " · click to select, double-click to open"
+          : ""}
       </p>
 
-      <GraphCanvas
-        nodes={shown.nodes}
-        edges={shown.edges}
-        activeNoteId={activeNoteId}
-        width={width}
-        height={height}
-        onOpenNote={openGraphNode}
-      />
+      {panel ? (
+        <div className="flex min-h-0 flex-1">
+          <GraphCanvas
+            nodes={shown.nodes}
+            edges={shown.edges}
+            activeNoteId={activeNoteId}
+            width={width}
+            height={height}
+            fill
+            onOpenNote={openGraphNode}
+          />
+        </div>
+      ) : (
+        <>
+          <GraphCanvas
+            nodes={shown.nodes}
+            edges={shown.edges}
+            activeNoteId={activeNoteId}
+            width={width}
+            height={height}
+            onOpenNote={openGraphNode}
+          />
 
-      <p className="font-mono text-[14px] leading-relaxed text-faint">
-        {isolated
-          ? "This page has no connections yet. Switch to Full to see the notebook."
-          : "Click a node to highlight its links; double-click to open its page."}
-      </p>
+          <p className="font-mono text-[14px] leading-relaxed text-faint">
+            {isolated
+              ? "This page has no connections yet. Switch to Full to see the notebook."
+              : "Click a node to highlight its links; double-click to open its page."}
+          </p>
+        </>
+      )}
     </div>
   );
 }

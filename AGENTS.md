@@ -322,8 +322,10 @@ web/
   `tag`) connected to their pages. Nodes are notes/tags; edges are only
   resolved wikilinks or note-tag memberships. `GraphPanel` defaults to the
   active note's 1-hop neighborhood with a Full toggle and a Tags toggle that
-  starts enabled;
-  `fill` mode is the full-page whole-notebook graph. Keep graph data out of the
+  starts enabled; `fill` mode is the full-page whole-notebook graph. In the
+  right panel it runs in `panel` mode: compact controls over a canvas that
+  fills the tab (measured by its ResizeObserver, so it follows panel resizes)
+  instead of the fixed height plugin cards use. Keep graph data out of the
   editor's Suspense path.
 - `GraphCanvas` owns view state: live force simulation, wheel/button zoom,
   background pan, node drag, reset, and single-click selection. Connected

@@ -529,7 +529,8 @@ beside it, plus back/forward history controls.
   follows Logseq's all-pages layout: d3-force for connected pages and a
   deterministic ring of isolated pages around the connected cluster. Connected
   nodes animate under force; drag a node to pull its neighbours, and use
-  zoom/pan/reset controls.
+  zoom/pan/reset controls. In the right panel the graph fills the tab's width
+  and height and follows panel resizes, instead of using a fixed height.
 - **Graph view** — the left-sidebar Graph view opens a full-page notebook graph
   using the same resolved-link data, filling the available workspace. Drag the
   canvas to pan, drag nodes to reposition them, zoom with the wheel or buttons,

@@ -222,7 +222,9 @@ export function RightPanel() {
         className={
           activeTab === "agent"
             ? "min-h-0 flex-1 overflow-hidden"
-            : "min-h-0 flex-1 overflow-y-auto px-4 py-4"
+            : activeTab === "graph"
+              ? "min-h-0 flex-1 overflow-hidden p-3"
+              : "min-h-0 flex-1 overflow-y-auto px-4 py-4"
         }
       >
         {activeTab === "context" && (
@@ -293,6 +295,7 @@ export function RightPanel() {
           <GraphPanel
             notebookId={notebookId}
             activeNoteId={note?.id ?? null}
+            panel
           />
         )}
       </div>
