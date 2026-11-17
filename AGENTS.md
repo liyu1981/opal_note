@@ -393,7 +393,10 @@ web/
   Built-in viewers (`builtin/src/plugins/OpalNote/mermaid`,
   `OpalNote/excalidraw`) bundle their engine into
   `builtin/plugins/<id>/viewer.js` and are excluded from the client plugin
-  index. See `doc/rich-content.md`.
+  index. A viewer manifest may declare `csp` (only `connect-src`, `font-src`,
+  `img-src`, `media-src`, `style-src` with `'self'`/`data:`/`blob:`) to extend
+  the sandbox policy for its own files; scripts and framing stay host-owned.
+  See `doc/rich-content.md`.
 - Journal plugins live in `src/plugins.rs`: a fresh QuickJS runtime per run,
   a read-only `__queryHost` bridge backed by `Store::run_query`, and a
   per-plugin deadline that interrupts JS and bounds Datalog queries. Plugins

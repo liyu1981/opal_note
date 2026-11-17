@@ -15,11 +15,18 @@
     "description": "Draw and edit Excalidraw scenes.",
     "type": "viewer",
     "api": 1,
-    "extensions": ["excalidraw"],
+    "extensions": [
+      "excalidraw"
+    ],
     "entry": "viewer.html",
     "role": "editor",
     "inline": "read",
-    "lightbox": "edit"
+    "lightbox": "edit",
+    "csp": {
+      "connect-src": [
+        "'self'"
+      ]
+    }
   },
   "opal_note_build": {
     "entry": "src/index.tsx",

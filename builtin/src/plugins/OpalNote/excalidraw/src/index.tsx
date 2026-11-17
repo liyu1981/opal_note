@@ -27,8 +27,11 @@ try {
     },
   });
 }
+// Excalidraw resolves `./fonts/<family>/<file>.woff2` against this base, and it
+// fetches fonts with `fetch()`, so the plugin manifest also allows
+// `connect-src 'self'`.
 (window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH =
-  "/api/plugins/files/OpalNote/excalidraw/fonts/";
+  "/api/plugins/files/OpalNote/excalidraw/";
 
 type ViewerInit = {
   type: "opalnote-viewer/init";

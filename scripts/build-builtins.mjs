@@ -37,6 +37,36 @@ const MAX_PLUGIN_BYTES = 20_000;
 // ranges), so viewer bundles need more room than code-only plugins.
 const MAX_VIEWER_BYTES = 32 * 1024 * 1024;
 const MAX_VIEWER_EXTENSIONS = 8;
+const VIEWER_CSP_DIRECTIVES = ["connect-src", "font-src", "img-src", "media-src", "style-src"];
+
+function viewerCspAllowed(directive, source) {
+  if (source === "'self'" || source === "data:" || source === "blob:") return true;
+  return source === "'unsafe-inline'" && directive === "style-src";
+}
+
+function validateViewerCsp(sourceLabel, csp) {
+  if (csp === undefined) return;
+  if (!csp || typeof csp !== "object" || Array.isArray(csp)) {
+    throw new Error(`${sourceLabel}: viewer opal_note.csp must be an object`);
+  }
+  for (const [directive, sources] of Object.entries(csp)) {
+    if (!VIEWER_CSP_DIRECTIVES.includes(directive)) {
+      throw new Error(
+        `${sourceLabel}: csp directive "${directive}" is not allowed; use ${VIEWER_CSP_DIRECTIVES.join(", ")}`,
+      );
+    }
+    if (!Array.isArray(sources) || sources.length === 0) {
+      throw new Error(`${sourceLabel}: csp "${directive}" needs a source list`);
+    }
+    for (const source of sources) {
+      if (typeof source !== "string" || !viewerCspAllowed(directive, source)) {
+        throw new Error(
+          `${sourceLabel}: csp source "${source}" is not allowed in "${directive}"`,
+        );
+      }
+    }
+  }
+}
 const MAX_MANIFEST_BYTES = 16 * 1024;
 const MAX_ID_CHARS = 96;
 const MAX_TITLE_CHARS = 120;
@@ -139,6 +169,7 @@ function validateManifest(pkg, sourceLabel, expectedKind) {
         `${sourceLabel}: viewer opal_note.role must be "renderer" or "editor"`,
       );
     }
+    validateViewerCsp(sourceLabel, manifest.csp);
   }
   if (expectedKind === "background") {
     if (typeof manifest.kind !== "string" || !manifest.kind.trim()) {

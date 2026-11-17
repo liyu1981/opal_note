@@ -10,5 +10,10 @@
   "entry": "viewer.html",
   "role": "editor",
   "inline": "read",
-  "lightbox": "edit"
+  "lightbox": "edit",
+  "csp": {
+    "connect-src": [
+      "'self'"
+    ]
+  }
 }

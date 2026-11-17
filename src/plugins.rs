@@ -62,13 +62,18 @@ pub enum PluginKind {
     Viewer,
 }
 
-/// Metadata for an iframe `viewer` plugin: the host mounts `files/<entry>` in a
+/// Metadata for an iframe `viewer` plugin: the host mounts `file/<entry>` in a
 /// sandbox and exchanges content over `postMessage`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ViewerInfo {
     pub extensions: Vec<String>,
     pub role: String,
     pub entry: String,
+    /// Extra CSP directives the viewer needs (e.g. `connect-src` for fetches).
+    /// Only self/data/blob sources are accepted; the base policy is never
+    /// weakened for scripts or framing.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub csp: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -351,11 +356,26 @@ fn builtin_plugin_paths() -> Result<Vec<String>> {
 }
 
 #[cfg(not(debug_assertions))]
+fn read_builtin_plugin_opt(path: &str) -> Option<Vec<u8>> {
+    BuiltinPluginAssets::get(path).map(|file| file.data.into_owned())
+}
+
+#[cfg(not(debug_assertions))]
 fn read_builtin_plugin(path: &str) -> Result<Vec<u8>> {
     Ok(BuiltinPluginAssets::get(path)
         .with_context(|| format!("missing embedded built-in plugin file `{path}`"))?
         .data
         .into_owned())
+}
+
+#[cfg(debug_assertions)]
+fn read_builtin_plugin_opt(path: &str) -> Option<Vec<u8>> {
+    fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("builtin/plugins")
+            .join(path),
+    )
+    .ok()
 }
 
 #[cfg(debug_assertions)]
@@ -466,10 +486,63 @@ struct PluginManifest {
     entry: String,
     #[serde(default)]
     role: String,
+    #[serde(default)]
+    csp: BTreeMap<String, Vec<String>>,
 }
 
 fn is_viewer_manifest(manifest: &Value) -> bool {
     manifest.get("type").and_then(Value::as_str) == Some("viewer")
+}
+
+/// Directives a viewer may extend. `default-src`, `script-src`,
+/// `frame-ancestors`, `base-uri` and `form-action` stay host-controlled.
+const VIEWER_CSP_DIRECTIVES: &[&str] = &[
+    "connect-src",
+    "font-src",
+    "img-src",
+    "media-src",
+    "style-src",
+];
+
+fn viewer_csp_source_allowed(directive: &str, source: &str) -> bool {
+    match source {
+        "'self'" | "data:" | "blob:" => true,
+        "'unsafe-inline'" => directive == "style-src",
+        _ => false,
+    }
+}
+
+fn parse_viewer_csp(
+    folder: &str,
+    raw: &BTreeMap<String, Vec<String>>,
+) -> Result<BTreeMap<String, Vec<String>>> {
+    let mut csp = BTreeMap::new();
+    for (directive, sources) in raw {
+        let directive = directive.trim();
+        if !VIEWER_CSP_DIRECTIVES.contains(&directive) {
+            bail!(
+                "viewer plugin `{folder}` csp directive `{directive}` is not allowed; use {}",
+                VIEWER_CSP_DIRECTIVES.join(", ")
+            );
+        }
+        let mut values = Vec::new();
+        for source in sources {
+            let source = source.trim();
+            if !viewer_csp_source_allowed(directive, source) {
+                bail!(
+                    "viewer plugin `{folder}` csp source `{source}` is not allowed in `{directive}`"
+                );
+            }
+            if !values.iter().any(|value| value == source) {
+                values.push(source.to_string());
+            }
+        }
+        if values.is_empty() {
+            bail!("viewer plugin `{folder}` csp directive `{directive}` needs a source");
+        }
+        csp.insert(directive.to_string(), values);
+    }
+    Ok(csp)
 }
 
 fn valid_viewer_extension(value: &str) -> bool {
@@ -562,6 +635,7 @@ fn parse_plugin(
             extensions,
             role: role.to_string(),
             entry: entry.to_string(),
+            csp: parse_viewer_csp(folder, &manifest.csp)?,
         });
     }
 
@@ -578,7 +652,53 @@ fn parse_plugin(
     })
 }
 
+/// Base CSP for viewer bundles: no network, no framing by others, only the
+/// plugin's own files. Viewers may extend a few directives from their manifest.
+pub fn base_viewer_csp() -> BTreeMap<String, Vec<String>> {
+    let mut csp = BTreeMap::new();
+    let entry = |values: &[&str]| values.iter().map(|value| value.to_string()).collect();
+    csp.insert("default-src".to_string(), entry(&["'none'"]));
+    csp.insert("script-src".to_string(), entry(&["'self'"]));
+    csp.insert("style-src".to_string(), entry(&["'self'", "'unsafe-inline'"]));
+    csp.insert("img-src".to_string(), entry(&["'self'", "data:", "blob:"]));
+    csp.insert("font-src".to_string(), entry(&["'self'", "data:"]));
+    csp.insert("connect-src".to_string(), entry(&["'none'"]));
+    csp.insert("frame-ancestors".to_string(), entry(&["'self'"]));
+    csp
+}
+
+fn render_csp(csp: &BTreeMap<String, Vec<String>>) -> String {
+    csp.iter()
+        .map(|(directive, sources)| format!("{directive} {}", sources.join(" ")))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 impl PluginRegistry {
+    /// Composed CSP for a viewer's files: the host policy plus the directives
+    /// the plugin declared in `opal_note.csp`.
+    pub fn viewer_csp(&self, id: &str) -> String {
+        let mut csp = base_viewer_csp();
+        let state = self
+            .state
+            .read()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(viewer) = state
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == id)
+            .and_then(|plugin| plugin.viewer.as_ref())
+        {
+            // A declared directive replaces the host default for that
+            // directive (e.g. `connect-src 'self'` instead of `'none'`); the
+            // manifest validator only permits self/data/blob sources.
+            for (directive, sources) in &viewer.csp {
+                csp.insert(directive.clone(), sources.clone());
+            }
+        }
+        render_csp(&csp)
+    }
+
     /// Serve one file of a viewer bundle (`viewer.html`, `viewer.js`, fonts…).
     pub fn viewer_file(&self, id: &str, rel: &str) -> Result<Option<Vec<u8>>> {
         if !is_safe_viewer_path(rel) {
@@ -597,7 +717,9 @@ impl PluginRegistry {
         match plugin.source {
             PluginSource::Builtin => {
                 let path = format!("{}/{rel}", plugin.folder);
-                let bytes = read_builtin_plugin(&path)?;
+                let Some(bytes) = read_builtin_plugin_opt(&path) else {
+                    return Ok(None);
+                };
                 if bytes.len() as u64 > MAX_VIEWER_FILE_BYTES {
                     bail!("viewer file `{path}` is too large");
                 }
@@ -608,8 +730,16 @@ impl PluginRegistry {
                 let target = root.join(rel);
                 let root = fs::canonicalize(&root)
                     .with_context(|| format!("resolving viewer folder {}", root.display()))?;
-                let target = fs::canonicalize(&target)
-                    .with_context(|| format!("resolving viewer file {}", target.display()))?;
+                let target = match fs::canonicalize(&target) {
+                    Ok(target) => target,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                        return Ok(None);
+                    }
+                    Err(err) => {
+                        return Err(err)
+                            .with_context(|| format!("resolving viewer file {}", target.display()))
+                    }
+                };
                 if !target.starts_with(&root) {
                     bail!("viewer file escapes the plugin folder");
                 }
@@ -1136,6 +1266,63 @@ mod tests {
         store.create_notebook("Notes", "").unwrap();
         let results = registry.run_journal(&store, "Notes", 0.5);
         assert!(results.iter().all(|result| result.id != "Acme/mermaid"));
+    }
+
+    #[test]
+    fn composes_viewer_csp_from_the_manifest() {
+        let base = render_csp(&base_viewer_csp());
+        assert!(base.contains("connect-src 'none'"));
+        assert!(base.contains("frame-ancestors 'self'"));
+        assert!(base.contains("script-src 'self'"));
+
+        let manifest = r#"{
+            "id": "A/canvas",
+            "title": "Canvas",
+            "description": "Viewer with fetches",
+            "type": "viewer",
+            "extensions": ["canvas"],
+            "entry": "viewer.html",
+            "role": "editor",
+            "csp": { "connect-src": ["'self'"], "font-src": ["'self'", "data:"] }
+        }"#;
+        let plugin = parse_plugin(
+            "case",
+            manifest,
+            "",
+            PluginSource::Data,
+            "case",
+            None,
+        )
+        .unwrap();
+        let mut csp = base_viewer_csp();
+        for (directive, sources) in &plugin.viewer.as_ref().unwrap().csp {
+            csp.insert(directive.clone(), sources.clone());
+        }
+        let rendered = render_csp(&csp);
+        assert!(rendered.contains("connect-src 'self'"), "{rendered}");
+        assert!(!rendered.contains("connect-src 'none' 'self'"), "{rendered}");
+        assert!(rendered.contains("frame-ancestors 'self'"));
+    }
+
+    #[test]
+    fn rejects_unsafe_viewer_csp_declarations() {
+        let cases = [
+            r#""csp": { "default-src": ["'self'"] }"#,
+            r#""csp": { "script-src": ["'self'"] }"#,
+            r#""csp": { "connect-src": ["https://evil.example"] }"#,
+            r#""csp": { "img-src": ["'unsafe-inline'"] }"#,
+            r#""csp": { "connect-src": [] }"#,
+        ];
+        for csp in cases {
+            let manifest = format!(
+                r#"{{"id":"A/canvas","title":"Canvas","description":"D","type":"viewer",
+                    "extensions":["canvas"],"entry":"viewer.html","role":"editor",{csp}}}"#
+            );
+            assert!(
+                parse_plugin("case", &manifest, "", PluginSource::Data, "case", None).is_err(),
+                "csp should be rejected: {csp}"
+            );
+        }
     }
 
     #[test]

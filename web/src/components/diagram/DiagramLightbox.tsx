@@ -17,7 +17,7 @@ import {
   readOnlyAtom,
 } from "../../state/atoms";
 import { ViewerFrame } from "../viewers/ViewerFrame";
-import { IconChevron, IconX } from "../Icons";
+import { IconChevron, IconMaximize, IconMinimize, IconX } from "../Icons";
 import { SourceEditor } from "./SourceEditor";
 
 type Status = "loading" | "saved" | "dirty" | "saving" | "error";
@@ -47,6 +47,7 @@ function DiagramDialog({
   const [preview, setPreview] = useState("");
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
 
   const dirty = status !== "loading" && content !== saved;
 
@@ -115,12 +116,21 @@ function DiagramDialog({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      const mod = event.metaKey || event.ctrlKey;
       if (event.key === "Escape") {
         event.preventDefault();
+        if (focusMode) {
+          setFocusMode(false);
+          return;
+        }
         requestClose();
         return;
       }
-      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setFocusMode((current) => !current);
+        return;
+      }
       if (mod && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void save();
@@ -133,7 +143,7 @@ function DiagramDialog({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [requestClose, save, setEditorOpen]);
+  }, [focusMode, requestClose, save, setEditorOpen]);
 
   const statusLabel =
     status === "loading"
@@ -148,12 +158,20 @@ function DiagramDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/30 p-3 backdrop-blur-sm sm:p-6"
+      className={`fixed inset-0 z-[60] flex items-center justify-center bg-ink/30 backdrop-blur-sm ${
+        focusMode ? "p-0" : "p-2 sm:p-4"
+      }`}
       role="dialog"
       aria-modal="true"
       aria-label={`Edit ${info?.asset.name ?? path}`}
     >
-      <div className="flex h-[min(54rem,92vh)] w-[min(80rem,96vw)] flex-col overflow-hidden rounded-2xl border border-line bg-canvas shadow-panel">
+      <div
+        className={`flex flex-col overflow-hidden border-line bg-canvas shadow-panel ${
+          focusMode
+            ? "h-full w-full border-0"
+            : "h-[min(64rem,96vh)] w-[min(94rem,98vw)] rounded-2xl border"
+        }`}
+      >
         <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5">
           <div className="min-w-0 flex-1">
             <h2 className="truncate font-serif text-[18px] font-semibold text-ink">
@@ -171,6 +189,20 @@ function DiagramDialog({
           >
             {statusLabel}
           </span>
+          <button
+            type="button"
+            onClick={() => setFocusMode((current) => !current)}
+            aria-pressed={focusMode}
+            aria-label={focusMode ? "Exit focus mode" : "Focus mode"}
+            title={`${focusMode ? "Exit focus mode" : "Focus mode"} (Cmd/Ctrl+Shift+F)`}
+            className="shrink-0 rounded-md border border-transparent p-1.5 text-muted transition hover:border-line hover:bg-white/60 hover:text-ink"
+          >
+            {focusMode ? (
+              <IconMinimize className="h-4 w-4" />
+            ) : (
+              <IconMaximize className="h-4 w-4" />
+            )}
+          </button>
           {viewer?.viewer.role === "renderer" && (
             <button
               type="button"
@@ -218,7 +250,11 @@ function DiagramDialog({
 
         <div className="flex min-h-0 flex-1">
           {editorOpen && viewer?.viewer.role === "renderer" && (
-            <div className="flex w-[42%] min-w-[16rem] shrink-0 flex-col border-r border-line">
+            <div
+              className={`flex shrink-0 flex-col border-r border-line ${
+                focusMode ? "w-[34%] min-w-[18rem]" : "w-[42%] min-w-[16rem]"
+              }`}
+            >
               <SourceEditor value={content} onChange={setContent} />
             </div>
           )}

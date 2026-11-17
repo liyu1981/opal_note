@@ -40,17 +40,6 @@ pub async fn reload(State(state): State<AppState>) -> ApiResult<Json<PluginList>
     Ok(Json(list))
 }
 
-/// Frame-friendly CSP for viewer bundles. The app's static handler sends
-/// `X-Frame-Options: DENY` + `frame-ancestors 'none'`; viewer files must be
-/// embeddable by the app itself, and they get no network access.
-const VIEWER_CSP: &str = "default-src 'none'; \
-script-src 'self'; \
-style-src 'self' 'unsafe-inline'; \
-img-src 'self' data: blob:; \
-font-src 'self' data:; \
-connect-src 'none'; \
-frame-ancestors 'self'";
-
 /// Serve one file of a viewer plugin bundle.
 pub async fn file(
     State(state): State<AppState>,
@@ -61,6 +50,7 @@ pub async fn file(
     }
     let id = format!("{domain}/{extension}");
     let plugins = state.plugins.clone();
+    let csp = plugins.viewer_csp(&id);
     let rel = path.clone();
     let bytes = db_call(
         move || plugins.viewer_file(&id, &rel),
@@ -91,7 +81,8 @@ pub async fn file(
     );
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(VIEWER_CSP),
+        HeaderValue::from_str(&csp)
+            .unwrap_or_else(|_| HeaderValue::from_static("default-src 'none'")),
     );
     Ok(response)
 }
