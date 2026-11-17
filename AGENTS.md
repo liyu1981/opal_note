@@ -16,6 +16,10 @@ Guidance for coding agents working in this repository.
 
 OpalNote is a **server-first, file-first** note app.
 
+`README.md` is the user-facing overview (features, setup, usage); the deep
+technical reference lives in `doc/architecture.md` and the viewer-plugin guide
+in `doc/rich-content.md`. Keep both in sync when behaviour changes.
+
 - Markdown files under `data/notebooks/<notebook>/pages|journals/` are
   canonical.
 - MnesticDB (Datalog) is a **disposable index** under `data/index/`, rebuilt
