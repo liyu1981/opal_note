@@ -862,6 +862,33 @@ app**; the omnibox install icon only appears while Chrome decides the page
 qualifies, so its absence is not a failure. DevTools → **Application →
 Manifest** (and `chrome://web-app-internals`) lists any installability problem.
 
+### Behind a tunnel or reverse proxy
+
+A Cloudflare Tunnel (or nginx/Caddy with a real certificate) works: the browser
+sees a normal HTTPS origin, the service worker registers and the app is
+installable. Things worth knowing:
+
+- **Use a stable hostname.** A named tunnel (or a proper DNS record) keeps the
+  origin constant; a quick tunnel gives a new `*.trycloudflare.com` name on
+  every restart, and since a service worker and installed app are bound to one
+  origin, each change means reinstalling. Cloudflare terminates TLS with a
+  trusted certificate, so no dev certificate is involved.
+- **Do not cache `/sw.js` or `/manifest.webmanifest`.** They are served
+  `Cache-Control: no-cache`; keep it that way. A "Cache Everything" page rule or
+  an edge TTL on `.js` can pin an old worker — exclude those two paths (and
+  purge after upgrading).
+- **Leave Rocket Loader (and any script-rewriting transform) off** for the
+  hostname; it rewrites `<script>` tags and breaks module scripts and worker
+  registration.
+- The app only needs same-origin requests, so no special CORS or WebSocket
+  configuration is required. If you put Cloudflare Access in front, the
+  installed app opens the Access login page in its own window on first launch
+  (the session cookie then keeps it logged in for `SESSION_TTL`, 7 days).
+- Running the origin with `--no-tls` behind the tunnel is fine: the session
+  cookie is still marked `Secure` because the request carries
+  `X-Forwarded-Proto: https`, and viewer CSPs derive their host from the
+  forwarded/original `Host` header.
+
 ## HTTP API
 
 Base path `/api`. Errors use
