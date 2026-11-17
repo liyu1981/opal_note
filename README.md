@@ -881,9 +881,28 @@ installable. Things worth knowing:
   hostname; it rewrites `<script>` tags and breaks module scripts and worker
   registration.
 - The app only needs same-origin requests, so no special CORS or WebSocket
-  configuration is required. If you put Cloudflare Access in front, the
-  installed app opens the Access login page in its own window on first launch
-  (the session cookie then keeps it logged in for `SESSION_TTL`, 7 days).
+  configuration is required.
+- **Cloudflare Access needs a bypass for the PWA files.** Browsers fetch a web
+  app manifest *without credentials* (HTML spec, credentials mode `omit`), so an
+  Access-protected `/manifest.webmanifest` is answered with a 302 to the login
+  page; the manifest fails to parse, `Page.getInstallabilityErrors` reports
+  `manifest-parsing-or-network-error`, and the install entry never appears even
+  while you are signed in. Add Access applications with a **Bypass** policy for
+  these public, secret-free paths (the most specific path wins):
+
+  ```
+  /manifest.webmanifest
+  /sw.js
+  /offline.html
+  /icons
+  /favicon.svg
+  ```
+
+  The app shell (`/`) and `/api/*` can stay protected: the installed app opens
+  the Access login in its own window on first launch, and once the Access
+  session expires a request returns its sign-in page, which the client treats as
+  an expired session (the “Session expired — refresh” dialog reloads through
+  the login).
 - Running the origin with `--no-tls` behind the tunnel is fine: the session
   cookie is still marked `Secure` because the request carries
   `X-Forwarded-Proto: https`, and viewer CSPs derive their host from the

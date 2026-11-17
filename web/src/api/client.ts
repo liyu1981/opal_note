@@ -91,6 +91,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
+  // An authenticated reverse proxy (Cloudflare Access, an SSO gateway) answers
+  // an expired session with its sign-in *page* and a 200, which would otherwise
+  // surface as "Unexpected token '<'". Treat it like an expired session so the
+  // UI asks for a reload, which sends the browser through the proxy's login.
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/html")) {
+    markSessionExpired();
+    throw new ApiError(
+      401,
+      "unauthorized",
+      "The server returned a sign-in page instead of data.",
+    );
+  }
   return (await response.json()) as T;
 }
 
