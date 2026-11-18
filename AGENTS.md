@@ -287,6 +287,16 @@ web/
   bytes with `no-store` and keep the asset route's `no-cache` for editable text
   assets — a stale read would poison the content-keyed cache. The same PNG is
   the asset page's PNG export.
+- The agent's OpalNote provider is a **server proxy**, not a browser credential:
+  `GET /api/agent` reports `{configured, models}` and
+  `GET|POST /api/agent/v1/{path}` forwards only `models`, `chat/completions`,
+  `responses`, `messages` and `messages/count_tokens` (`src/agent.rs`) to
+  `agent_base_url`, replacing the auth header with the server key and relaying
+  the stream chunk by chunk. Never widen that allow-list into a general
+  forwarder or let the client choose the upstream. The client side is a ReAgent
+  host provider (`web/src/components/agent/opalnoteProvider.tsx`) whose config is
+  memory-only and rebuilt from `GET /api/agent` on mount; the cookie session is
+  the gate, and `opalnote.agent.connected` only remembers an opt-out.
 - Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`
   (backdrop, header, focus-mode toggle, Escape: exits focus first, then
   closes). `DiagramLightbox` and `ImageLightbox` are thin extensions of it —

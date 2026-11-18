@@ -381,3 +381,9 @@ export interface BackgroundList {
   backgrounds: BackgroundInfo[];
   errors: BackgroundLoadError[];
 }
+
+/** Server-side agent provider (the OpalNote model proxy). */
+export type AgentInfo = {
+  configured: boolean;
+  models: string[];
+};

@@ -23,7 +23,7 @@
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
-    "@liyu1981/reagent": "0.2.0",
+    "@liyu1981/reagent": "0.2.1",
     "@tanstack/react-router": "^1.170.46",
     "d3-force": "^3.0.1",
     "jotai": "^3.0.2",

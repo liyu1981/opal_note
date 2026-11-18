@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::agent::AgentProxy;
 use crate::backgrounds::BackgroundRegistry;
 use crate::plugins::PluginRegistry;
 use crate::session::SessionStore;
@@ -16,6 +17,8 @@ pub struct AppState {
     pub plugins: Arc<PluginRegistry>,
     pub backgrounds: Arc<BackgroundRegistry>,
     pub sessions: Arc<SessionStore>,
+    /// Server-side model proxy for the in-app agent, when configured.
+    pub agent: Option<Arc<AgentProxy>>,
     pub token: Option<Arc<str>>,
     pub secure_cookies: bool,
     pub query_timeout_secs: f64,
@@ -33,6 +36,7 @@ pub struct AppStateInit {
     pub plugins: Arc<PluginRegistry>,
     pub backgrounds: Arc<BackgroundRegistry>,
     pub sessions: Arc<SessionStore>,
+    pub agent: Option<Arc<AgentProxy>>,
     pub token: Option<String>,
     pub secure_cookies: bool,
     pub query_timeout_secs: f64,
@@ -49,6 +53,7 @@ impl AppState {
             plugins: init.plugins,
             backgrounds: init.backgrounds,
             sessions: init.sessions,
+            agent: init.agent,
             token: init.token.map(Arc::from),
             secure_cookies: init.secure_cookies,
             query_timeout_secs: init.query_timeout_secs,

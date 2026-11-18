@@ -1,4 +1,5 @@
 import type {
+  AgentInfo,
   AssetEntry,
   AssetInfo,
   AssetList,
@@ -364,6 +365,19 @@ export const api = {
 
   getAssetBlob: (notebookId: string, path: string, fresh = false) =>
     requestBlob(assetPath(notebookId, path), { fresh }),
+
+  /** Whether the server-side agent provider is configured, and its models. */
+  agentInfo: () => request<AgentInfo>("/agent"),
+
+  /** Model ids the configured upstream advertises (`/models` on the proxy). */
+  agentModels: async (): Promise<string[]> => {
+    const payload = (await request<{ data?: Array<{ id?: string }> }>(
+      "/agent/v1/models",
+    )) as { data?: Array<{ id?: string }> };
+    return (payload.data ?? [])
+      .map((entry) => entry.id?.trim() ?? "")
+      .filter((id) => id.length > 0);
+  },
 
   /** Rendered diagram thumbnail: stored PNG, or the digest to render from. */
   getAssetThumbnail: (notebookId: string, path: string) =>

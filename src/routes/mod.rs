@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod assets;
 pub mod backgrounds;
 pub mod health;
@@ -39,6 +40,13 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
     let protected = Router::new()
         .route("/stats", get(health::stats))
         .route("/reindex", post(health::reindex))
+        .route("/agent", get(agent::info))
+        .route(
+            "/agent/v1/{*path}",
+            get(agent::proxy)
+                .post(agent::proxy)
+                .layer(axum::extract::DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
         .route("/query", post(query::run))
         .route("/settings", get(settings::get).put(settings::put))
         .route("/plugins", get(plugins::list))

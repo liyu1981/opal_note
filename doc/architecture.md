@@ -784,6 +784,43 @@ authenticated API. Fonts, Code and Background are single-column lists with
 their preview/controls on the right; expandable options appear only for the
 selected background.
 
+### Agent provider
+
+The right-panel agent (`@liyu1981/reagent`) runs its loop in the browser, but
+OpalNote can serve the model traffic itself. That is the "OpalNote" provider:
+
+```
+browser agent ──POST /api/agent/v1/chat/completions──► Rust proxy ──► upstream
+                (session cookie + CSRF, no key)          (+ server key)
+```
+
+- `GET /api/agent` reports `{configured, models}`; `GET|POST /api/agent/v1/{path}`
+  relays to `agent_base_url`. Only `models`, `chat/completions`, `responses`,
+  `messages` and `messages/count_tokens` are forwarded, the client cannot set
+  the upstream URL, and the server replaces the `Authorization` header with its
+  own credential, so the key never reaches the browser and browser CORS rules
+  stop applying (OpenRouter, Ollama, LM Studio, vLLM all work through one path).
+- Streaming is relayed chunk by chunk: the blocking upstream request and its
+  reader run on a blocking task and feed an mpsc channel that becomes the
+  response body (`cache-control: no-cache`, `x-accel-buffering: no`). A closed
+  client just stops the relay.
+- Configured with `agent_base_url` / `agent_api_key` / `agent_models` in the
+  TOML config, `OPALNOTE_AGENT_BASE_URL` / `OPALNOTE_AGENT_API_KEY` /
+  `OPALNOTE_AGENT_MODELS`, or `--agent-base-url` / `--agent-api-key` /
+  `--agent-model` (repeatable). `agent_models` is optional: when it is empty the
+  client reads the upstream `/models` list through the proxy.
+- On the client the provider is registered as a ReAgent **host provider**
+  (`web/src/components/agent/opalnoteProvider.tsx`): the config is rebuilt from
+  `GET /api/agent` on mount and kept in memory only, because the cookie session
+  is the real gate. `opalnote.agent.connected` in `localStorage` remembers an
+  opt-out, and Settings → Agent → Model renders the setup card (status, model
+  list, Connect/Disconnect).
+- Since ReAgent 0.2.1 the Model settings page lists every provider (OpalNote,
+  OpenRouter, the local OpenAI-compatible endpoint) with an on/off switch, and
+  the switch hides the host card too. Turning OpalNote back on reconnects it from
+  `GET /api/agent`, so the switch and the card's Disconnect/Connect stay in
+  sync.
+
 ### Client routes
 
 | Route | View |

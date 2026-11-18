@@ -48,8 +48,10 @@ next read. Delete the index at any time and it comes back.
   favorites/recents/todos, plus your own under `<data-dir>/plugins/`.
 - **Themes** — Square-inspired design tokens, selectable fonts per role, code
   syntax themes and eight animated backgrounds.
-- **AI side panel** — an in-browser chat agent; provider keys and conversations
-  stay on your machine.
+- **AI side panel** — an in-browser chat agent with a server-proxied provider:
+  the OpalNote provider keeps the upstream key on the server (no CORS limits,
+  one path for OpenRouter, Ollama, LM Studio or vLLM), or bring your own key in
+  the agent's own settings. Conversations stay in the browser.
 - **One binary** — the web client, plugins and backgrounds are embedded in the
   release build. HTTPS by default, systemd user service, self-update staging
   and an installable PWA with a minimal offline page.
@@ -136,6 +138,9 @@ The flags that matter most:
 | `--no-tls` | `OPALNOTE_NO_TLS` | `false` | Serve plain HTTP |
 | `--tls-cert` / `--tls-key` | `OPALNOTE_TLS_CERT` / `_KEY` | `certs/localhost*.pem` | HTTPS certificate |
 | `--update-channel` | `OPALNOTE_UPDATE_CHANNEL` | `release` | `release` or `dev` for `opalnote update` |
+| `--agent-base-url` | `OPALNOTE_AGENT_BASE_URL` | _(unset)_ | OpenAI-compatible endpoint the agent proxies to |
+| `--agent-api-key` | `OPALNOTE_AGENT_API_KEY` | _(unset)_ | Upstream key, kept on the server |
+| `--agent-model` | `OPALNOTE_AGENT_MODELS` | _(empty)_ | Model ids to offer (repeatable; empty reads `/models`) |
 
 `opalnote config` writes a default file, `opalnote config --upgrade` adds new
 keys without touching your values, and `opalnote install-service` writes a
@@ -167,6 +172,29 @@ sees a normal HTTPS origin, the PWA installs and the session cookie stays
 transforms (Rocket Loader) off. Cloudflare Access needs a bypass for the PWA
 files. Full checklist:
 [behind a tunnel or reverse proxy](doc/architecture.md#behind-a-tunnel-or-reverse-proxy).
+
+### Agent models
+
+Give the built-in agent a model endpoint and it becomes one more provider in the
+panel — the browser never sees the key:
+
+```bash
+opalnote serve --agent-base-url https://openrouter.ai/api/v1 \
+  --agent-api-key sk-or-… --agent-model openai/gpt-4o-mini
+```
+
+or in the config file:
+
+```toml
+agent_base_url = "https://openrouter.ai/api/v1"
+agent_api_key = "sk-or-…"
+agent_models = ["openai/gpt-4o-mini"]
+```
+
+The same works for a local server (`http://localhost:11434/v1`, no key) or any
+OpenAI-compatible gateway. The panel shows the connection status under Settings
+→ Agent → Model, with Connect/Disconnect. Details:
+[agent provider](doc/architecture.md#agent-provider).
 
 ### Keeping a server up to date
 

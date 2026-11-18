@@ -6,3 +6,4 @@ allowBuilds:
   protobufjs: false
 minimumReleaseAgeExclude:
   - vite@8.3.8
+  - '@liyu1981/reagent@0.2.1'
