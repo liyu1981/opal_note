@@ -171,9 +171,6 @@ impl SystemDb {
     }
 
     /// Insert or replace the agent provider configuration.
-    // The write path is wired up with the encrypted-key routes; the read path
-    // is already live through `GET /api/agent`.
-    #[allow(dead_code)]
     pub fn save_agent_config(&self, config: &StoredAgentConfig) -> Result<()> {
         let base_url = config.base_url.trim();
         if base_url.is_empty() {
@@ -200,7 +197,6 @@ impl SystemDb {
     }
 
     /// Forget the stored configuration (the UI is the only writer).
-    #[allow(dead_code)]
     pub fn clear_agent_config(&self) -> Result<()> {
         self.run(
             queries::AGENT_CONFIG_DELETE,

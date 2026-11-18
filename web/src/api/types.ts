@@ -387,6 +387,8 @@ export type StoredAgentConfig = {
   base_url: string;
   models: string[];
   key_stored: boolean;
+  /** AES-GCM envelope JSON; present when a key is stored. */
+  key_envelope: string | null;
   updated_at: number;
 };
 

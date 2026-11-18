@@ -96,29 +96,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::debug!(data_dir = %store.data_dir().display(), "store ready");
-    let agent = args
-        .agent_base_url
-        .as_deref()
-        .and_then(|base_url| {
-            crate::agent::AgentProxy::new(
-                base_url,
-                args.agent_api_key.clone(),
-                args.agent_models.clone(),
-            )
-        })
-        .map(std::sync::Arc::new);
-    match agent.as_ref() {
-        Some(_) => tracing::info!("agent provider enabled through the server proxy"),
-        None => tracing::debug!("no agent base URL configured; the OpalNote provider is off"),
-    }
-
     let state = AppState::new(AppStateInit {
         store,
         settings,
         plugins,
         backgrounds,
         sessions,
-        agent,
         system,
         token,
         secure_cookies: !args.no_tls,

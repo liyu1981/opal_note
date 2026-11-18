@@ -369,6 +369,21 @@ export const api = {
   /** Whether the server-side agent provider is configured, and its models. */
   agentInfo: () => request<AgentInfo>("/agent"),
 
+  /** Store the provider connection (envelope encrypted in the browser). */
+  saveAgentConfig: (body: {
+    base_url: string;
+    models: string[];
+    key_envelope: string | null;
+  }) =>
+    request<AgentInfo>("/agent/config", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  /** Forget the stored provider connection. */
+  deleteAgentConfig: () =>
+    request<AgentInfo>("/agent/config", { method: "DELETE" }),
+
   /** Model ids the configured upstream advertises (`/models` on the proxy). */
   agentModels: async (): Promise<string[]> => {
     const payload = (await request<{ data?: Array<{ id?: string }> }>(

@@ -1,244 +1,229 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { atom, getDefaultStore } from "jotai";
 import {
   rebuildModels,
   setHostProviderConfig,
-  type ReAgentHostProvider,
   type ReAgentHostProviderConfig,
-  type ReAgentHostProviderProps,
 } from "@liyu1981/reagent";
 
 import { api } from "../../api/client";
+import type { AgentInfo } from "../../api/types";
+import {
+  canDecrypt,
+  deriveUnlockKey,
+  envelopeFingerprint,
+  parseEnvelope,
+  type KeyEnvelope,
+} from "../../lib/agentCrypto";
 import { getCsrfToken } from "../../lib/session";
+import {
+  agentUnlockAtom,
+  customUnlockMinutes,
+  expireUnlockIfNeeded,
+  lockAgentProvider,
+  requestAgentUnlock,
+  restoreUnlock,
+  saveUnlockPreferences,
+  storeUnlock,
+  unlockScope,
+  type UnlockScope,
+} from "../../state/agentUnlock";
 
 /**
  * The OpalNote agent provider.
  *
- * OpalNote runs the model traffic itself: ReAgent talks to `/api/agent/v1`, the
- * Rust server adds the upstream credential and relays the stream. Nothing
- * secret reaches the browser, CORS never applies, and any OpenAI-compatible
- * upstream (OpenRouter, Ollama, LM Studio, vLLM, …) works the same way.
- *
- * Host-provider config is memory-only by design, so the connection is rebuilt
- * from `GET /api/agent` whenever the panel mounts; the server session is the
- * real gate.
+ * OpalNote relays the model traffic itself: ReAgent calls `/api/agent/v1`, the
+ * Rust server attaches the upstream credential and streams the answer back. The
+ * credential is stored encrypted — the browser builds the envelope from a
+ * password the server never sees — and each request carries the password-derived
+ * key, so a copy of `opalnote.db` is useless on its own. See ADR 0001 and
+ * `doc/architecture.md#agent-provider`.
  */
 export const OPALNOTE_PROVIDER_ID = "opalnote";
 export const OPALNOTE_PROVIDER_NAME = "OpalNote";
 const STORAGE_PREFIX = "opalnote";
-/** User opt-out, so an auto-connected provider can be switched off. */
-const CONNECTED_KEY = "opalnote.agent.connected";
 
-export type OpalNoteProviderState = {
-  configured: boolean;
-  models: string[];
-  loading: boolean;
-  error: string | null;
-  /** Re-read `GET /api/agent` (and the upstream model list). */
-  refresh: () => void;
-};
+const store = getDefaultStore();
 
-type ServerAgentInfo = { configured: boolean; models: string[] };
+/** Latest `GET /api/agent` answer, shared with the configuration card. */
+export const agentInfoAtom = atom<AgentInfo | null>(null);
 
-function connectedByPreference(): boolean {
-  return localStorage.getItem(CONNECTED_KEY) !== "0";
+/** Called by the request hook when the server rejects the derived key. */
+let onLocked: (() => void) | null = null;
+
+export function setAgentLockedHandler(handler: (() => void) | null): void {
+  onLocked = handler;
 }
 
-/** Absolute proxy URL: the agent client builds URLs from it. */
-function proxyBaseUrl(): string {
+export function proxyBaseUrl(): string {
   return new URL("/api/agent/v1", window.location.origin).href;
 }
 
-function providerConfig(models: string[]): ReAgentHostProviderConfig {
-  return {
-    // Same-origin proxy prefix; the server owns the upstream URL and key.
-    baseUrl: proxyBaseUrl(),
-    // No client credential: the cookie session authenticates the request and
-    // the proxy replaces any Authorization header with the server's key.
-    apiKey: "opalnote-session",
-    api: "openai-completions",
-    models,
-    authHeaders: (): Record<string, string> => {
-      const csrf = getCsrfToken();
-      return csrf ? { "x-opalnote-csrf": csrf } : {};
-    },
+/** Envelope of the stored configuration, or null for a keyless endpoint. */
+export function storedEnvelope(info: AgentInfo | null): KeyEnvelope | null {
+  const raw: string | null = info?.stored?.key_envelope ?? null;
+  if (!raw) return null;
+  try {
+    return parseEnvelope(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function lockedResponse(message: string): Response {
+  return new Response(JSON.stringify({ error: { code: "agent_locked", message } }), {
+    status: 401,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/**
+ * Request hook for every provider call (chat and `/models`): attach the derived
+ * key and fail fast with a typed error while locked, so the UI can ask for the
+ * password instead of issuing a doomed request.
+ */
+function buildFetch(): typeof fetch {
+  return async (input, init) => {
+    expireUnlockIfNeeded();
+    const key = store.get(agentUnlockAtom).key;
+    if (!key) {
+      onLocked?.();
+      return lockedResponse("The OpalNote provider is locked.");
+    }
+    const headers = new Headers(init?.headers);
+    headers.set("x-opalnote-agent-key", key);
+    const csrf = getCsrfToken();
+    if (csrf) headers.set("x-opalnote-csrf", csrf);
+    const response = await fetch(input, {
+      ...init,
+      headers,
+      credentials: "same-origin",
+    });
+    if (response.status === 401) {
+      // The stored envelope no longer matches this key (re-saved or removed
+      // elsewhere): forget it and let the UI ask again.
+      lockAgentProvider();
+      onLocked?.();
+    }
+    return response;
   };
 }
 
-async function loadServerState(): Promise<ServerAgentInfo> {
-  const info = await api.agentInfo();
-  if (!info.configured) return info;
-  if (info.models.length > 0) return info;
-  // The server knows the endpoint but not the model list: ask the upstream.
-  return { configured: true, models: await api.agentModels().catch(() => []) };
+export function providerConfig(models: string[]): ReAgentHostProviderConfig {
+  return {
+    baseUrl: proxyBaseUrl(),
+    // Never sent: `fetch` attaches the derived key, and the proxy owns the
+    // upstream credential.
+    apiKey: "opalnote-session",
+    api: "openai-completions",
+    models,
+    authHeaders: () => ({}),
+    fetch: buildFetch(),
+  };
 }
 
-function connect(models: string[]): void {
+/** Connect the provider to ReAgent's model registry. */
+export function connectProvider(models: string[]): void {
   setHostProviderConfig(OPALNOTE_PROVIDER_ID, providerConfig(models));
   rebuildModels(STORAGE_PREFIX);
 }
 
-function disconnect(): void {
+/** Remove the provider from the model picker. */
+export function disconnectProvider(): void {
   setHostProviderConfig(OPALNOTE_PROVIDER_ID, null);
   rebuildModels(STORAGE_PREFIX);
 }
 
 /**
- * Keep the OpalNote provider in sync with the server. Call once from the panel
- * that renders `<ReAgent>`.
+ * Make the registry match the server configuration and the unlock state:
+ * configured + keyless → connected; configured + unlocked → connected;
+ * configured + locked → disconnected and an unlock prompt.
  */
-export function useOpalNoteAgentProvider(): OpalNoteProviderState {
-  const [state, setState] = useState<
-    Omit<OpalNoteProviderState, "refresh">
-  >({
-    configured: false,
-    models: [],
-    loading: true,
-    error: null,
-  });
-
-  const apply = useCallback((info: ServerAgentInfo) => {
-    setState({
-      configured: info.configured,
-      models: info.models,
-      loading: false,
-      error: null,
-    });
-    if (info.configured && connectedByPreference() && info.models.length > 0) {
-      connect(info.models);
-    } else {
-      disconnect();
-    }
-  }, []);
-
-  const refresh = useCallback(() => {
-    setState((current) => ({ ...current, loading: true, error: null }));
-    void loadServerState().then(apply, (cause: unknown) => {
-      setState({
-        configured: false,
-        models: [],
-        loading: false,
-        error:
-          cause instanceof Error ? cause.message : "Could not reach the server",
-      });
-    });
-  }, [apply]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { ...state, refresh };
+export async function syncProvider(info: AgentInfo | null): Promise<void> {
+  store.set(agentInfoAtom, info);
+  if (!info?.stored) {
+    disconnectProvider();
+    return;
+  }
+  const envelope = storedEnvelope(info);
+  if (!envelope) {
+    connectProvider(info.stored.models);
+    return;
+  }
+  const fingerprint = await envelopeFingerprint(envelope);
+  const state = store.get(agentUnlockAtom);
+  if (!state.key) restoreUnlock(fingerprint);
+  // Keep the provider listed even while locked: the models stay visible, and a
+  // request that needs the key fails with `agent_locked`, which opens the
+  // password prompt. Locking must not silently remove the provider.
+  connectProvider(info.stored.models);
 }
 
-/** Setup card rendered inside ReAgent's Settings → Model panel. */
-function OpalNoteProviderSetup({
-  config,
-  setConfig,
-}: ReAgentHostProviderProps) {
-  const [info, setInfo] = useState<ServerAgentInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+/** Fetch `GET /api/agent` and sync the provider. */
+export async function refreshProvider(): Promise<AgentInfo | null> {
+  const info = await api.agentInfo();
+  await syncProvider(info);
+  return info;
+}
+
+/** Unlock with a password and remember the key for the selected window. */
+export function useUnlockProvider(onDone: () => void) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scope, setScope] = useState<UnlockScope>(() => unlockScope());
+  const [customMinutes, setCustomMinutes] = useState(() => customUnlockMinutes());
 
-  const load = useCallback(() => {
-    setBusy(true);
-    loadServerState().then(
-      (next) => {
-        setInfo(next);
-        setError(null);
-        setBusy(false);
-      },
-      (cause: unknown) => {
+  const unlock = useCallback(
+    async (password: string, envelope: KeyEnvelope | null) => {
+      if (!envelope) {
+        setError("The provider is not configured.");
+        return;
+      }
+      setError(null);
+      setBusy(true);
+      try {
+        const key = await deriveUnlockKey(password, envelope);
+        // Cheap local check for immediate feedback; the server stays the
+        // authority (it is the only place that decrypts for a request).
+        if (!(await canDecrypt(key, envelope))) {
+          setError("Incorrect password.");
+          return;
+        }
+        const fingerprint = await envelopeFingerprint(envelope);
+        saveUnlockPreferences(scope, customMinutes);
+        storeUnlock(key, fingerprint, scope);
+        onDone();
+      } catch (cause) {
         setError(
-          cause instanceof Error ? cause.message : "Could not reach the server",
+          cause instanceof Error
+            ? cause.message
+            : "Could not derive the key from that password",
         );
+      } finally {
         setBusy(false);
-      },
-    );
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const connectNow = useCallback(() => {
-    if (!info?.configured) return;
-    localStorage.setItem(CONNECTED_KEY, "1");
-    setConfig(providerConfig(info.models));
-  }, [info, setConfig]);
-
-  const disconnectNow = useCallback(() => {
-    localStorage.setItem(CONNECTED_KEY, "0");
-    setConfig(null);
-  }, [setConfig]);
-
-  return (
-    <div className="space-y-1.5 rounded-xl border border-border/50 p-3">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">
-          {config
-            ? `Using the OpalNote server (${info?.models.length ?? 0} ${
-                info?.models.length === 1 ? "model" : "models"
-              })`
-            : info?.configured
-              ? "The server has a model endpoint configured."
-              : "No model endpoint configured on the server."}
-        </span>
-        <div className="ml-auto flex gap-1.5">
-          {config ? (
-            <button
-              type="button"
-              onClick={disconnectNow}
-              className="rounded-md border border-border/60 px-2 py-1 text-xs transition hover:bg-muted"
-            >
-              Disconnect
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={load}
-                disabled={busy}
-                className="rounded-md border border-border/60 px-2 py-1 text-xs transition hover:bg-muted disabled:opacity-40"
-              >
-                {busy ? "Checking…" : "Recheck"}
-              </button>
-              <button
-                type="button"
-                onClick={connectNow}
-                disabled={!info?.configured || busy}
-                className="rounded-md border border-border/60 px-2 py-1 text-xs transition hover:bg-muted disabled:opacity-40"
-              >
-                Connect
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {config && info && info.models.length > 0 && (
-        <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-          {info.models.slice(0, 6).join(", ")}
-          {info.models.length > 6 ? ` +${info.models.length - 6}` : ""}
-        </p>
-      )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {info && !info.configured && (
-        <p className="text-xs text-muted-foreground">
-          Set <code>agent_base_url</code> (and <code>agent_api_key</code>) in
-          the server config, or <code>OPALNOTE_AGENT_BASE_URL</code> /{" "}
-          <code>OPALNOTE_AGENT_API_KEY</code>, then restart.
-        </p>
-      )}
-    </div>
+      }
+    },
+    [customMinutes, onDone, scope],
   );
+
+  return {
+    unlock,
+    busy,
+    error,
+    setError,
+    scope,
+    setScope,
+    customMinutes,
+    setCustomMinutes,
+  };
 }
 
-export const OPALNOTE_HOST_PROVIDERS: ReAgentHostProvider[] = [
-  {
-    id: OPALNOTE_PROVIDER_ID,
-    name: OPALNOTE_PROVIDER_NAME,
-    component: OpalNoteProviderSetup,
-    // Filled in by `setHostProviderConfig` once the server answers, so the
-    // provider never appears before it can actually serve requests.
-    getConfig: () => null,
-  },
-];
+/** Ask the UI for the password (used when a request finds the provider locked). */
+export function requestUnlockPrompt(): void {
+  requestAgentUnlock();
+}
+
+/** Drop the derived key; the provider stays listed but locked. */
+export function lockProvider(): void {
+  lockAgentProvider();
+}

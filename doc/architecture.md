@@ -822,45 +822,56 @@ selected background.
 
 ### Agent provider
 
-The right-panel agent (`@liyu1981/reagent`) runs its loop in the browser, but
-OpalNote can serve the model traffic itself. That is the "OpalNote" provider:
+The right-panel agent (`@liyu1981/reagent`, vendored — see below) runs its loop
+in the browser, but OpalNote relays the model traffic so the upstream credential
+stays out of the browser and browser CORS rules stop applying:
 
 ```
 browser agent ──POST /api/agent/v1/chat/completions──► Rust proxy ──► upstream
-                (session cookie + CSRF, no key)          (+ server key)
+  x-opalnote-agent-key: <derived key>   session cookie + CSRF   (+ decrypted key)
 ```
 
-- `GET /api/agent` reports `{configured, models}`; `GET|POST /api/agent/v1/{path}`
-  relays to `agent_base_url`. Only `models`, `chat/completions`, `responses`,
-  `messages` and `messages/count_tokens` are forwarded, the client cannot set
-  the upstream URL, and the server replaces the `Authorization` header with its
-  own credential, so the key never reaches the browser and browser CORS rules
-  stop applying (OpenRouter, Ollama, LM Studio, vLLM all work through one path).
-- Streaming is relayed chunk by chunk: the blocking upstream request and its
-  reader run on a blocking task and feed an mpsc channel that becomes the
-  response body (`cache-control: no-cache`, `x-accel-buffering: no`). A closed
-  client just stops the relay.
-- Configured with `agent_base_url` / `agent_api_key` / `agent_models` in the
-  TOML config, `OPALNOTE_AGENT_BASE_URL` / `OPALNOTE_AGENT_API_KEY` /
-  `OPALNOTE_AGENT_MODELS`, or `--agent-base-url` / `--agent-api-key` /
-  `--agent-model` (repeatable). `agent_models` is optional: when it is empty the
-  client reads the upstream `/models` list through the proxy.
-- On the client the provider is registered as a ReAgent **host provider**
-  (`web/src/components/agent/opalnoteProvider.tsx`): the config is rebuilt from
-  `GET /api/agent` on mount and kept in memory only, because the cookie session
-  is the real gate. `opalnote.agent.connected` in `localStorage` remembers an
-  opt-out, and Settings → Agent → Model renders the setup card (status, model
-  list, Connect/Disconnect).
-- ReAgent itself is vendored: `web/vendor/reagent` is a git submodule tracking
-  upstream `main`, linked as a workspace package, and built from source by
-  `scripts/build-reagent.mjs` (the published tarball carries no `dist/`). The
-  panel therefore picks up unreleased fixes as soon as the submodule pointer
-  moves; Docker and the GitHub workflows check submodules out recursively.
-- Since ReAgent 0.2.1 the Model settings page lists every provider (OpalNote,
-  OpenRouter, the local OpenAI-compatible endpoint) with an on/off switch, and
-  the switch hides the host card too. Turning OpalNote back on reconnects it from
-  `GET /api/agent`, so the switch and the card's Disconnect/Connect stay in
-  sync.
+**Storage.** The connection lives in `opalnote.db` (`agent_config`, ADR 0001):
+base URL and model list in clear, the API key as an AES-256-GCM envelope. The
+browser derives the encryption key from the user's password with
+PBKDF2-SHA256 (600 000 iterations, per-envelope salt), encrypts the key, and
+uploads only the envelope — the password never leaves the tab and the plaintext
+key never enters the database.
+
+**Requests.** Every proxied call carries the derived key in
+`x-opalnote-agent-key`; the server decrypts the envelope for that one request,
+puts the plaintext key on the upstream `Authorization` header, and drops it.
+Missing or wrong key → `401 {"code":"agent_locked"}` before any upstream call.
+
+**Routes.** `GET /api/agent` reports the configuration (including the envelope,
+which is useless without the password); `PUT /api/agent/config` stores a base
+URL, model list and envelope; `DELETE /api/agent/config` forgets it.
+`GET|POST /api/agent/v1/{path}` forwards only `models`, `chat/completions`,
+`responses`, `messages` and `messages/count_tokens` — the client cannot choose
+the upstream URL — and relays the response chunk by chunk (the blocking `ureq`
+request and its reader run on a blocking task feeding an mpsc channel that
+becomes the body, `cache-control: no-cache`, `x-accel-buffering: no`; a closed
+tab just ends the relay).
+
+**Unlock windows.** 15 minutes (default), a custom duration, 24 hours, or until
+the key changes. They are enforced in the browser — how long the tab keeps the
+derived key (memory only, `sessionStorage`, or `localStorage`) — not by the
+server, which holds no unlock state. A window "locks" rather than disconnects:
+the models stay visible and the next request opens the password prompt. A
+re-saved envelope changes its fingerprint, which invalidates any remembered key.
+
+**Client.** `opalnoteProvider.tsx` registers a ReAgent **host provider** whose
+`fetch` hook attaches the derived key, fails fast with `agent_locked` when
+locked, and locks again if the server rejects the key. `AgentProviderCard.tsx`
+renders the setup card and the unlock dialog inside Settings → Agent → Model.
+Since ReAgent 0.2.1 that page lists every provider with an on/off switch; the
+OpalNote switch hides the card, and switching it back reconnects from
+`GET /api/agent`.
+
+**Vendored ReAgent.** `web/vendor/reagent` is a git submodule tracking upstream
+`main`, linked as a workspace package and built from source by
+`scripts/build-reagent.mjs` (the published tarball has no `dist/`). Docker and
+the GitHub workflows check submodules out recursively.
 
 ### Client routes
 

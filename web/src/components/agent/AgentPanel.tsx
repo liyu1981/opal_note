@@ -1,23 +1,23 @@
 import { ReAgent } from "@liyu1981/reagent";
 
 import {
+  AgentUnlockDialog,
   OPALNOTE_HOST_PROVIDERS,
   useOpalNoteAgentProvider,
-} from "./opalnoteProvider";
+} from "./AgentProviderCard";
 
 /**
  * In-panel ReAgent chat.
  *
- * The agent loop runs entirely in the browser (pi-agent-core / pi-ai) and
- * conversations stay in IndexedDB under the `opalnote` storage prefix. Models
- * come from two places: ReAgent's own OpenRouter/local-endpoint configuration,
- * and the OpalNote provider, which proxies through the Rust server so the
- * upstream credential never reaches the browser.
+ * The agent loop runs in the browser and conversations stay in IndexedDB under
+ * the `opalnote` storage prefix. Models come from the OpalNote provider, which
+ * proxies through the Rust server (the upstream key is stored encrypted), or
+ * from ReAgent's own browser-side providers when the user prefers those.
  */
 export function AgentPanel() {
   useOpalNoteAgentProvider();
   return (
-    <div className="agent-surface flex h-full min-h-0 flex-col">
+    <div className="agent-surface relative flex h-full min-h-0 flex-col">
       <ReAgent
         surface="solid"
         theme="light"
@@ -25,6 +25,7 @@ export function AgentPanel() {
         hostProviders={OPALNOTE_HOST_PROVIDERS}
         className="h-full"
       />
+      <AgentUnlockDialog />
     </div>
   );
 }

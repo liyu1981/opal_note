@@ -145,20 +145,6 @@ pub struct ServeArgs {
     /// rewrites the Host header.
     #[arg(long = "csp-host", value_name = "HOST")]
     pub csp_hosts: Vec<String>,
-
-    /// OpenAI-compatible base URL the in-app agent proxies to, e.g.
-    /// `https://openrouter.ai/api/v1`. Unset disables the OpalNote provider.
-    #[arg(long = "agent-base-url", value_name = "URL")]
-    pub agent_base_url: Option<String>,
-
-    /// Upstream API key for the agent proxy. Stays on the server; the browser
-    /// never sees it.
-    #[arg(long = "agent-api-key", value_name = "KEY")]
-    pub agent_api_key: Option<String>,
-
-    /// Model id offered by the OpalNote agent provider (repeatable).
-    #[arg(long = "agent-model", value_name = "MODEL")]
-    pub agent_models: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,12 +162,6 @@ pub struct ResolvedServeArgs {
     pub dev_cors: bool,
     /// Hosts (optionally with port) added to the viewer CSP sources.
     pub csp_hosts: Vec<String>,
-    /// Upstream model endpoint, when the agent proxy is enabled.
-    pub agent_base_url: Option<String>,
-    /// Upstream credential for that endpoint.
-    pub agent_api_key: Option<String>,
-    /// Model ids the OpalNote agent provider advertises.
-    pub agent_models: Vec<String>,
 }
 
 impl ResolvedServeArgs {
@@ -233,12 +213,6 @@ struct FileConfig {
     dev_cors: Option<bool>,
     #[serde(alias = "OPALNOTE_CSP_HOSTS")]
     csp_hosts: Option<Vec<String>>,
-    #[serde(alias = "OPALNOTE_AGENT_BASE_URL")]
-    agent_base_url: Option<String>,
-    #[serde(alias = "OPALNOTE_AGENT_API_KEY")]
-    agent_api_key: Option<String>,
-    #[serde(alias = "OPALNOTE_AGENT_MODELS")]
-    agent_models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -257,9 +231,6 @@ struct EnvConfig {
     tls_key: Option<PathBuf>,
     dev_cors: Option<bool>,
     csp_hosts: Option<Vec<String>>,
-    agent_base_url: Option<String>,
-    agent_api_key: Option<String>,
-    agent_models: Option<Vec<String>>,
 }
 
 fn default_update_dir() -> PathBuf {
@@ -378,45 +349,8 @@ impl ServeArgs {
                     file.csp_hosts.unwrap_or_default()
                 }
             },
-            agent_base_url: {
-                let value = self
-                    .agent_base_url
-                    .or(env.agent_base_url)
-                    .or(file.agent_base_url)
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty());
-                value
-            },
-            agent_api_key: self
-                .agent_api_key
-                .or(env.agent_api_key)
-                .or(file.agent_api_key),
-            agent_models: {
-                let from_cli: Vec<String> = self
-                    .agent_models
-                    .into_iter()
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty())
-                    .collect();
-                if !from_cli.is_empty() {
-                    from_cli
-                } else if let Some(values) = env.agent_models {
-                    values
-                } else {
-                    file.agent_models.unwrap_or_default()
-                }
-            },
         })
     }
-}
-
-/// Split a comma-separated env list (`a, b ,c`) into trimmed, non-empty parts.
-fn split_list(value: String) -> Vec<String> {
-    value
-        .split(',')
-        .map(|part| part.trim().to_string())
-        .filter(|part| !part.is_empty())
-        .collect()
 }
 
 impl EnvConfig {
@@ -435,9 +369,6 @@ impl EnvConfig {
             tls_cert: env::var_os("OPALNOTE_TLS_CERT").map(PathBuf::from),
             tls_key: env::var_os("OPALNOTE_TLS_KEY").map(PathBuf::from),
             dev_cors: env_bool("OPALNOTE_DEV_CORS")?,
-            agent_base_url: env::var("OPALNOTE_AGENT_BASE_URL").ok(),
-            agent_api_key: env::var("OPALNOTE_AGENT_API_KEY").ok(),
-            agent_models: env::var("OPALNOTE_AGENT_MODELS").ok().map(split_list),
             csp_hosts: env::var("OPALNOTE_CSP_HOSTS").ok().map(|value| {
                 value
                     .split(',')
@@ -627,9 +558,6 @@ fn default_config_value() -> Value {
         Value::String(DEFAULT_TLS_KEY.to_string()),
     );
     table.insert("dev_cors".to_string(), Value::Boolean(false));
-    table.insert("agent_base_url".to_string(), Value::String(String::new()));
-    table.insert("agent_api_key".to_string(), Value::String(String::new()));
-    table.insert("agent_models".to_string(), Value::Array(Vec::new()));
     Value::Table(table)
 }
 

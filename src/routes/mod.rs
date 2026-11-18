@@ -12,7 +12,7 @@ pub mod trash;
 
 use anyhow::anyhow;
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{middleware, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -41,6 +41,10 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
         .route("/stats", get(health::stats))
         .route("/reindex", post(health::reindex))
         .route("/agent", get(agent::info))
+        .route(
+            "/agent/config",
+            put(agent::put_config).delete(agent::delete_config),
+        )
         .route(
             "/agent/v1/{*path}",
             get(agent::proxy)

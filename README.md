@@ -144,9 +144,6 @@ The flags that matter most:
 | `--no-tls` | `OPALNOTE_NO_TLS` | `false` | Serve plain HTTP |
 | `--tls-cert` / `--tls-key` | `OPALNOTE_TLS_CERT` / `_KEY` | `certs/localhost*.pem` | HTTPS certificate |
 | `--update-channel` | `OPALNOTE_UPDATE_CHANNEL` | `release` | `release` or `dev` for `opalnote update` |
-| `--agent-base-url` | `OPALNOTE_AGENT_BASE_URL` | _(unset)_ | OpenAI-compatible endpoint the agent proxies to |
-| `--agent-api-key` | `OPALNOTE_AGENT_API_KEY` | _(unset)_ | Upstream key, kept on the server |
-| `--agent-model` | `OPALNOTE_AGENT_MODELS` | _(empty)_ | Model ids to offer (repeatable; empty reads `/models`) |
 
 `opalnote config` writes a default file, `opalnote config --upgrade` adds new
 keys without touching your values, and `opalnote install-service` writes a
@@ -183,25 +180,21 @@ files. Full checklist:
 
 ### Agent models
 
-Give the built-in agent a model endpoint and it becomes one more provider in the
-panel — the browser never sees the key:
+The right-panel agent can use an OpenAI-compatible endpoint that OpalNote itself
+relays — OpenRouter, a gateway, or a local server (Ollama, LM Studio, vLLM):
 
-```bash
-opalnote serve --agent-base-url https://openrouter.ai/api/v1 \
-  --agent-api-key sk-or-… --agent-model openai/gpt-4o-mini
-```
+1. Settings → Agent → Model → **OpalNote**: enter the base URL (e.g.
+   `https://openrouter.ai/api/v1`, or `http://localhost:11434/v1` with no key).
+2. Enter the API key and an **encryption password**. The key is encrypted in the
+   browser with a key derived from that password; the server stores only the
+   ciphertext and never sees the password.
+3. Pick an unlock window (15 minutes, custom, 24 hours, or until the key
+   changes). While locked the provider keeps its models listed but every request
+   asks for the password first.
 
-or in the config file:
-
-```toml
-agent_base_url = "https://openrouter.ai/api/v1"
-agent_api_key = "sk-or-…"
-agent_models = ["openai/gpt-4o-mini"]
-```
-
-The same works for a local server (`http://localhost:11434/v1`, no key) or any
-OpenAI-compatible gateway. The panel shows the connection status under Settings
-→ Agent → Model, with Connect/Disconnect. Details:
+Because the password and the key stay in the browser, nothing is configured
+through the config file or environment variables, and a stolen `data/` directory
+does not expose the upstream credential. Details:
 [agent provider](doc/architecture.md#agent-provider).
 
 ### Keeping a server up to date

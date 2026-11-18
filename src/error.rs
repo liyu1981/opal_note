@@ -28,6 +28,11 @@ pub enum AppError {
     #[error("{0}")]
     Query(String),
 
+    /// The stored agent credential could not be decrypted with the key the
+    /// client supplied: missing, wrong password, or the envelope was replaced.
+    #[error("{0}")]
+    AgentLocked(String),
+
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -50,6 +55,7 @@ impl AppError {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Query(_) => (StatusCode::BAD_REQUEST, "query_error"),
+            Self::AgentLocked(_) => (StatusCode::UNAUTHORIZED, "agent_locked"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         }
     }
@@ -65,6 +71,15 @@ impl IntoResponse for AppError {
             }
             other => other.to_string(),
         };
+
+        if matches!(self, Self::AgentLocked(_)) {
+            // Not a bearer challenge: the session is fine, the provider is locked.
+            return (
+                status,
+                Json(json!({ "error": { "code": code, "message": message } })),
+            )
+                .into_response();
+        }
 
         if status == StatusCode::UNAUTHORIZED {
             return (

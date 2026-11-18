@@ -59,9 +59,19 @@ Consequences of the decision:
   own relation DDL in `src/store/queries.rs`, touched only through
   `src/system_db.rs`, never by the note sync engine.
 - **No plaintext secrets.** The agent API key is stored as a versioned envelope
-  (`v`, `kdf`, `salt`, nonce, ciphertext) produced in the browser with a
-  user-supplied password; the server only decrypts it per request, in memory. The
-  base URL and model list are configuration, not secrets, and stay readable.
+  (`v`, `kdf`, `iterations`, `salt`, `nonce`, `ciphertext`) produced in the
+  browser with a user-supplied password: PBKDF2-SHA256 at 600 000 iterations
+  derives the AES-256-GCM key. The server never runs the KDF and only decrypts
+  per request, in memory. The base URL and model list are configuration, not
+  secrets, and stay readable.
+- **The UI is the only writer.** There is no config-file, environment or CLI
+  route for the agent credential; provisioning a server means opening Settings →
+  Agent → Model once.
+- **Unlock windows are browser state.** 15 minutes, custom, 24 hours or until the
+  key changes decide how long the tab keeps the derived key (memory,
+  `sessionStorage`, `localStorage`). The server holds no unlock state, so a
+  restart never locks anyone out and a lock only prevents new requests from that
+  tab until the password is entered again.
 - **File mode.** `opalnote.db` is created `0600` where the platform supports it,
   next to the existing data directory.
 

@@ -289,16 +289,26 @@ web/
   bytes with `no-store` and keep the asset route's `no-cache` for editable text
   assets — a stale read would poison the content-keyed cache. The same PNG is
   the asset page's PNG export.
+- The agent's OpalNote provider keeps the upstream credential **encrypted in
+  `opalnote.db`** (`agent_config`): the browser derives a key from the user's
+  password (PBKDF2-SHA256), encrypts the API key with AES-256-GCM, and uploads
+  only the envelope; each request carries the derived key in
+  `x-opalnote-agent-key` and the server decrypts for that one call (`src/agent.rs`,
+  `src/routes/agent.rs`). Missing/wrong key → `401 agent_locked`. The unlock
+  window is browser-side (memory/`sessionStorage`/`localStorage`), never server
+  state, and locking keeps the provider listed so the next request can prompt.
+  There is deliberately **no** config-file, env or CLI way to set the agent key —
+  the UI is the only writer.
 - The agent's OpalNote provider is a **server proxy**, not a browser credential:
   `GET /api/agent` reports `{configured, models}` and
   `GET|POST /api/agent/v1/{path}` forwards only `models`, `chat/completions`,
   `responses`, `messages` and `messages/count_tokens` (`src/agent.rs`) to
-  `agent_base_url`, replacing the auth header with the server key and relaying
-  the stream chunk by chunk. Never widen that allow-list into a general
-  forwarder or let the client choose the upstream. The client side is a ReAgent
-  host provider (`web/src/components/agent/opalnoteProvider.tsx`) whose config is
-  memory-only and rebuilt from `GET /api/agent` on mount; the cookie session is
-  the gate, and `opalnote.agent.connected` only remembers an opt-out.
+  the stored `agent_config` row, replacing the auth header with the decrypted
+  upstream key and relaying the stream chunk by chunk. Never widen that
+  allow-list into a general forwarder or let the client choose the upstream. The
+  client side is a ReAgent host provider (`web/src/components/agent/`) whose
+  `fetch` hook attaches the derived key and turns `401 agent_locked` into the
+  password prompt.
 - ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
   `main`, linked as a pnpm workspace package (`workspace:*`), because its
   published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
