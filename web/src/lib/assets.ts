@@ -10,19 +10,22 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export async function downloadAsset(
-  notebookId: string,
-  asset: AssetEntry,
-): Promise<void> {
-  const blob = await api.getAssetBlob(notebookId, asset.path);
+export function downloadBlob(name: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = asset.name;
+  anchor.download = name;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadAsset(
+  notebookId: string,
+  asset: AssetEntry,
+): Promise<void> {
+  downloadBlob(asset.name, await api.getAssetBlob(notebookId, asset.path));
 }
 
 const IMAGE_EXTENSIONS = new Set([

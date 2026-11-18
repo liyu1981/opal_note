@@ -1,7 +1,7 @@
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::multipart::Field;
 use axum::extract::{Multipart, Path, Query, State};
-use axum::http::{header, HeaderValue, Response, StatusCode};
+use axum::http::{header, HeaderName, HeaderValue, Response, StatusCode};
 use axum::Json;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
@@ -11,11 +11,16 @@ use crate::routes::{clamp_limit, clamp_offset, db_call};
 use crate::state::AppState;
 use crate::store::files::{self, EDITABLE_ASSET_EXTENSIONS};
 use crate::store::model::{AssetEntry, AssetInfo, AssetList};
-use crate::store::{AssetListOptions, AssetRename, AssetUpdate};
+use crate::store::{AssetListOptions, AssetRename, AssetUpdate, ThumbnailWrite};
 
 fn default_limit() -> usize {
     24
 }
+
+/// Diagram thumbnails are small PNGs; anything bigger is a mistake.
+const MAX_THUMBNAIL_BYTES: usize = 4 * 1024 * 1024;
+
+const THUMBNAIL_HASH_HEADER: &str = "x-opalnote-asset-hash";
 
 /// Asset kinds the upload endpoint accepts: images, audio, video, documents
 /// (pdf/office/text) and common archives. Anything else is rejected so the
@@ -335,8 +340,9 @@ pub async fn content(
     Path((notebook_id, path)): Path<(String, String)>,
 ) -> ApiResult<Response<Body>> {
     let store = state.store.clone();
+    let requested = path.clone();
     let asset = db_call(
-        move || store.read_asset(&notebook_id, &path),
+        move || store.read_asset(&notebook_id, &requested),
         AppError::Internal,
     )
     .await?
@@ -349,9 +355,16 @@ pub async fn content(
         HeaderValue::from_str(&mime)
             .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
+    // Edited text assets (diagrams) drive thumbnail rendering, so they must
+    // never be re-served from a stale HTTP cache.
+    let cache = if files::is_viewer_asset(&path) {
+        "private, no-cache"
+    } else {
+        "private, max-age=3600"
+    };
     headers.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static("private, max-age=3600"),
+        HeaderValue::from_static(cache),
     );
     // Assets are user files served from the app's own origin: never let the
     // browser sniff a different type, and sandbox documents (SVG) so inline
@@ -406,5 +419,93 @@ pub async fn delete(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(AppError::not_found("asset not found"))
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ThumbnailQuery {
+    path: String,
+}
+
+#[derive(Deserialize)]
+pub struct ThumbnailWriteQuery {
+    path: String,
+    hash: String,
+}
+
+/// A PNG rendered from the asset by its viewer plugin, or the digest it must
+/// be rendered from. The header is sent on both answers so a cold cache tells
+/// the client which content the thumbnail belongs to.
+pub async fn thumbnail(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<ThumbnailQuery>,
+) -> ApiResult<Response<Body>> {
+    let store = state.store.clone();
+    let path = query.path;
+    let view = db_call(
+        move || store.read_thumbnail(&notebook_id, &path),
+        AppError::Internal,
+    )
+    .await?
+    .ok_or_else(|| AppError::not_found("asset not found"))?;
+
+    let mut response = match view.png {
+        Some(png) => {
+            let mut response = Response::new(Body::from(png));
+            response
+                .headers_mut()
+                .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+            response.headers_mut().insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, max-age=0, must-revalidate"),
+            );
+            response
+        }
+        None => {
+            let mut response = Response::new(Body::empty());
+            *response.status_mut() = StatusCode::NOT_FOUND;
+            response
+        }
+    };
+    let hash = HeaderValue::from_str(&view.hash)
+        .map_err(|_| AppError::Internal(anyhow::anyhow!("invalid digest")))?;
+    response
+        .headers_mut()
+        .insert(HeaderName::from_static(THUMBNAIL_HASH_HEADER), hash);
+    response.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok(response)
+}
+
+pub async fn put_thumbnail(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<ThumbnailWriteQuery>,
+    body: Bytes,
+) -> ApiResult<StatusCode> {
+    if body.len() > MAX_THUMBNAIL_BYTES {
+        return Err(AppError::PayloadTooLarge(
+            "thumbnail is too large".to_string(),
+        ));
+    }
+    if !body.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Err(AppError::bad_request("thumbnail must be a PNG"));
+    }
+    let store = state.store.clone();
+    let ThumbnailWriteQuery { path, hash } = query;
+    let outcome = db_call(
+        move || store.write_thumbnail(&notebook_id, &path, &hash, &body),
+        AppError::Internal,
+    )
+    .await?;
+    match outcome {
+        ThumbnailWrite::Stored => Ok(StatusCode::NO_CONTENT),
+        ThumbnailWrite::Stale => Err(AppError::Conflict(
+            "the asset changed while the thumbnail was rendered".to_string(),
+        )),
+        ThumbnailWrite::NotFound => Err(AppError::not_found("asset not found")),
     }
 }

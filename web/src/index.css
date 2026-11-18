@@ -706,6 +706,7 @@ select:focus-visible {
   margin: 0.3rem 0;
   max-width: 100%;
   vertical-align: middle;
+  cursor: zoom-in;
 }
 
 .cm-live-image img {

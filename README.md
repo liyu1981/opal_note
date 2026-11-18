@@ -21,7 +21,8 @@ next read. Delete the index at any time and it comes back.
   Includes KaTeX math (`$…$`, `$$…$$`), Mermaid and Excalidraw diagrams,
   `[[` page completion, a `#` tag picker, a `/` command menu, bare-URL
   autolinking, syntax-highlighted code with copy buttons and autosave that
-  never interrupts typing.
+  never interrupts typing. Click an image to enlarge it in a zoomable
+  lightbox with a full-screen focus mode (Alt-click edits its source).
 - **Journals** — an editable, newest-first feed of journal cards with
   per-card saving and arrow-key navigation between days.
 - **Pages, tags and todos** — an all-pages table across pages and journals with
@@ -33,7 +34,8 @@ next read. Delete the index at any time and it comes back.
   panel, with tag nodes, drag, zoom and a Logseq-style ring for isolated pages.
 - **Assets** — upload images, audio, video, PDFs, office files and archives
   (4 GB default, configurable), browse and rename them, and jump from a file to
-  every page that references it.
+  every page that references it. Diagrams get rendered previews in the grid and
+  on their detail page, and can be exported as PNG.
 - **Search and commands** — one omni bar: text searches the full-text index,
   `#` browses tags, `>` runs commands. Keyboard-first, with rebindable leader
   chords and a command palette.

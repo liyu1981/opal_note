@@ -3,6 +3,8 @@
 // only exchanges scene JSON over postMessage — this frame has no API access.
 import { createRoot, type Root } from "react-dom/client";
 
+import { svgToPng } from "../../../../shared/svgThumbnail";
+
 // The package's export map gates CSS behind the `production`/`development`
 // conditions, so the viewer build resolves this with conditions:
 // ["production", "browser"].
@@ -52,6 +54,7 @@ type ViewerInit = {
   token?: string;
   mode?: "read" | "edit";
   content?: string;
+  thumbnail?: boolean;
 };
 
 type Scene = {
@@ -65,10 +68,12 @@ if (!root) throw new Error("viewer root is missing");
 
 let token = "";
 let mode: "read" | "edit" = "read";
+// A thumbnail frame renders once and answers with a PNG, then stays idle.
+let thumbnailPending = false;
 let reactRoot: Root | null = null;
 
-function post(message: Record<string, unknown>) {
-  window.parent.postMessage({ ...message, token }, "*");
+function post(message: Record<string, unknown>, transfer: Transferable[] = []) {
+  window.parent.postMessage({ ...message, token }, "*", transfer);
 }
 
 function parseScene(content: string): Scene {
@@ -116,6 +121,16 @@ async function renderRead(content: string) {
     appState: { ...(scene.appState ?? {}), exportWithDarkMode: false } as never,
     files: (scene.files ?? {}) as never,
   });
+  if (thumbnailPending) {
+    thumbnailPending = false;
+    void svgToPng(svg.outerHTML).then(
+      (png) => {
+        if (png) post({ type: "opalnote-viewer/thumbnail", ...png }, [png.png]);
+        else reportError(new Error("Could not rasterize the drawing"));
+      },
+      (error) => reportError(error),
+    );
+  }
   root.innerHTML = "";
   root.appendChild(svg);
   window.requestAnimationFrame(() => {
@@ -210,6 +225,7 @@ window.addEventListener("message", (event) => {
   if (data.type === "opalnote-viewer/init") {
     token = typeof data.token === "string" ? data.token : "";
     mode = data.mode === "edit" ? "edit" : "read";
+    thumbnailPending = data.thumbnail === true;
     render(typeof data.content === "string" ? data.content : "");
     return;
   }

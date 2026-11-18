@@ -43,6 +43,7 @@ import { settingsAtom } from "../../lib/settings";
 import {
   assetRevisionAtom,
   diagramLightboxAtom,
+  imageLightboxAtom,
   tagsAtom,
 } from "../../state/atoms";
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
@@ -135,6 +136,12 @@ export const LiveMarkdownEditor = forwardRef<
   const viewerPlugins = useAtomValue(viewerPluginsAtom);
   const viewerMap = viewerByExtension(viewerPlugins);
   const setDiagramLightbox = useSetAtom(diagramLightboxAtom);
+  const setImageLightbox = useSetAtom(imageLightboxAtom);
+  const onOpenImageRef = useRef<
+    (target: { path: string | null; src: string | null; alt: string }) => void
+  >(() => {});
+  onOpenImageRef.current = (target) =>
+    setImageLightbox({ notebookId, ...target });
   const assetRevision = useAtomValue(assetRevisionAtom);
   const onOpenViewerRef = useRef<
     ((assetPath: string, extension: string) => void) | null
@@ -174,6 +181,7 @@ export const LiveMarkdownEditor = forwardRef<
     viewerFor: () => null,
     onOpenViewer: (assetPath, extension) =>
       onOpenViewerRef.current?.(assetPath, extension),
+    onOpenImage: (target) => onOpenImageRef.current(target),
     assetRevision: 0,
     readOnly,
     notePath,
@@ -199,6 +207,7 @@ export const LiveMarkdownEditor = forwardRef<
     onOpenViewer: (assetPath, extension) => {
       onOpenViewerRef.current?.(assetPath, extension);
     },
+    onOpenImage: (target) => onOpenImageRef.current(target),
     assetRevision,
   };
 

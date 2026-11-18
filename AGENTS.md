@@ -280,6 +280,19 @@ web/
   `#tag ` (no extra space before punctuation) and stays out of fenced/inline
   code, links and `[[Page#Heading]]` targets; a bare `#` at line start is a
   markdown heading, so there it waits for the first tag character.
+- Diagram thumbnails are derived state: `data/index/thumbs/<notebook>/<sha256>.png`,
+  keyed by asset content, swept by `POST /api/reindex`. The client renders on a
+  cache miss through an off-screen viewer frame (`thumbnail: true` →
+  `opalnote-viewer/thumbnail { png }`), so keep thumbnail renders fetching asset
+  bytes with `no-store` and keep the asset route's `no-cache` for editable text
+  assets — a stale read would poison the content-keyed cache. The same PNG is
+  the asset page's PNG export.
+- Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`
+  (backdrop, header, focus-mode toggle, Escape: exits focus first, then
+  closes). `DiagramLightbox` and `ImageLightbox` are thin extensions of it —
+  add new lightboxes the same way instead of copying the shell. Editor images
+  open the image lightbox on click; Alt/Option-click keeps the caret-in-source
+  behaviour so an image-only line stays editable.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
   CodeMirror completion source after wikilinks. They trigger only when `/` is
   the first non-whitespace character of a source line and are suppressed inside

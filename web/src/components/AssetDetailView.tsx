@@ -6,6 +6,7 @@ import type { AssetInfo } from "../api/types";
 import {
   assetKindLabel,
   downloadAsset,
+  downloadBlob,
   formatBytes,
   isRichContentPath,
 } from "../lib/assets";
@@ -15,6 +16,8 @@ import { useAppNavigate } from "../lib/appNavigation";
 import { extensionOfPath } from "../plugins/viewers";
 import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAssetBlob } from "../lib/useAssetBlob";
+import { useDiagramThumbnail } from "../lib/useDiagramThumbnail";
+import { ImageZoomPane } from "./media/ImageZoomPane";
 import {
   activeNotebookIdAtom,
   diagramLightboxAtom,
@@ -40,6 +43,7 @@ export function AssetDetailView({ path }: { path: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const diagram = useDiagramThumbnail(notebookId, info?.asset ?? null);
 
   useViewAutoFocus("asset", () => mainRef.current?.focus());
 
@@ -166,6 +170,26 @@ export function AssetDetailView({ path }: { path: string }) {
                 <IconDownload className="h-3.5 w-3.5" />
                 Download
               </button>
+              {isRichContentPath(info.asset.path) && (
+                <button
+                  type="button"
+                  disabled={!diagram.blob}
+                  onClick={() => {
+                    if (!diagram.blob) return;
+                    const stem = info.asset.name.replace(/\.[^.]+$/u, "");
+                    downloadBlob(`${stem}.png`, diagram.blob);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-sans text-[14px] text-muted transition hover:bg-white hover:text-ink disabled:cursor-default disabled:opacity-40"
+                  title={
+                    diagram.blob
+                      ? "Download a PNG of the rendered diagram"
+                      : "The PNG preview is still rendering"
+                  }
+                >
+                  <IconDownload className="h-3.5 w-3.5" />
+                  PNG
+                </button>
+              )}
               {!locked && (
                 <>
                   {isRichContentPath(info.asset.path) && (
@@ -215,7 +239,12 @@ export function AssetDetailView({ path }: { path: string }) {
         ) : (
           <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <section className="min-w-0 rounded-xl border border-line bg-paper p-3">
-              <AssetPreview notebookId={notebookId} info={info} />
+              <AssetPreview
+                notebookId={notebookId}
+                info={info}
+                diagramUrl={diagram.url}
+                diagramError={diagram.error}
+              />
             </section>
 
             <aside className="space-y-5">
@@ -283,9 +312,13 @@ export function AssetDetailView({ path }: { path: string }) {
 function AssetPreview({
   notebookId,
   info,
+  diagramUrl,
+  diagramError,
 }: {
   notebookId: string;
   info: AssetInfo;
+  diagramUrl: string | null;
+  diagramError: string | null;
 }) {
   const previewable =
     info.asset.kind === "image" ||
@@ -296,6 +329,23 @@ function AssetPreview({
     info.asset.path,
     previewable,
   );
+
+  if (isRichContentPath(info.asset.path)) {
+    if (diagramUrl) {
+      return (
+        <img
+          src={diagramUrl}
+          alt={`${info.asset.name} preview`}
+          className="mx-auto max-h-[70vh] w-full rounded-lg bg-white object-contain"
+        />
+      );
+    }
+    return (
+      <div className="flex min-h-80 items-center justify-center rounded-lg border border-dashed border-line bg-white/30 p-8 text-center font-sans text-[14px] text-muted">
+        {diagramError ?? "Rendering preview…"}
+      </div>
+    );
+  }
 
   if (!previewable) {
     return (
@@ -334,7 +384,13 @@ function AssetPreview({
   }
 
   if (info.asset.kind === "image") {
-    return <ImageAssetViewer url={url} name={info.asset.name} />;
+    return (
+      <ImageZoomPane
+        url={url}
+        alt={info.asset.name}
+        className="h-[min(70vh,44rem)] rounded-lg bg-[#1b1e1f]"
+      />
+    );
   }
   if (info.asset.kind === "video") {
     return (
@@ -351,103 +407,6 @@ function AssetPreview({
       controls
       className="mx-auto my-12 w-full max-w-2xl"
     />
-  );
-}
-
-function ImageAssetViewer({ url, name }: { url: string; name: string }) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    x: number;
-    y: number;
-  } | null>(null);
-
-  function zoom(next: number) {
-    setScale(Math.min(6, Math.max(0.4, next)));
-  }
-
-  return (
-    <div
-      className="relative h-[min(70vh,44rem)] touch-none overflow-hidden rounded-lg bg-[#1b1e1f]"
-      onWheel={(event) => {
-        event.preventDefault();
-        zoom(scale + (event.deltaY < 0 ? 0.15 : -0.15));
-      }}
-      onPointerDown={(event) => {
-        dragRef.current = {
-          startX: event.clientX,
-          startY: event.clientY,
-          x: offset.x,
-          y: offset.y,
-        };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        const drag = dragRef.current;
-        if (!drag) return;
-        setOffset({
-          x: drag.x + event.clientX - drag.startX,
-          y: drag.y + event.clientY - drag.startY,
-        });
-      }}
-      onPointerUp={(event) => {
-        dragRef.current = null;
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }}
-      onPointerCancel={() => {
-        dragRef.current = null;
-      }}
-    >
-      <div
-        className="absolute inset-0 flex cursor-grab items-center justify-center active:cursor-grabbing"
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-        }}
-      >
-        <img
-          src={url}
-          alt={name}
-          draggable={false}
-          className="max-h-full max-w-full select-none object-contain"
-        />
-      </div>
-      <div
-        className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md border border-white/20 bg-black/40 p-1 backdrop-blur"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={() => zoom(scale - 0.2)}
-          className="rounded px-2 py-1 font-mono text-[14px] text-white transition hover:bg-white/15"
-          aria-label="Zoom out"
-        >
-          −
-        </button>
-        <span className="min-w-12 text-center font-mono text-[12px] text-white/80">
-          {Math.round(scale * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={() => zoom(scale + 0.2)}
-          className="rounded px-2 py-1 font-mono text-[14px] text-white transition hover:bg-white/15"
-          aria-label="Zoom in"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setScale(1);
-            setOffset({ x: 0, y: 0 });
-          }}
-          className="rounded px-2 py-1 font-mono text-[12px] text-white/80 transition hover:bg-white/15 hover:text-white"
-        >
-          Reset
-        </button>
-      </div>
-    </div>
   );
 }
 

@@ -19,6 +19,7 @@ use std::sync::{Mutex, MutexGuard};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
 use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, ScriptRunOptions};
+use sha2::{Digest, Sha256};
 
 use self::markdown::{
     extract_tasks, extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page,
@@ -204,6 +205,34 @@ pub struct Store {
     notebooks_dir: PathBuf,
     fs_lock: Mutex<()>,
     default_query_timeout_secs: f64,
+}
+
+/// Cached diagram thumbnail and the asset digest it was rendered from.
+pub struct ThumbnailView {
+    pub hash: String,
+    pub png: Option<Vec<u8>>,
+}
+
+pub enum ThumbnailWrite {
+    Stored,
+    /// The asset changed after the thumbnail was rendered.
+    Stale,
+    NotFound,
+}
+
+fn remove_dir_files(path: &std::path::Path) -> std::io::Result<usize> {
+    let mut removed = 0;
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            removed += remove_dir_files(&entry.path())?;
+        } else {
+            std::fs::remove_file(entry.path())?;
+            removed += 1;
+        }
+    }
+    let _ = std::fs::remove_dir(path);
+    Ok(removed)
 }
 
 struct NotebookRow {
@@ -1812,6 +1841,106 @@ impl Store {
         Ok(Some((fs::read(absolute)?, mime)))
     }
 
+    /// Content digest of a viewer asset; the thumbnail cache is keyed by it so
+    /// an edited (or externally changed) diagram invalidates its thumbnail.
+    pub fn asset_digest(&self, notebook_id: &str, path: &str) -> Result<Option<String>> {
+        if !files::is_viewer_asset(path) {
+            return Ok(None);
+        }
+        let notebook = self.notebook_dir(notebook_id)?;
+        if !notebook.is_dir() {
+            return Ok(None);
+        }
+        let absolute = match files::resolve_asset_path(&notebook, path) {
+            Ok(path) => path,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+        let bytes = fs::read(absolute)?;
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        Ok(Some(format!("{:x}", hasher.finalize())))
+    }
+
+    fn thumbnail_path(&self, notebook_id: &str, hash: &str) -> PathBuf {
+        files::thumbnails_dir(&self.data_dir)
+            .join(notebook_id)
+            .join(format!("{hash}.png"))
+    }
+
+    /// Cached thumbnail plus the digest it belongs to, so a client can render
+    /// and store one when the cache is cold.
+    pub fn read_thumbnail(
+        &self,
+        notebook_id: &str,
+        path: &str,
+    ) -> Result<Option<ThumbnailView>> {
+        let Some(hash) = self.asset_digest(notebook_id, path)? else {
+            return Ok(None);
+        };
+        let png = fs::read(self.thumbnail_path(notebook_id, &hash)).ok();
+        Ok(Some(ThumbnailView { hash, png }))
+    }
+
+    pub fn write_thumbnail(
+        &self,
+        notebook_id: &str,
+        path: &str,
+        expected_hash: &str,
+        png: &[u8],
+    ) -> Result<ThumbnailWrite> {
+        let Some(hash) = self.asset_digest(notebook_id, path)? else {
+            return Ok(ThumbnailWrite::NotFound);
+        };
+        if hash != expected_hash {
+            // The diagram changed between the render and the upload.
+            return Ok(ThumbnailWrite::Stale);
+        }
+        files::write_atomic_bytes(&self.thumbnail_path(notebook_id, &hash), png)?;
+        Ok(ThumbnailWrite::Stored)
+    }
+
+    /// Drop thumbnails whose diagram is gone or has changed. Runs on reindex,
+    /// where a full scan is already happening.
+    pub fn purge_thumbnails(&self) -> Result<usize> {
+        let root = files::thumbnails_dir(&self.data_dir);
+        if !root.is_dir() {
+            return Ok(0);
+        }
+        let mut removed = 0;
+        for entry in fs::read_dir(&root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let notebook_id = entry.file_name().to_string_lossy().to_string();
+            let notebook = self.notebook_dir(&notebook_id)?;
+            if !notebook.is_dir() {
+                removed += remove_dir_files(&entry.path())?;
+                continue;
+            }
+            let mut live = HashSet::new();
+            for asset in files::list_asset_files(&notebook)? {
+                if !files::is_viewer_asset(&asset.rel) {
+                    continue;
+                }
+                if let Some(hash) = self.asset_digest(&notebook_id, &asset.rel)? {
+                    live.insert(format!("{hash}.png"));
+                }
+            }
+            for file in fs::read_dir(entry.path())? {
+                let file = file?;
+                let name = file.file_name().to_string_lossy().to_string();
+                if live.contains(&name) {
+                    continue;
+                }
+                fs::remove_file(file.path())?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
     pub fn rename_asset(&self, notebook_id: &str, path: &str, name: &str) -> Result<AssetRename> {
         let _guard = self.lock_fs();
         self.sync_all_locked(false)?;
@@ -2481,6 +2610,9 @@ impl Store {
     pub fn reindex(&self) -> Result<Stats> {
         let _guard = self.lock_fs();
         self.sync_all_locked(true)?;
+        // A full scan is the natural moment to drop thumbnails whose diagram is
+        // gone or has changed.
+        let _ = self.purge_thumbnails();
         self.stats_inner()
     }
 
@@ -3011,6 +3143,58 @@ mod tests {
             .join("pages/Alpha.md")
             .exists());
         assert!(dir.path().join(".trash").is_dir());
+    }
+
+    #[test]
+    fn thumbnails_are_keyed_by_content_and_purged_when_stale() {
+        let (dir, store) = store();
+        let notebook = store.create_notebook("Thumbs", "").unwrap().unwrap();
+        let asset = store
+            .write_asset(&notebook.id, "Flow", "mermaid", None, "graph TD\nA-->B")
+            .unwrap();
+        let path = asset.path;
+        assert_eq!(path, "diagrams/Flow.mermaid");
+
+        // Cold cache: the digest is known, the thumbnail is not.
+        let first = store.read_thumbnail(&notebook.id, &path).unwrap().unwrap();
+        assert!(first.png.is_none());
+        assert_eq!(first.hash.len(), 64);
+
+        assert!(matches!(
+            store
+                .write_thumbnail(&notebook.id, &path, &first.hash, b"not a png")
+                .unwrap(),
+            ThumbnailWrite::Stored
+        ));
+        let cached = store.read_thumbnail(&notebook.id, &path).unwrap().unwrap();
+        assert_eq!(cached.hash, first.hash);
+        assert_eq!(cached.png.as_deref(), Some(&b"not a png"[..]));
+
+        // Rendering from an older digest is rejected instead of stored.
+        assert!(matches!(
+            store
+                .write_thumbnail(&notebook.id, &path, &"0".repeat(64), b"old")
+                .unwrap(),
+            ThumbnailWrite::Stale
+        ));
+
+        // Editing the diagram invalidates the cached thumbnail.
+        store
+            .update_asset(&notebook.id, &path, "graph LR\nA-->C", None)
+            .unwrap();
+        let after = store.read_thumbnail(&notebook.id, &path).unwrap().unwrap();
+        assert_ne!(after.hash, first.hash);
+        assert!(after.png.is_none());
+
+        // Reindex drops the thumbnail that no longer matches the file.
+        store.reindex().unwrap();
+        assert!(!files::thumbnails_dir(dir.path())
+            .join(&notebook.id)
+            .join(format!("{}.png", first.hash))
+            .exists());
+
+        // Non-diagram assets have no thumbnails at all.
+        assert!(store.read_thumbnail(&notebook.id, "photo.png").unwrap().is_none());
     }
 
     #[test]

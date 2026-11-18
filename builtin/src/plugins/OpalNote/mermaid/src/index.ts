@@ -3,12 +3,15 @@
 // content over postMessage; nothing here touches the OpalNote API.
 import { mount, type Mounted } from "pele";
 
+import { svgToPng } from "../../../../shared/svgThumbnail";
+
 type ViewerInit = {
   type: "opalnote-viewer/init";
   token?: string;
   mode?: "read" | "edit";
   content?: string;
   theme?: Record<string, string>;
+  thumbnail?: boolean;
 };
 
 const root = document.getElementById("root");
@@ -17,9 +20,11 @@ if (!root) throw new Error("viewer root is missing");
 let mounted: Mounted | null = null;
 let token = "";
 let mode: "read" | "edit" = "read";
+// A thumbnail frame renders once and answers with a PNG, then stays idle.
+let thumbnailPending = false;
 
-function post(message: Record<string, unknown>) {
-  window.parent.postMessage({ ...message, token }, "*");
+function post(message: Record<string, unknown>, transfer: Transferable[] = []) {
+  window.parent.postMessage({ ...message, token }, "*", transfer);
 }
 
 function applyTheme(theme?: Record<string, string>) {
@@ -59,8 +64,18 @@ function render(content: string) {
     links: false,
     images: false,
     fontFamily,
-    onRender: (result: { width?: number }) => {
+    onRender: (result: { width?: number; svg?: string }) => {
       window.requestAnimationFrame(() => reportSize(result.width ?? 0));
+      if (thumbnailPending) {
+        thumbnailPending = false;
+        void svgToPng(result.svg ?? "").then(
+          (png) => {
+            if (png) post({ type: "opalnote-viewer/thumbnail", ...png }, [png.png]);
+            else reportError(new Error("Could not rasterize the diagram"));
+          },
+          (error) => reportError(error),
+        );
+      }
     },
     onError: reportError,
   };
@@ -79,6 +94,7 @@ window.addEventListener("message", (event) => {
   if (data.type === "opalnote-viewer/init") {
     token = typeof data.token === "string" ? data.token : "";
     mode = data.mode === "edit" ? "edit" : "read";
+    thumbnailPending = data.thumbnail === true;
     applyTheme(data.theme);
     render(typeof data.content === "string" ? data.content : "");
     return;

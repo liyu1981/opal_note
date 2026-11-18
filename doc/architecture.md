@@ -404,6 +404,13 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   `https://…` and `www.…` URLs are recognized and become clickable links. The line under the cursor becomes plain markdown source —
   visible markers, normal text size and weight, no rendered inline styling —
   the way Obsidian live preview does. There is no separate source mode.
+- **Images** enlarge in a lightbox: a plain click on a rendered picture opens
+  it full-window with wheel/button zoom, drag-to-pan, reset and focus mode
+  (`Cmd/Ctrl+Shift+F`, Escape exits focus before closing). Alt/Option-click
+  drops the caret into the source instead, which is the only way to edit a
+  line that contains nothing but an image. The lightbox is built on the shared
+  shell in `web/src/components/lightbox/Lightbox.tsx`, which also provides the
+  frame, header, focus toggle and Escape handling for the diagram lightbox.
 - **Math** is typeset with KaTeX: `$e^{i\pi}+1=0$` inline and `$$…$$` as a
   centered display block (either on one line or as `$$` fences around several
   lines). A formula shows its source while the line or block is being edited,
@@ -434,6 +441,30 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   editor, so focus and the `[[` completion popup survive a save.
 - The backlinks panel is fed by the server's `link` relation, so bidi linking
   stays accurate after external edits.
+
+### Diagram thumbnails
+
+`.mermaid`, `.mmd` and `.excalidraw` assets have no intrinsic pixels, so the
+browser renders their preview and caches it on the server:
+
+- `GET /api/notebooks/{id}/thumbnail?path=` returns a stored PNG, or `404` with
+  an `x-opalnote-asset-hash` header naming the digest the client should render
+  from. `PUT` with `?path=&hash=` stores a PNG (validated signature, 4 MiB cap,
+  409 when the asset changed in the meantime).
+- The cache lives in `data/index/thumbs/<notebook>/<sha256>.png`. It is keyed
+  by asset *content*, so an edited (or externally changed) diagram invalidates
+  its thumbnail by construction, and `POST /api/reindex` sweeps entries whose
+  diagram is gone or has changed. Being derived state it stays inside the
+  disposable index directory.
+- Rendering happens in an off-screen viewer frame: `viewerMount` sets
+  `thumbnail: true`, the plugin rasterizes its own SVG (`exportToSvg` for
+  Excalidraw — which embeds its fonts — and Pele's rendered SVG for Mermaid)
+  with `builtin/src/shared/svgThumbnail.ts`, and answers
+  `opalnote-viewer/thumbnail { png }`. Up to two frames render at once, and the
+  asset bytes are always fetched with `cache: "no-store"` so a stale HTTP cache
+  can never poison the content-keyed cache (the asset route itself answers
+  `no-cache` for editable text assets).
+- The stored PNG doubles as the PNG export on the asset detail page.
 
 ### Workspace layout
 

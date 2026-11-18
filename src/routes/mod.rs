@@ -89,6 +89,12 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
             "/notebooks/{id}/asset",
             get(assets::info).patch(assets::rename),
         )
+        .route(
+            "/notebooks/{id}/thumbnail",
+            get(assets::thumbnail).put(assets::put_thumbnail).layer(
+                DefaultBodyLimit::max(4 * 1024 * 1024),
+            ),
+        )
         .route("/notebooks/{id}/search", get(notes::search))
         .route("/notebooks/{id}/journals", get(notes::journals))
         .route("/notebooks/{id}/tags", get(notebooks::tags))

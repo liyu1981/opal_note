@@ -17,7 +17,8 @@ import {
   readOnlyAtom,
 } from "../../state/atoms";
 import { ViewerFrame } from "../viewers/ViewerFrame";
-import { IconChevron, IconMaximize, IconMinimize, IconX } from "../Icons";
+import { IconChevron } from "../Icons";
+import { Lightbox } from "../lightbox/Lightbox";
 import { SourceEditor } from "./SourceEditor";
 
 type Status = "loading" | "saved" | "dirty" | "saving" | "error";
@@ -115,22 +116,10 @@ function DiagramDialog({
   }, [dirty, onClose]);
 
   useEffect(() => {
+    // Focus toggling and Escape are handled by `Lightbox`; this dialog only
+    // adds its own editing shortcuts.
     function onKeyDown(event: KeyboardEvent) {
       const mod = event.metaKey || event.ctrlKey;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (focusMode) {
-          setFocusMode(false);
-          return;
-        }
-        requestClose();
-        return;
-      }
-      if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setFocusMode((current) => !current);
-        return;
-      }
       if (mod && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void save();
@@ -143,7 +132,7 @@ function DiagramDialog({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focusMode, requestClose, save, setEditorOpen]);
+  }, [save, setEditorOpen]);
 
   const statusLabel =
     status === "loading"
@@ -157,52 +146,20 @@ function DiagramDialog({
             : "Saved";
 
   return (
-    <div
-      className={`fixed inset-0 z-[60] flex items-center justify-center bg-ink/30 backdrop-blur-sm ${
-        focusMode ? "p-0" : "p-2 sm:p-4"
-      }`}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Edit ${info?.asset.name ?? path}`}
-    >
-      <div
-        className={`flex flex-col overflow-hidden border-line bg-canvas shadow-panel ${
-          focusMode
-            ? "h-full w-full border-0"
-            : "h-[min(64rem,96vh)] w-[min(94rem,98vw)] rounded-2xl border"
-        }`}
-      >
-        <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate font-serif text-[18px] font-semibold text-ink">
-              {info?.asset.name ?? path.split("/").pop()}
-            </h2>
-            <p className="mt-0.5 truncate font-mono text-[12px] text-faint">
-              {path}
-              {info ? ` · ${formatBytes(info.asset.size)}` : ""}
-            </p>
-          </div>
-          <span
-            className={`shrink-0 font-mono text-[14px] ${
-              status === "error" ? "text-danger" : "text-faint"
-            }`}
-          >
-            {statusLabel}
-          </span>
-          <button
-            type="button"
-            onClick={() => setFocusMode((current) => !current)}
-            aria-pressed={focusMode}
-            aria-label={focusMode ? "Exit focus mode" : "Focus mode"}
-            title={`${focusMode ? "Exit focus mode" : "Focus mode"} (Cmd/Ctrl+Shift+F)`}
-            className="shrink-0 rounded-md border border-transparent p-1.5 text-muted transition hover:border-line hover:bg-white/60 hover:text-ink"
-          >
-            {focusMode ? (
-              <IconMinimize className="h-4 w-4" />
-            ) : (
-              <IconMaximize className="h-4 w-4" />
-            )}
-          </button>
+    <Lightbox
+      label={`Edit ${info?.asset.name ?? path}`}
+      title={info?.asset.name ?? path.split("/").pop()}
+      subtitle={`assets/${path}${info ? ` · ${formatBytes(info.asset.size)}` : ""}`}
+      status={
+        <span className={status === "error" ? "text-danger" : undefined}>
+          {statusLabel}
+        </span>
+      }
+      focusMode={focusMode}
+      onFocusModeChange={setFocusMode}
+      onClose={requestClose}
+      actions={
+        <>
           {viewer?.viewer.role === "renderer" && (
             <button
               type="button"
@@ -225,62 +182,54 @@ function DiagramDialog({
           >
             Save
           </button>
+        </>
+      }
+    >
+      {error && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-line bg-danger/10 px-4 py-2 font-mono text-[14px] text-danger">
+          <span className="min-w-0 flex-1">{error}</span>
           <button
             type="button"
-            onClick={requestClose}
-            aria-label="Close"
-            className="shrink-0 rounded-md p-1 text-faint transition hover:bg-panel hover:text-ink"
+            onClick={() => void load()}
+            className="shrink-0 rounded-md border border-danger/40 px-2 py-0.5 text-danger transition hover:bg-danger/10"
           >
-            <IconX className="h-4 w-4" />
+            Reload
           </button>
-        </header>
+        </div>
+      )}
 
-        {error && (
-          <div className="flex shrink-0 items-center gap-3 border-b border-line bg-danger/10 px-4 py-2 font-mono text-[14px] text-danger">
-            <span className="min-w-0 flex-1">{error}</span>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="shrink-0 rounded-md border border-danger/40 px-2 py-0.5 text-danger transition hover:bg-danger/10"
-            >
-              Reload
-            </button>
+      <div className="flex min-h-0 flex-1">
+        {editorOpen && viewer?.viewer.role === "renderer" && (
+          <div
+            className={`flex shrink-0 flex-col border-r border-line ${
+              focusMode ? "w-[34%] min-w-[18rem]" : "w-[42%] min-w-[16rem]"
+            }`}
+          >
+            <SourceEditor value={content} onChange={setContent} />
           </div>
         )}
-
-        <div className="flex min-h-0 flex-1">
-          {editorOpen && viewer?.viewer.role === "renderer" && (
-            <div
-              className={`flex shrink-0 flex-col border-r border-line ${
-                focusMode ? "w-[34%] min-w-[18rem]" : "w-[42%] min-w-[16rem]"
-              }`}
-            >
-              <SourceEditor value={content} onChange={setContent} />
+        <div className="min-w-0 flex-1 p-2">
+          {viewer ? (
+            <div className="h-full w-full overflow-hidden rounded-xl border border-line bg-paper">
+              <ViewerFrame
+                src={viewerEntryUrl(viewer)}
+                mode="edit"
+                content={preview}
+                extension={extension}
+                sandbox={viewer.viewer.sandbox}
+                theme={viewerTheme()}
+                onSave={setContent}
+                onError={(message) => setError(message)}
+              />
             </div>
+          ) : (
+            <p className="px-4 py-10 text-center font-mono text-[14px] text-faint">
+              No viewer plugin handles “{extension}”.
+            </p>
           )}
-          <div className="min-w-0 flex-1 p-2">
-            {viewer ? (
-              <div className="h-full w-full overflow-hidden rounded-xl border border-line bg-paper">
-                <ViewerFrame
-                  src={viewerEntryUrl(viewer)}
-                  mode="edit"
-                  content={preview}
-                  extension={extension}
-                  sandbox={viewer.viewer.sandbox}
-                  theme={viewerTheme()}
-                  onSave={setContent}
-                  onError={(message) => setError(message)}
-                />
-              </div>
-            ) : (
-              <p className="px-4 py-10 text-center font-mono text-[14px] text-faint">
-                No viewer plugin handles “{extension}”.
-              </p>
-            )}
-          </div>
         </div>
       </div>
-    </div>
+    </Lightbox>
   );
 }
 

@@ -8,6 +8,7 @@ import { RightPanel } from "./RightPanel";
 import { ShortcutHud } from "./ShortcutHud";
 import { SettingsDialog } from "./SettingsDialog";
 import { DiagramLightbox } from "./diagram/DiagramLightbox";
+import { ImageLightbox } from "./lightbox/ImageLightbox";
 import { TopBar } from "./TopBar";
 import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
 import {
@@ -108,6 +109,7 @@ export function Workspace() {
       </div>
       <SettingsDialog />
       <DiagramLightbox />
+      <ImageLightbox />
       <ShortcutHud />
     </div>
   );

@@ -14,6 +14,7 @@ import { extensionOfPath } from "../plugins/viewers";
 import { useAppNavigate } from "../lib/appNavigation";
 import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useAssetBlob } from "../lib/useAssetBlob";
+import { useDiagramThumbnail } from "../lib/useDiagramThumbnail";
 import {
   activeNotebookIdAtom,
   diagramLightboxAtom,
@@ -314,6 +315,8 @@ function AssetCard({
   const previewable =
     asset.kind === "image" || asset.kind === "video" || asset.kind === "audio";
   const { url, error } = useAssetBlob(notebookId, asset.path, previewable);
+  const diagram = useDiagramThumbnail(notebookId, asset);
+  const isDiagram = isRichContentPath(asset.path);
 
   return (
     <article className="group relative overflow-hidden rounded-xl border border-line bg-paper transition hover:border-line-strong">
@@ -332,6 +335,12 @@ function AssetCard({
               alt={asset.name}
               className="h-full w-full object-cover"
               loading="lazy"
+            />
+          ) : isDiagram && diagram.url ? (
+            <img
+              src={diagram.url}
+              alt={`${asset.name} preview`}
+              className="h-full w-full object-contain p-2"
             />
           ) : asset.kind === "video" && url ? (
             <video

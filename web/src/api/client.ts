@@ -29,6 +29,13 @@ import {
   markSessionExpired,
 } from "../lib/session";
 
+export type AssetThumbnail = {
+  /** Digest of the asset content the thumbnail belongs to. */
+  hash: string;
+  /** Stored PNG, or null when the cache is cold. */
+  blob: Blob | null;
+};
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -107,7 +114,76 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function requestBlob(path: string): Promise<Blob> {
+/**
+ * Stored diagram thumbnail, or the digest to render one from. Both answers
+ * carry the digest header, so a 404 still tells the caller what to render.
+ */
+async function requestThumbnail(
+  notebookId: string,
+  path: string,
+): Promise<AssetThumbnail> {
+  await ensureSession();
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/notebooks/${encode(notebookId)}/thumbnail?path=${encode(path)}`,
+      { credentials: "same-origin" },
+    );
+  } catch (error) {
+    throw new ApiError(
+      0,
+      "network_error",
+      error instanceof Error ? error.message : "Network request failed",
+    );
+  }
+  const hash = response.headers.get("x-opalnote-asset-hash") ?? "";
+  if (response.status === 401) markSessionExpired();
+  if (response.ok) {
+    return { hash, blob: await response.blob() };
+  }
+  if (response.status === 404 && hash) {
+    return { hash, blob: null };
+  }
+  throw new ApiError(
+    response.status,
+    "thumbnail_error",
+    `${response.status} ${response.statusText}`,
+  );
+}
+
+async function putThumbnail(
+  notebookId: string,
+  path: string,
+  hash: string,
+  png: Blob,
+): Promise<void> {
+  await ensureSession();
+  const headers = new Headers({ "content-type": "image/png" });
+  const csrf = getCsrfToken();
+  if (csrf) headers.set("x-opalnote-csrf", csrf);
+  const response = await fetch(
+    `/api/notebooks/${encode(notebookId)}/thumbnail?path=${encode(path)}&hash=${encode(hash)}`,
+    { method: "PUT", body: png, headers, credentials: "same-origin" },
+  );
+  if (response.status === 401) markSessionExpired();
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const payload = (await response.json()) as {
+        error?: { message?: string };
+      };
+      if (payload.error?.message) message = payload.error.message;
+    } catch {
+      // Non-JSON error bodies keep the status text.
+    }
+    throw new ApiError(response.status, "thumbnail_error", message);
+  }
+}
+
+async function requestBlob(
+  path: string,
+  options: { fresh?: boolean } = {},
+): Promise<Blob> {
   await ensureSession();
   const headers = new Headers();
   let response: Response;
@@ -115,6 +191,7 @@ async function requestBlob(path: string): Promise<Blob> {
     response = await fetch(`/api${path}`, {
       headers,
       credentials: "same-origin",
+      cache: options.fresh ? "no-store" : "default",
     });
   } catch (error) {
     throw new ApiError(
@@ -277,8 +354,19 @@ export const api = {
       `/notebooks/${encode(notebookId)}/asset?path=${encode(path)}`,
     ),
 
-  getAssetBlob: (notebookId: string, path: string) =>
-    requestBlob(assetPath(notebookId, path)),
+  getAssetBlob: (notebookId: string, path: string, fresh = false) =>
+    requestBlob(assetPath(notebookId, path), { fresh }),
+
+  /** Rendered diagram thumbnail: stored PNG, or the digest to render from. */
+  getAssetThumbnail: (notebookId: string, path: string) =>
+    requestThumbnail(notebookId, path),
+
+  putAssetThumbnail: (
+    notebookId: string,
+    path: string,
+    hash: string,
+    png: Blob,
+  ) => putThumbnail(notebookId, path, hash, png),
 
   /** Create a text asset (Mermaid source, Excalidraw scene). */
   createAssetContent: (

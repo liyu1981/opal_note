@@ -304,6 +304,19 @@ export type DiagramLightboxTarget = {
 
 export const diagramLightboxAtom = atom<DiagramLightboxTarget | null>(null);
 
+/**
+ * Image lightbox target: either a notebook asset (`path`) or an absolute URL
+ * for remote/data images (`src`).
+ */
+export type ImageLightboxTarget = {
+  notebookId: string;
+  path: string | null;
+  src: string | null;
+  alt: string;
+};
+
+export const imageLightboxAtom = atom<ImageLightboxTarget | null>(null);
+
 /** While recording a shortcut in Settings, global shortcuts are suspended. */
 export const shortcutRecordingAtom = atom(false);
 

@@ -22,6 +22,11 @@ export type ViewerMountOptions = {
   /** Seconds to wait for the viewer's `ready` before failing. */
   readyTimeoutSecs?: number;
   /**
+   * Ask the viewer for a PNG snapshot instead of an on-screen embed. Used to
+   * fill the diagram thumbnail cache; the frame is mounted off-screen.
+   */
+  thumbnail?: boolean;
+  /**
    * Content size reported by the viewer. `width` is the diagram's natural
    * width (0 when unknown), so embeds can shrink to it instead of spanning the
    * whole line.
@@ -29,6 +34,8 @@ export type ViewerMountOptions = {
   onResize?: (height: number, width: number) => void;
   onOpen?: () => void;
   onSave?: (content: string) => void;
+  /** PNG snapshot of the rendered diagram (only with `thumbnail: true`). */
+  onThumbnail?: (png: ArrayBuffer, width: number, height: number) => void;
   onError?: (message: string, reason: "timeout" | "viewer") => void;
 };
 
@@ -63,7 +70,9 @@ export function mountViewer(
       ? "allow-scripts allow-same-origin"
       : "allow-scripts",
   );
-  iframe.setAttribute("loading", "lazy");
+  // A thumbnail frame is mounted off-screen, where lazy loading would never
+  // start the document.
+  iframe.setAttribute("loading", options.thumbnail ? "eager" : "lazy");
   iframe.setAttribute("referrerpolicy", "no-referrer");
   iframe.title = `Viewer: ${options.extension}`;
   iframe.src = options.src;
@@ -92,6 +101,7 @@ export function mountViewer(
       role: "renderer",
       mode: options.mode,
       extension: options.extension,
+      thumbnail: options.thumbnail === true,
       content,
       theme: options.theme ?? {},
     });
@@ -142,6 +152,16 @@ export function mountViewer(
       case "opalnote-viewer/open":
         options.onOpen?.();
         break;
+      case "opalnote-viewer/thumbnail": {
+        const png = (data as { png?: unknown }).png;
+        if (!(png instanceof ArrayBuffer)) break;
+        options.onThumbnail?.(
+          png,
+          Number((data as { width?: number }).width) || 0,
+          Number((data as { height?: number }).height) || 0,
+        );
+        break;
+      }
       case "opalnote-viewer/error":
         options.onError?.(
           typeof data.message === "string" ? data.message : "Viewer error",

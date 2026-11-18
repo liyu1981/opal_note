@@ -35,6 +35,12 @@ export type LivePreviewOptions = {
   ) => { id: string; src: string; sandbox: "opaque" | "same-origin" } | null;
   /** Open the lightbox for a viewer-backed asset. */
   onOpenViewer: (assetPath: string, extension: string) => void;
+  /** Open an embedded image in the image lightbox. */
+  onOpenImage: (target: {
+    path: string | null;
+    src: string | null;
+    alt: string;
+  }) => void;
   /** Changes when a text asset is saved, so viewer widgets re-mount. */
   assetRevision: number;
   readOnly: boolean;
@@ -792,6 +798,7 @@ function buildDecorations(
                 options.notePath,
                 line.from,
                 line.to,
+                options.onOpenImage,
               ),
           );
         }
@@ -1048,6 +1055,11 @@ class ImageWidget extends WidgetType {
     readonly notePath: string,
     readonly lineFrom: number,
     readonly lineTo: number,
+    readonly onOpenImage: (target: {
+      path: string | null;
+      src: string | null;
+      alt: string;
+    }) => void,
   ) {
     super();
   }
@@ -1067,13 +1079,25 @@ class ImageWidget extends WidgetType {
   toDOM(): HTMLElement {
     const wrapper = document.createElement("span");
     wrapper.className = "cm-live-image";
+    // A plain click enlarges the picture; Alt/Option-click keeps the old
+    // behaviour of dropping the caret into the source for editing, which is the
+    // only way into an image-only line.
     wrapper.addEventListener("mousedown", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (!event.altKey) {
+        this.onOpenImage({
+          path: this.assetPath,
+          src: this.assetPath ? null : this.src,
+          alt: this.alt,
+        });
+        return;
+      }
       reportHeight();
       this.view.dispatch({ selection: { anchor: this.lineTo } });
       this.view.focus();
     });
+    wrapper.title = "Click to enlarge · Alt-click to edit the source";
     const image = document.createElement("img");
     image.alt = this.alt;
     image.loading = "lazy";

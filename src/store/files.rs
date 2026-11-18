@@ -547,6 +547,49 @@ pub fn asset_mime(path: &Path) -> String {
 /// editor/viewer, so the list stays explicit.
 pub const EDITABLE_ASSET_EXTENSIONS: &[&str] = &["mermaid", "mmd", "excalidraw"];
 
+/// Assets rendered by a viewer plugin, i.e. the ones that can have a stored
+/// thumbnail. They are editable text files, so the extension list is shared.
+pub fn is_viewer_asset(path: &str) -> bool {
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    EDITABLE_ASSET_EXTENSIONS.contains(&extension.as_str())
+}
+
+/// Derived diagram thumbnails; the index directory is disposable, so a cached
+/// thumbnail is always safe to lose.
+pub fn thumbnails_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("index").join("thumbs")
+}
+
+/// Write bytes atomically beside the target, like `write_atomic` does for
+/// text assets.
+pub fn write_atomic_bytes(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no parent"))?;
+    fs::create_dir_all(parent)?;
+
+    let tmp = parent.join(format!(
+        ".opalnote-tmp-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let result = (|| -> io::Result<()> {
+        fs::write(&tmp, contents)?;
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
 /// Per-extension size cap for text assets (scenes embed image data URLs).
 pub fn editable_asset_max_bytes(extension: &str) -> u64 {
     match extension {
