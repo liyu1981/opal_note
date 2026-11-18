@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -167,8 +168,8 @@ export function RightPanel() {
 
   return (
     <aside
-      className="relative flex shrink-0 flex-col border-l border-line bg-panel/25"
-      style={{ width: `${width}px` }}
+      className="relative flex h-full w-[var(--right-panel-width)] shrink-0 flex-col border-l border-line bg-panel shadow-panel max-md:w-[min(24rem,calc(100vw-3rem))] md:bg-panel/25 md:shadow-none"
+      style={{ "--right-panel-width": `${width}px` } as CSSProperties}
     >
       <div
         role="separator"
@@ -186,7 +187,7 @@ export function RightPanel() {
         onLostPointerCapture={endDrag}
         onDoubleClick={() => setStoredWidth(RIGHT_PANEL_DEFAULT_WIDTH)}
         onKeyDown={onHandleKeyDown}
-        className={`absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none outline-none transition ${
+        className={`absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none outline-none transition max-md:hidden ${
           dragging
             ? "bg-accent/40"
             : "hover:bg-accent/20 focus-visible:bg-accent/30"

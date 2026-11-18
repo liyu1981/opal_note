@@ -476,6 +476,14 @@ render in the same main-area list. There is no plugin side strip or section
 label. The top bar carries the omni search bar with the Home button
 beside it, plus back/forward history controls.
 
+Both side panels are collapsible (default collapsed) and dock on desktop: they
+are flex siblings that shrink the main column, and the right one is resizable.
+Below the `md` breakpoint (768px) they become drawers instead — absolutely
+positioned over the page at full height, so the writing surface keeps the whole
+viewport width, with a dimmed backdrop that closes them on tap, a capped width,
+no resize handle, and an automatic close once a navigation lands so the page you
+picked is actually visible.
+
 - **Left sidebar** — notebook switcher plus Home, Journals, Pages, Todos,
   Graph, Assets and Trash navigation. The pencil action renames the current notebook
   folder on disk, discards its index rows and reindexes every file under the

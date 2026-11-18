@@ -344,7 +344,12 @@ web/
   be resized by dragging its left edge, which is capped at half the viewport
   and persisted in `rightPanelWidthAtom` (`RIGHT_PANEL_MIN_WIDTH` 320px,
   double-click or Home resets). Keep it that way rather than adding new
-  permanent side panels.
+  permanent side panels. Below the `md` breakpoint (768px) both panels are
+  drawers: absolutely positioned over the page (z-50, never shrinking the main
+  column), with a dimmed backdrop (z-45) that closes them, a capped width
+  (`LeftSidebar` `min(19rem,88vw)`, `RightPanel` `min(24rem,100vw-3rem)` via
+  `--right-panel-width`), no resize handle, and an open panel closing itself
+  once a navigation lands. Keep desktop layout unchanged above `md`.
 - The right panel's **Agent** tab lazy-loads `@liyu1981/reagent`
   (`src/components/agent/AgentPanel.tsx`), so `pi-ai`, `pi-agent-core` and
   radix stay out of the main bundle. The agent loop runs in the browser:

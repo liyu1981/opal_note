@@ -1,5 +1,5 @@
-import { Suspense, useEffect } from "react";
-import { Outlet } from "@tanstack/react-router";
+import { Suspense, useEffect, useRef } from "react";
+import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { LeftSidebar } from "./LeftSidebar";
@@ -31,6 +31,9 @@ export function Workspace() {
   const setActiveNotebook = useSetAtom(activeNotebookIdAtom);
   const leftOpen = useAtomValue(leftPanelOpenAtom);
   const rightOpen = useAtomValue(rightPanelOpenAtom);
+  const setLeftOpen = useSetAtom(leftPanelOpenAtom);
+  const setRightOpen = useSetAtom(rightPanelOpenAtom);
+  const location = useRouterState({ select: (state) => state.location.href });
   const settings = useAtomValue(settingsAtom);
   const setSettings = useSetAtom(settingsAtom);
   const setSettingsStatus = useSetAtom(settingsStatusAtom);
@@ -40,6 +43,19 @@ export function Workspace() {
   );
 
   useKeyboardShortcuts();
+
+  // On phones and small tablets the panels float over the page, so opening
+  // something from them should reveal it instead of leaving the drawer on top.
+  const firstLocation = useRef(true);
+  useEffect(() => {
+    if (firstLocation.current) {
+      firstLocation.current = false;
+      return;
+    }
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    setLeftOpen(false);
+    setRightOpen(false);
+  }, [location, setLeftOpen, setRightOpen]);
 
   useEffect(() => {
     document.title = activeNotebook
@@ -77,11 +93,25 @@ export function Workspace() {
   }, [notebooks, activeNotebookId, setActiveNotebook]);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div className="relative flex h-full min-h-0 overflow-hidden">
+      {/* Below `md` the panels float over the page instead of shrinking it. */}
+      {(leftOpen || rightOpen) && (
+        <button
+          type="button"
+          aria-label="Close panels"
+          onClick={() => {
+            setLeftOpen(false);
+            setRightOpen(false);
+          }}
+          className="absolute inset-0 z-[45] bg-ink/25 backdrop-blur-[2px] md:hidden"
+        />
+      )}
       {leftOpen && (
-        <Suspense fallback={<PanelSkeleton />}>
-          <LeftSidebar />
-        </Suspense>
+        <div className="absolute inset-y-0 left-0 z-50 md:static md:z-auto">
+          <Suspense fallback={<PanelSkeleton />}>
+            <LeftSidebar />
+          </Suspense>
+        </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
@@ -101,9 +131,11 @@ export function Workspace() {
             </div>
           </div>
           {rightOpen && (
-            <Suspense fallback={null}>
-              <RightPanel />
-            </Suspense>
+            <div className="absolute inset-y-0 right-0 z-50 md:static md:z-auto">
+              <Suspense fallback={null}>
+                <RightPanel />
+              </Suspense>
+            </div>
           )}
         </div>
       </div>

@@ -36,6 +36,8 @@ next read. Delete the index at any time and it comes back.
   (4 GB default, configurable), browse and rename them, and jump from a file to
   every page that references it. Diagrams get rendered previews in the grid and
   on their detail page, and can be exported as PNG.
+- **Responsive workspace** — collapsible side panels that dock on a desktop and
+  float over the page as drawers on phones and small tablets.
 - **Search and commands** — one omni bar: text searches the full-text index,
   `#` browses tags, `>` runs commands. Keyboard-first, with rebindable leader
   chords and a command palette.

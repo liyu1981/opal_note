@@ -222,7 +222,7 @@ export function LeftSidebar() {
   }
 
   return (
-    <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-line bg-panel/35">
+    <aside className="flex h-full w-[min(19rem,88vw)] shrink-0 flex-col border-r border-line bg-panel shadow-panel md:w-[15.5rem] md:bg-panel/35 md:shadow-none">
       <div className="border-b border-line px-3 pb-2 pt-3">
         <div className="flex items-center gap-2">
           <OpalLogo className="h-7 w-7 shrink-0 drop-shadow-sm" />
