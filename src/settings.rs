@@ -1,11 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use serde_json::Value;
 
-const MAX_SETTINGS_BYTES: usize = 256 * 1024;
+use crate::system_db::SystemDb;
+
 pub const DEFAULT_TRASH_RETENTION_DAYS: u64 = 30;
 const MAX_TRASH_RETENTION_DAYS: u64 = 3_650;
 /// Default per-file upload limit: 4 GiB.
@@ -13,25 +13,26 @@ pub const DEFAULT_MAX_UPLOAD_MB: u64 = 4_096;
 const MIN_MAX_UPLOAD_MB: u64 = 1;
 const MAX_MAX_UPLOAD_MB: u64 = 102_400;
 
-/// Sparse user settings stored as one JSON object at `<data-dir>/settings.json`.
-/// System defaults live in the client; the file only contains overrides.
+/// Sparse user settings, stored as one JSON object in the durable server
+/// database (`<data-dir>/opalnote.db`, `app_settings`). System defaults live in
+/// the client, so the document only holds overrides.
 pub struct SettingsStore {
-    path: PathBuf,
+    system: Arc<SystemDb>,
+    /// Serializes read-modify-write cycles over the single settings row.
     lock: Mutex<()>,
 }
 
 impl SettingsStore {
-    pub fn new(data_dir: &Path) -> Result<Self> {
-        fs::create_dir_all(data_dir)
-            .with_context(|| format!("creating data dir {}", data_dir.display()))?;
+    pub fn new(system: Arc<SystemDb>) -> Result<Self> {
         Ok(Self {
-            path: data_dir.join("settings.json"),
+            system,
             lock: Mutex::new(()),
         })
     }
 
+    /// Path of the database that holds the settings document.
     pub fn path(&self) -> &Path {
-        &self.path
+        self.system.path()
     }
 
     pub fn load(&self) -> Result<Value> {
@@ -39,20 +40,7 @@ impl SettingsStore {
             .lock
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
-        match fs::read_to_string(&self.path) {
-            Ok(raw) => {
-                let value: Value = serde_json::from_str(&raw)
-                    .with_context(|| format!("parsing {}", self.path.display()))?;
-                if !value.is_object() {
-                    bail!("settings must be a JSON object");
-                }
-                Ok(value)
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Value::Object(serde_json::Map::new()))
-            }
-            Err(err) => Err(err).with_context(|| format!("reading {}", self.path.display())),
-        }
+        self.system.settings()
     }
 
     /// How long deleted files stay recoverable. Sparse settings may omit the
@@ -83,20 +71,11 @@ impl SettingsStore {
         if !value.is_object() {
             bail!("settings must be a JSON object");
         }
-        let raw = serde_json::to_vec_pretty(value)?;
-        if raw.len() > MAX_SETTINGS_BYTES {
-            bail!("settings must be at most {MAX_SETTINGS_BYTES} bytes");
-        }
-
         let _guard = self
             .lock
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
-        let temp = self.path.with_extension("json.tmp");
-        fs::write(&temp, raw).with_context(|| format!("writing {}", temp.display()))?;
-        fs::rename(&temp, &self.path)
-            .with_context(|| format!("replacing {}", self.path.display()))?;
-        Ok(())
+        self.system.save_settings(value)
     }
 }
 
@@ -106,10 +85,15 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    fn settings(dir: &Path) -> SettingsStore {
+        let system = Arc::new(SystemDb::open(dir).unwrap());
+        SettingsStore::new(system).unwrap()
+    }
+
     #[test]
     fn settings_are_sparse_json_and_round_trip() {
         let dir = tempdir().unwrap();
-        let store = SettingsStore::new(dir.path()).unwrap();
+        let store = settings(dir.path());
         assert_eq!(store.load().unwrap(), json!({}));
 
         let value = json!({
@@ -119,13 +103,14 @@ mod tests {
         });
         store.save(&value).unwrap();
         assert_eq!(store.load().unwrap(), value);
+        assert_eq!(store.path(), dir.path().join("opalnote.db"));
         assert!(store.path().is_file());
     }
 
     #[test]
     fn trash_retention_defaults_and_clamps() {
         let dir = tempdir().unwrap();
-        let store = SettingsStore::new(dir.path()).unwrap();
+        let store = settings(dir.path());
         assert_eq!(store.trash_retention_days(), DEFAULT_TRASH_RETENTION_DAYS);
 
         store.save(&json!({ "trashRetentionDays": 7 })).unwrap();
@@ -148,7 +133,7 @@ mod tests {
     #[test]
     fn max_upload_defaults_and_clamps() {
         let dir = tempdir().unwrap();
-        let store = SettingsStore::new(dir.path()).unwrap();
+        let store = settings(dir.path());
         assert_eq!(store.max_upload_mb(), 4_096);
         assert_eq!(store.max_upload_bytes(), 4_096 * 1024 * 1024);
 
@@ -168,7 +153,7 @@ mod tests {
     #[test]
     fn rejects_non_object_settings() {
         let dir = tempdir().unwrap();
-        let store = SettingsStore::new(dir.path()).unwrap();
+        let store = settings(dir.path());
         assert!(store.save(&json!(["not", "an", "object"])).is_err());
     }
 }

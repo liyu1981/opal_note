@@ -6,4 +6,8 @@ allowBuilds:
   protobufjs: false
 minimumReleaseAgeExclude:
   - vite@8.3.8
-  - '@liyu1981/reagent@0.2.1'
+packages:
+  # ReAgent is tracked at its Git HEAD (git submodule) and built from source, so
+  # the app can use unreleased fixes. `scripts/build-reagent.mjs` produces its
+  # `dist/`, which is what the exports point at.
+  - vendor/reagent

@@ -63,9 +63,15 @@ bundled SQLite, and [mkcert](https://github.com/FiloSottile/mkcert) for local
 HTTPS.
 
 ```bash
+git clone --recursive <repo> && cd opal_note   # or: git submodule update --init
 # development: builds the client, runs the server, rebuilds on change
 pnpm dev
 ```
+
+`web/vendor/reagent` is a git submodule tracking ReAgent's `main`: the agent
+panel is built from source there (`scripts/build-reagent.mjs` runs
+`tsc` in the submodule), so a fresh clone needs `--recursive` and an already
+cloned tree needs `git submodule update --init`.
 
 This serves `https://localhost:7827` (and `https://<your-lan-ip>:7827`). Run
 `mkcert -install` once so the device trusts the local CA; `pnpm certs`
@@ -78,7 +84,7 @@ pnpm start            # or: ./target/release/opalnote serve --data-dir ./data
 ```
 
 Data lives in `./data` by default: `notebooks/` (your notes), `index/`
-(rebuildable) and `.trash/`. Point it elsewhere with `--data-dir` or
+(rebuildable), `opalnote.db` (durable server state — back it up) and `.trash/`. Point it elsewhere with `--data-dir` or
 `OPALNOTE_DATA_DIR`.
 
 ### Importing notes
@@ -149,7 +155,9 @@ and query timeouts, CORS and CSP hosts are listed in the
 [configuration reference](doc/architecture.md#configuration-reference).
 
 Appearance and behaviour settings live in the UI (Settings) and are stored
-sparsely in `<data-dir>/settings.json`.
+sparsely in `<data-dir>/opalnote.db`, the durable server database that also holds
+the agent provider configuration (see
+[ADR 0001](doc/adr/0001-durable-server-state.md)).
 
 ## Deploying
 
@@ -212,6 +220,7 @@ old binary until the next restart. Details:
 | -------- | -------- |
 | [doc/architecture.md](doc/architecture.md) | Storage model and sync, stack, build and update mechanics, editor internals, workspace layout, plugins, backgrounds, routes, index schema, PWA, HTTP API, configuration reference, project layout |
 | [doc/rich-content.md](doc/rich-content.md) | Viewer plugins: Mermaid and Excalidraw diagrams end to end |
+| [doc/adr/](doc/adr/README.md) | Architecture decision records (`opalnote.db`, migrations) |
 | [AGENTS.md](AGENTS.md) | Coding conventions for contributors |
 
 The HTTP API and its auth/session flow are documented in

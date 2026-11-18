@@ -5,12 +5,14 @@ mod backgrounds;
 mod build_info;
 mod config;
 mod error;
+mod migrations;
 mod plugins;
 mod routes;
 mod session;
 mod settings;
 mod state;
 mod store;
+mod system_db;
 mod update;
 
 use std::sync::Arc;
@@ -71,7 +73,14 @@ async fn main() -> anyhow::Result<()> {
 
     let store = Arc::new(Store::open(&args.data_dir, args.query_timeout_secs)?);
     store.ping()?;
-    let settings = Arc::new(SettingsStore::new(&args.data_dir)?);
+    let system = Arc::new(crate::system_db::SystemDb::open(&args.data_dir)?);
+    match crate::system_db::import_legacy_settings(&args.data_dir, &system) {
+        Ok(true) => tracing::info!("imported settings.json into opalnote.db"),
+        Ok(false) => {}
+        Err(err) => tracing::warn!(error = %err, "importing legacy settings failed"),
+    }
+    tracing::debug!(path = %system.path().display(), "server database ready");
+    let settings = Arc::new(SettingsStore::new(system.clone())?);
     tracing::debug!(path = %settings.path().display(), "settings ready");
     let plugins = Arc::new(PluginRegistry::new(&args.data_dir)?);
     tracing::debug!(path = %plugins.directory().display(), "plugins ready");
@@ -110,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
         backgrounds,
         sessions,
         agent,
+        system,
         token,
         secure_cookies: !args.no_tls,
         query_timeout_secs: args.query_timeout_secs,

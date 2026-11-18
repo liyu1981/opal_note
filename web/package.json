@@ -5,9 +5,9 @@
   "type": "module",
   "packageManager": "pnpm@12.4.2",
   "scripts": {
-    "build": "tsc --noEmit -p tsconfig.json && if command -v oj >/dev/null 2>&1; then oj build; else vite build; fi",
-    "build:watch": "if command -v oj >/dev/null 2>&1; then oj build --watch; else vite build --watch; fi",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "node ../scripts/build-reagent.mjs && tsc --noEmit -p tsconfig.json && if command -v oj >/dev/null 2>&1; then oj build; else vite build; fi",
+    "build:watch": "node ../scripts/build-reagent.mjs && if command -v oj >/dev/null 2>&1; then oj build --watch; else vite build --watch; fi",
+    "typecheck": "node ../scripts/build-reagent.mjs && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
@@ -23,7 +23,7 @@
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
-    "@liyu1981/reagent": "0.2.1",
+    "@liyu1981/reagent": "workspace:*",
     "@tanstack/react-router": "^1.170.46",
     "d3-force": "^3.0.1",
     "jotai": "^3.0.2",

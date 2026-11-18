@@ -4,7 +4,10 @@
 FROM node:24-bookworm-slim AS web
 RUN corepack enable
 WORKDIR /app/web
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+# The ReAgent checkout is a git submodule and a workspace package; its manifest
+# must exist before the install so pnpm can link it.
+COPY web/vendor/reagent/package.json ./vendor/reagent/package.json
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
 COPY builtin/plugins /app/builtin/plugins

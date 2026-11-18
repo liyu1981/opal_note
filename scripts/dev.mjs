@@ -242,13 +242,16 @@ const SERVER_CONFIG_FILES = new Set([
 
 function startWatchers() {
   step("Watching for changes");
-  console.log("  client: web/src, web/public, web config files");
+  console.log("  client: web/src, web/public, web/vendor/reagent/src, web config files");
   console.log("  server: src, Cargo.toml, Cargo.lock, build.rs");
   console.log("  builtins: builtin/src (rebuild and restart)");
   console.log("  debounce: 220 ms · Ctrl+C to stop\n");
 
   addWatcher("web/src", true, () => mark("client"));
   addWatcher("web/public", true, () => mark("client"));
+  // The vendored ReAgent checkout is built from source; editing it needs a
+  // client rebuild like any other web change.
+  addWatcher("web/vendor/reagent/src", true, () => mark("client"));
   addWatcher("web", false, (name) => {
     if (name && CLIENT_CONFIG_FILES.has(path.basename(name))) mark("client");
   });

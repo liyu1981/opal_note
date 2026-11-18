@@ -17,6 +17,7 @@ and background formats, routes, index schema, PWA details and the HTTP API.
 - [PWA](#pwa)
 - [HTTP API](#http-api)
 - [Project layout](#project-layout)
+- [Durable server state](#durable-server-state) · [ADR 0001](adr/0001-durable-server-state.md)
 - [Security notes](#security-notes)
 
 ## What is canonical
@@ -46,6 +47,7 @@ data/
       assets/
   index/
     opalnote.sqlite3          # MnesticDB / SQLite (rebuildable)
+  opalnote.db                 # durable server state: settings, agent config
   .trash/
     trash.sqlite3            # recoverable entries + original paths
     entries/<uuid>/…         # payload files, assets and notebook folders
@@ -75,6 +77,40 @@ Deleting `data/index/` is always safe — the next start rebuilds it.
 > with UUID ids; this file-first layout does not migrate them. Export or copy
 > what you need into `data/notebooks/<name>/pages/` and remove the old
 > `data/db`.
+
+### Durable server state
+
+Not everything the application needs is a document. Sparse settings and the
+agent provider configuration live in `<data-dir>/opalnote.db` — a SQLite
+database of its own, opened like the trash database, never touched by the note
+sync engine, and never derived from files (see
+[ADR 0001](adr/0001-durable-server-state.md)).
+
+```
+:create app_settings { id: String => json: String, updated_at: Float }   # id = "settings"
+:create agent_config { id: String => base_url: String, models: String,
+                       key_envelope: String, updated_at: Float }         # id = "agent"
+```
+
+`src/system_db.rs` owns the file; `SettingsStore` is a settings-shaped facade
+over the `app_settings` row, so `GET/PUT /api/settings` keeps its contract.
+`data/index/` stays disposable: deleting it costs a rebuild and nothing else.
+An older `<data-dir>/settings.json` is imported once on open and renamed to
+`settings.json.imported`.
+
+Schema changes go through `src/migrations.rs`, a small ordered list of
+migrations recorded in a `schema_migrations` relation:
+
+- each migration has a version (consecutive from 1), a name and a list of
+  steps: `Create(name, ddl)` / `Script(cozo)` / `Drop(name)`;
+- `Create` and `Drop` are existence-checked in Rust, so they are idempotent and
+  a migration interrupted half-way can be retried; `Script` steps should use
+  `:put` rather than `:insert` for the same reason (Cozo cannot run DDL inside a
+  transaction);
+- the version row is written only after every step of that migration succeeded;
+- a database whose recorded version is newer than the build is refused instead of
+  silently losing rows, and a database created before the migration table existed
+  is adopted through a named baseline relation.
 
 ## Stack
 
@@ -815,6 +851,11 @@ browser agent ──POST /api/agent/v1/chat/completions──► Rust proxy ─�
   is the real gate. `opalnote.agent.connected` in `localStorage` remembers an
   opt-out, and Settings → Agent → Model renders the setup card (status, model
   list, Connect/Disconnect).
+- ReAgent itself is vendored: `web/vendor/reagent` is a git submodule tracking
+  upstream `main`, linked as a workspace package, and built from source by
+  `scripts/build-reagent.mjs` (the published tarball carries no `dist/`). The
+  panel therefore picks up unreleased fixes as soon as the submodule pointer
+  moves; Docker and the GitHub workflows check submodules out recursively.
 - Since ReAgent 0.2.1 the Model settings page lists every provider (OpalNote,
   OpenRouter, the local OpenAI-compatible endpoint) with an on/off switch, and
   the switch hides the host card too. Turning OpalNote back on reconnects it from
@@ -1093,7 +1134,9 @@ src/
   routes/            /api handlers (blocking DB work offloaded)
   plugins.rs         release embed / debug disk plugin registry + QuickJS runner
   backgrounds.rs     built-in + user background registry and assets
-  settings.rs        sparse settings.json store
+  settings.rs        sparse settings store (over `opalnote.db`)
+  system_db.rs       durable server state: settings row + agent config
+  migrations.rs      schema migrations shared by the durable databases
   store/
     mod.rs           sync engine, file-first CRUD, Datalog queries
     files.rs         folder layout, atomic writes, scanning, trash paths

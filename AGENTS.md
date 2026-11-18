@@ -105,7 +105,9 @@ src/
   routes/          HTTP API; all handlers run DB work via spawn_blocking
   plugins.rs       release embed / debug disk plugin registry + QuickJS runner
   backgrounds.rs   built-in + user background registry and asset serving
-  settings.rs      sparse settings.json store
+  settings.rs      sparse settings store (over `opalnote.db`)
+  system_db.rs     durable server state: settings row + agent config
+  migrations.rs    schema migrations for the durable databases
   store/
     mod.rs         filesystem ↔ index sync, file-first CRUD, Datalog queries
     files.rs       folder layout, atomic writes, scanning, path safety, trash
@@ -297,6 +299,16 @@ web/
   host provider (`web/src/components/agent/opalnoteProvider.tsx`) whose config is
   memory-only and rebuilt from `GET /api/agent` on mount; the cookie session is
   the gate, and `opalnote.agent.connected` only remembers an opt-out.
+- ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
+  `main`, linked as a pnpm workspace package (`workspace:*`), because its
+  published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
+  it (`tsc` in the submodule, skipped when `dist/` is newer than `src/`) and runs
+  from `pnpm build`, `pnpm typecheck` and `pnpm build:watch`; `pnpm dev` also
+  watches `web/vendor/reagent/src`. Bumping it means updating the submodule
+  pointer (`git -C web/vendor/reagent fetch && git -C web/vendor/reagent
+  checkout main`) and committing the new submodule SHA. Docker and the release
+  workflows check out submodules recursively. To patch ReAgent locally, edit the
+  submodule and commit the change there first, then the pointer here.
 - Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`
   (backdrop, header, focus-mode toggle, Escape: exits focus first, then
   closes). `DiagramLightbox` and `ImageLightbox` are thin extensions of it —
@@ -598,7 +610,16 @@ web/
   for UI and JetBrains Mono for page titles, note editor, labels and code.
   Inter and Anonymous Pro remain selectable. Use the semantic tokens in
   `web/src/index.css`; do not introduce one-off colors, radii or fonts.
-- Settings are sparse overrides in `<data-dir>/settings.json`, served by
+- Durable server state — sparse settings and the agent provider configuration —
+  lives in `<data-dir>/opalnote.db` (`src/system_db.rs`), never in
+  `data/index/` and never in a new ad-hoc file ([ADR 0001](doc/adr/0001-durable-server-state.md)).
+  Schema changes go through the ordered list in `src/migrations.rs`
+  (`schema_migrations` relation): add a new version, never edit a shipped one,
+  prefer `Create`/`Drop` steps (idempotent) and `:put` in `Script` steps so a
+  half-applied migration can be retried. A database recorded with a newer
+  version than the build is refused rather than downgraded.
+- Settings are sparse overrides in `<data-dir>/opalnote.db` (`app_settings`),
+  served by
   `GET/PUT /api/settings`. System defaults live in `web/src/lib/settings.ts`;
   never persist default values explicitly. The client applies cached IndexedDB
   settings immediately and revalidates from the server on every page load.

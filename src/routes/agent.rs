@@ -15,6 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::error::{ApiResult, AppError};
+use crate::routes::db_call;
 use crate::state::AppState;
 
 /// Chunks buffered between the upstream reader and the response body.
@@ -24,19 +25,40 @@ const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Serialize)]
 pub struct AgentInfo {
-    /// True when an upstream endpoint is configured on the server.
+    /// True when the server-managed upstream is configured (config/env).
     configured: bool,
-    /// Model ids the provider advertises.
+    /// Model ids the server-managed upstream advertises.
     models: Vec<String>,
+    /// Configuration saved through the app (encrypted key), when present.
+    stored: Option<StoredAgentInfo>,
+}
+
+#[derive(Serialize)]
+pub struct StoredAgentInfo {
+    base_url: String,
+    models: Vec<String>,
+    /// True when the row carries a key envelope (not a keyless local server).
+    key_stored: bool,
+    updated_at: i64,
 }
 
 pub async fn info(State(state): State<AppState>) -> ApiResult<Json<AgentInfo>> {
     let agent = state.agent.as_ref();
+    let system = state.system.clone();
+    let stored = db_call(move || system.agent_config(), AppError::Internal)
+        .await?
+        .map(|config| StoredAgentInfo {
+            base_url: config.base_url,
+            models: config.models,
+            key_stored: !config.key_envelope.is_empty(),
+            updated_at: config.updated_at,
+        });
     Ok(Json(AgentInfo {
         configured: agent.is_some(),
         models: agent
             .map(|agent| agent.models().to_vec())
             .unwrap_or_default(),
+        stored,
     }))
 }
 

@@ -7,6 +7,7 @@ use crate::plugins::PluginRegistry;
 use crate::session::SessionStore;
 use crate::settings::SettingsStore;
 use crate::store::Store;
+use crate::system_db::SystemDb;
 
 /// Shared, cheap-to-clone application state. The store itself is `Sync` and
 /// internally multiplexes transactions, so a single instance serves all tasks.
@@ -14,6 +15,8 @@ use crate::store::Store;
 pub struct AppState {
     pub store: Arc<Store>,
     pub settings: Arc<SettingsStore>,
+    /// Durable server state (settings row, agent provider config).
+    pub system: Arc<SystemDb>,
     pub plugins: Arc<PluginRegistry>,
     pub backgrounds: Arc<BackgroundRegistry>,
     pub sessions: Arc<SessionStore>,
@@ -33,6 +36,7 @@ pub struct AppState {
 pub struct AppStateInit {
     pub store: Arc<Store>,
     pub settings: Arc<SettingsStore>,
+    pub system: Arc<SystemDb>,
     pub plugins: Arc<PluginRegistry>,
     pub backgrounds: Arc<BackgroundRegistry>,
     pub sessions: Arc<SessionStore>,
@@ -50,6 +54,7 @@ impl AppState {
         Self {
             store: init.store,
             settings: init.settings,
+            system: init.system,
             plugins: init.plugins,
             backgrounds: init.backgrounds,
             sessions: init.sessions,

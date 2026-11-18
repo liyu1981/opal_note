@@ -382,8 +382,17 @@ export interface BackgroundList {
   errors: BackgroundLoadError[];
 }
 
+/** Configuration saved through the app, with an encrypted key envelope. */
+export type StoredAgentConfig = {
+  base_url: string;
+  models: string[];
+  key_stored: boolean;
+  updated_at: number;
+};
+
 /** Server-side agent provider (the OpalNote model proxy). */
 export type AgentInfo = {
   configured: boolean;
   models: string[];
+  stored: StoredAgentConfig | null;
 };

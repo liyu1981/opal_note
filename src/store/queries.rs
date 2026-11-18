@@ -343,3 +343,56 @@ pub const TRASH_DELETE: &str = r#"
 ?[id] := *trash_entry{id}, id = $id
 :rm trash_entry {id}
 "#;
+
+// ---- durable server state (`<data-dir>/opalnote.db`, see ADR 0001) ----------
+
+/// One sparse JSON settings document, stored under the fixed id `settings`.
+pub const APP_SETTINGS_CREATE: &str = r#":create app_settings {
+    id: String => json: String, updated_at: Float
+}"#;
+
+pub const APP_SETTINGS_GET: &str = r#"
+?[json] := *app_settings{id: "settings", json}
+"#;
+
+pub const APP_SETTINGS_PUT: &str = r#"
+?[id, json, updated_at] <- [["settings", $json, $updated_at]]
+:put app_settings {id => json, updated_at}
+"#;
+
+/// Agent provider configuration: readable connection details plus a browser-made
+/// envelope for the upstream key (see the agent provider design).
+pub const AGENT_CONFIG_CREATE: &str = r#":create agent_config {
+    id: String => base_url: String, models: String, key_envelope: String, updated_at: Float
+}"#;
+
+pub const AGENT_CONFIG_GET: &str = r#"
+?[base_url, models, key_envelope, updated_at] :=
+    *agent_config{id: "agent", base_url, models, key_envelope, updated_at}
+"#;
+
+pub const AGENT_CONFIG_PUT: &str = r#"
+?[id, base_url, models, key_envelope, updated_at] <-
+    [["agent", $base_url, $models, $key_envelope, $updated_at]]
+:put agent_config {id => base_url, models, key_envelope, updated_at}
+"#;
+
+pub const AGENT_CONFIG_DELETE: &str = r#"
+?[id] := *agent_config{id}, id = "agent"
+:rm agent_config {id}
+"#;
+
+// ---- migration bookkeeping (`opalnote.db`, see `src/migrations.rs`) --------
+
+pub const SCHEMA_MIGRATIONS_CREATE: &str = r#":create schema_migrations {
+    version: Int => name: String, applied_at: Float
+}"#;
+
+pub const SCHEMA_MIGRATIONS_LIST: &str = r#"
+?[version] := *schema_migrations{version}
+"#;
+
+pub const SCHEMA_MIGRATIONS_PUT: &str = r#"
+?[version, name, applied_at] <- [[$version, $name, $applied_at]]
+:put schema_migrations {version => name, applied_at}
+"#;

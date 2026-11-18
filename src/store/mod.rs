@@ -7,7 +7,7 @@
 pub mod files;
 pub mod markdown;
 pub mod model;
-mod queries;
+pub(crate) mod queries;
 mod trash;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
