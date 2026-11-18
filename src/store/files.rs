@@ -566,6 +566,33 @@ pub fn thumbnails_dir(data_dir: &Path) -> PathBuf {
 
 /// Write bytes atomically beside the target, like `write_atomic` does for
 /// text assets.
+/// List every file under `root` as `/`-joined relative paths, sorted. Used by
+/// the debug-assertion tests that verify embedded built-in bundles.
+pub fn list_files_recursive(root: &Path) -> io::Result<Vec<String>> {
+    fn walk(dir: &Path, out: &mut Vec<String>) -> io::Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                walk(&path, out)?;
+            } else if entry.file_type()?.is_file() {
+                let rel = path
+                    .components()
+                    .map(|component| component.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push(rel);
+            }
+        }
+        Ok(())
+    }
+
+    let mut paths = Vec::new();
+    walk(root, &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
 pub fn write_atomic_bytes(path: &Path, contents: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()

@@ -487,31 +487,7 @@ fn builtin_paths() -> Result<Vec<String>> {
 
 #[cfg(debug_assertions)]
 fn builtin_paths() -> Result<Vec<String>> {
-    fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<()> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                walk(root, &path, out)?;
-            } else if entry.file_type()?.is_file() {
-                let rel = path
-                    .strip_prefix(root)
-                    .unwrap_or(&path)
-                    .components()
-                    .map(|component| component.as_os_str().to_string_lossy())
-                    .collect::<Vec<_>>()
-                    .join("/");
-                out.push(rel);
-            }
-        }
-        Ok(())
-    }
-
-    let root = builtin_root();
-    let mut paths = Vec::new();
-    walk(&root, &root, &mut paths)?;
-    paths.sort();
-    Ok(paths)
+    Ok(crate::store::files::list_files_recursive(&builtin_root())?)
 }
 
 #[cfg(not(debug_assertions))]

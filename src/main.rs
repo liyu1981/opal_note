@@ -27,7 +27,7 @@ use crate::config::{Cli, Command};
 use crate::plugins::PluginRegistry;
 use crate::session::SessionStore;
 use crate::settings::SettingsStore;
-use crate::state::AppState;
+use crate::state::{AppState, AppStateInit};
 use crate::store::Store;
 
 #[tokio::main]
@@ -86,18 +86,18 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::debug!(data_dir = %store.data_dir().display(), "store ready");
-    let state = AppState::new(
+    let state = AppState::new(AppStateInit {
         store,
         settings,
         plugins,
         backgrounds,
         sessions,
         token,
-        !args.no_tls,
-        args.query_timeout_secs,
-        args.plugin_timeout_secs,
-        args.csp_hosts.clone(),
-    );
+        secure_cookies: !args.no_tls,
+        query_timeout_secs: args.query_timeout_secs,
+        plugin_timeout_secs: args.plugin_timeout_secs,
+        csp_hosts: args.csp_hosts.clone(),
+    });
     spawn_trash_purger(state.clone());
     let app = routes::router(state, args.dev_cors);
 

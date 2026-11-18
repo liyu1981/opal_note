@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { IconMaximize, IconMinimize, IconX } from "../Icons";
 
@@ -34,8 +34,6 @@ export function Lightbox({
   onClose,
   children,
 }: LightboxProps) {
-  const close = useCallback(() => onClose(), [onClose]);
-
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -55,7 +53,7 @@ export function Lightbox({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [close, focusMode, onFocusModeChange]);
+  }, [focusMode, onClose, onFocusModeChange]);
 
   return (
     <div
@@ -106,7 +104,7 @@ export function Lightbox({
           {actions}
           <button
             type="button"
-            onClick={close}
+            onClick={onClose}
             aria-label="Close"
             className="shrink-0 rounded-md p-1 text-faint transition hover:bg-panel hover:text-ink"
           >

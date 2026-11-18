@@ -212,14 +212,16 @@ pub fn check_remote_update(
         }
     }
 
-    let result = stage_candidate(update_dir, repo, channel).and_then(|outcome| match outcome {
-        StageOutcome::Staged(manifest) => Ok(Some(manifest)),
+    // The match only prints and reduces to the manifest; `map` keeps the
+    // inner Result undisturbed.
+    let result = stage_candidate(update_dir, repo, channel).map(|outcome| match outcome {
+        StageOutcome::Staged(manifest) => Some(manifest),
         StageOutcome::NotFound => {
             eprintln!(
                 "No {} update source was found (repo {repo}).",
                 channel_label(channel)
             );
-            Ok(None)
+            None
         }
         StageOutcome::NotNewer(manifest) => {
             eprintln!(
@@ -233,7 +235,7 @@ pub fn check_remote_update(
                 },
                 format_time(manifest.commit_time)
             );
-            Ok(None)
+            None
         }
     });
     let _ = fs::remove_dir_all(download_dir(update_dir));

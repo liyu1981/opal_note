@@ -215,6 +215,14 @@ async function requestBlob(
     }
     throw new ApiError(response.status, code, message);
   }
+  // An authenticated reverse proxy (Cloudflare Access, an SSO gateway) answers
+  // an expired session with its sign-in page and a 200; treat that like the
+  // JSON path does instead of handing back a bogus blob.
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/html")) {
+    markSessionExpired();
+    throw new ApiError(401, "unauthorized", "The server returned a sign-in page instead of data.");
+  }
   return response.blob();
 }
 

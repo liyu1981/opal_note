@@ -207,6 +207,16 @@ pub struct Store {
     default_query_timeout_secs: f64,
 }
 
+/// Descriptive half of a trash entry; the payload path is passed separately.
+struct StashEntry<'a> {
+    notebook_id: &'a str,
+    original_path: &'a str,
+    kind: &'a str,
+    title: String,
+    mime: &'a str,
+    preview: Option<String>,
+}
+
 /// Cached diagram thumbnail and the asset digest it was rendered from.
 pub struct ThumbnailView {
     pub hash: String,
@@ -984,16 +994,15 @@ impl Store {
         Ok(true)
     }
 
-    fn stash_file(
-        &self,
-        notebook_id: &str,
-        original_path: &str,
-        kind: &str,
-        title: String,
-        mime: &str,
-        preview: Option<String>,
-        absolute: &Path,
-    ) -> Result<()> {
+    fn stash_file(&self, entry: StashEntry<'_>, absolute: &Path) -> Result<()> {
+        let StashEntry {
+            notebook_id,
+            original_path,
+            kind,
+            title,
+            mime,
+            preview,
+        } = entry;
         let entry_id = uuid::Uuid::new_v4().to_string();
         let dest_dir = self.trash.entries_dir().join(&entry_id);
         fs::create_dir_all(&dest_dir)?;
@@ -1870,11 +1879,7 @@ impl Store {
 
     /// Cached thumbnail plus the digest it belongs to, so a client can render
     /// and store one when the cache is cold.
-    pub fn read_thumbnail(
-        &self,
-        notebook_id: &str,
-        path: &str,
-    ) -> Result<Option<ThumbnailView>> {
+    pub fn read_thumbnail(&self, notebook_id: &str, path: &str) -> Result<Option<ThumbnailView>> {
         let Some(hash) = self.asset_digest(notebook_id, path)? else {
             return Ok(None);
         };
@@ -2210,12 +2215,14 @@ impl Store {
             "page"
         };
         self.stash_file(
-            notebook_id,
-            path,
-            kind,
-            title,
-            "text/markdown",
-            Some(summarize(&parsed.body, SUMMARY_CHARS)),
+            StashEntry {
+                notebook_id,
+                original_path: path,
+                kind,
+                title,
+                mime: "text/markdown",
+                preview: Some(summarize(&parsed.body, SUMMARY_CHARS)),
+            },
             &absolute,
         )?;
         self.sync_notebook_locked(notebook_id, false)?;
@@ -2242,12 +2249,14 @@ impl Store {
         let mime = files::asset_mime(&absolute);
         let original_path = format!("{}/{}", files::ASSET_DIR, path);
         self.stash_file(
-            notebook_id,
-            &original_path,
-            "asset",
-            title,
-            &mime,
-            None,
+            StashEntry {
+                notebook_id,
+                original_path: &original_path,
+                kind: "asset",
+                title,
+                mime: &mime,
+                preview: None,
+            },
             &absolute,
         )?;
         Ok(true)
@@ -2284,15 +2293,12 @@ impl Store {
 
         let sort = sort.unwrap_or_default();
         match sort {
-            "title" => records
-                .sort_by(|left, right| left.title.to_lowercase().cmp(&right.title.to_lowercase())),
+            "title" => records.sort_by_key(|record| record.title.to_lowercase()),
             "size" => records.sort_by_key(|record| record.size),
             "kind" => records.sort_by(|left, right| left.kind.cmp(&right.kind)),
-            "notebook" => records.sort_by(|left, right| {
-                left.notebook_name
-                    .to_lowercase()
-                    .cmp(&right.notebook_name.to_lowercase())
-            }),
+            "notebook" => {
+                records.sort_by_key(|record| record.notebook_name.to_lowercase());
+            }
             _ => records.sort_by(|left, right| {
                 left.deleted_at
                     .partial_cmp(&right.deleted_at)
@@ -3194,7 +3200,10 @@ mod tests {
             .exists());
 
         // Non-diagram assets have no thumbnails at all.
-        assert!(store.read_thumbnail(&notebook.id, "photo.png").unwrap().is_none());
+        assert!(store
+            .read_thumbnail(&notebook.id, "photo.png")
+            .unwrap()
+            .is_none());
     }
 
     #[test]

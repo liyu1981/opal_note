@@ -61,8 +61,12 @@ type CodeBlockRange = {
   indent: number;
 };
 
-/** Last rendered height of an image line, keyed by note + source line. */
+/**
+ * Last rendered height of an image line, keyed by note + source line. Capped so
+ * a long session across many notes cannot grow it without bound.
+ */
 const imageLineHeights = new Map<string, number>();
+const IMAGE_HEIGHT_CACHE_LIMIT = 500;
 
 /** Locate fenced blocks so focusing any line can reveal the whole block. */
 function findCodeBlocks(doc: Text): CodeBlockRange[] {
@@ -1110,6 +1114,9 @@ class ImageWidget extends WidgetType {
       const height = line.getBoundingClientRect().height;
       const key = `${this.notePath}:${this.lineFrom}`;
       if (height > (imageLineHeights.get(key) ?? 0)) {
+        if (imageLineHeights.size >= IMAGE_HEIGHT_CACHE_LIMIT) {
+          imageLineHeights.clear();
+        }
         imageLineHeights.set(key, height);
       }
     };

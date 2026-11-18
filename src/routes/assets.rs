@@ -362,10 +362,7 @@ pub async fn content(
     } else {
         "private, max-age=3600"
     };
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static(cache),
-    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
     // Assets are user files served from the app's own origin: never let the
     // browser sniff a different type, and sandbox documents (SVG) so inline
     // scripts cannot run.
