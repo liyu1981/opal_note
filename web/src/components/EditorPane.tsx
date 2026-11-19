@@ -11,6 +11,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { ApiError, api } from "../api/client";
 import type { Note, NoteSummary } from "../api/types";
 import { parseTags, relativeTime, tagList, wordCount } from "../lib/format";
+import { taskSignature } from "../lib/tasks";
 import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import { bindingLabel } from "../lib/shortcuts";
@@ -60,6 +61,9 @@ function arraysEqual<T>(left: T[], right: T[]): boolean {
 function noteMetadataChanged(previous: Note, next: Note): boolean {
   return (
     previous.title !== next.title ||
+    // Tasks are derived from the body, so a body edit that adds, completes or
+    // rewrites one must refresh the todo list (and the Home plugin card).
+    taskSignature(previous.content) !== taskSignature(next.content) ||
     !arraysEqual(previous.explicit_tags, next.explicit_tags) ||
     !arraysEqual(previous.tags, next.tags) ||
     JSON.stringify(previous.links) !== JSON.stringify(next.links) ||

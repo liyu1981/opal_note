@@ -585,6 +585,13 @@ web/
 - Tasks are derived during filesystem sync into the `task` relation from
   markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
   rows in sync with note insert/update/delete and notebook deletion.
+  A body edit can therefore change derived data, so saves that move the task set
+  must bump `notesRevisionAtom`: `EditorPane`'s `noteMetadataChanged` compares
+  `taskSignature(previous.content)` with the new content, and `JournalCard` does
+  the same after a save **and** after its unmount flush (the next view, e.g.
+  Todos, may already be mounted and must be told). `web/src/lib/tasks.ts`
+  `taskSignature` mirrors `extract_tasks`: keep the two in step — fenced code is
+  skipped, `-`/`*`/`+` bullets only, `[ ]`/`[x]`/`[-]` plus the Logseq keywords.
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
   the todo-kind/legacy fallback. Home renders every server plugin result plus

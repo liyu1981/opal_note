@@ -12,7 +12,8 @@ import { api } from "../api/client";
 import type { JournalPage, Note } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
-import { refreshJournalPluginsAtom } from "../state/atoms";
+import { refreshJournalPluginsAtom, refreshNotesAtom } from "../state/atoms";
+import { taskSignature } from "../lib/tasks";
 import type { LinkTarget } from "../lib/livePreview";
 import { IconFile, IconLock } from "./Icons";
 import {
@@ -68,6 +69,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
     const [error, setError] = useState<string | null>(null);
 
     const refreshPlugins = useSetAtom(refreshJournalPluginsAtom);
+    const refreshNotes = useSetAtom(refreshNotesAtom);
     const editorRef = useRef<LiveMarkdownEditorHandle>(null);
     const contentRef = useRef(content);
     const dirtyRef = useRef(dirty);
@@ -76,6 +78,9 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
     // Content last seen from the server, so a refresh can tell "changed
     // elsewhere" apart from "this card echoed its own save".
     const serverContentRef = useRef(page.content);
+    // Tasks are derived from the body: a save that changes them must refresh
+    // the todo list (and the Home plugin card), not just the plugin rail.
+    const savedTasksRef = useRef(taskSignature(page.content));
     contentRef.current = content;
     dirtyRef.current = dirty;
 
@@ -119,6 +124,11 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
         setTags(updated.tags);
         setUpdatedAt(updated.updated_at);
         refreshPlugins();
+        const tasks = taskSignature(body);
+        if (tasks !== savedTasksRef.current) {
+          savedTasksRef.current = tasks;
+          refreshNotes();
+        }
         if (versionRef.current === version) {
           setDirty(false);
           setStatus("saved");
@@ -152,14 +162,22 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
     useEffect(() => {
       return () => {
         if (dirtyRef.current && !savingRef.current) {
+          const body = contentRef.current;
           void api
-            .updateNote(notebookId, page.id, { content: contentRef.current })
+            .updateNote(notebookId, page.id, { content: body })
+            .then(() => {
+              // The next view may already be mounted (e.g. Todos): tell it.
+              if (taskSignature(body) !== savedTasksRef.current) {
+                savedTasksRef.current = taskSignature(body);
+                refreshNotes();
+              }
+            })
             .catch(() => {
               // The card is gone; the next open will surface server errors.
             });
         }
       };
-    }, [notebookId, page.id, refreshPlugins]);
+    }, [notebookId, page.id, refreshNotes, refreshPlugins]);
 
     function change(next: string) {
       contentRef.current = next;

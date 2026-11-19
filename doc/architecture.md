@@ -939,7 +939,11 @@ trash_entry { id => notebook_id, notebook_name, original_path, kind,
 `trashed_path` points into `data/.trash/entries/<uuid>/`, so a restore can move
 the payload back to `original_path` (or a numeric suffix when it is occupied).
 
-Tasks are derived from markdown checkboxes and Logseq task keywords during sync.
+Tasks are derived from markdown checkboxes and Logseq task keywords during sync,
+so a body save that adds, completes or rewrites one changes derived data: the
+editor and the journal cards compare `taskSignature(content)` before/after saving
+(`web/src/lib/tasks.ts` mirrors `extract_tasks`) and bump `notesRevisionAtom` when
+the set moved, including from the flush that runs when a card is unmounted.
 Writes touching a note plus its tags/links/tasks use MnesticDB's `multi_transaction`,
 and every filesystem mutation holds a store-wide lock so scans and sends do not
 interleave.
