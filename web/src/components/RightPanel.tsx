@@ -297,6 +297,7 @@ export function RightPanel() {
             notebookId={notebookId}
             activeNoteId={note?.id ?? null}
             panel
+            unfoldOnClick
           />
         )}
       </div>

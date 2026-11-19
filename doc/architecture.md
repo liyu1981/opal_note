@@ -464,6 +464,12 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   lists, task, quote, code block, divider, page link and inline code. Arrows
   and Enter apply a command; Escape cancels. The menu does not appear inside
   fenced code blocks.
+- **Resuming refreshes**: an installed PWA or a backgrounded tab keeps its state
+  instead of reloading, so coming back re-reads note-derived data
+  (`useRevalidateOnResume` → `notesRevisionAtom` on visibility/`pageshow`/`online`
+  after a short absence). The open editor and journal cards adopt the server copy
+  when they have no unsaved draft, so a note changed on another device appears
+  without losing local typing; `JournalFeed` re-reads its loaded pages quietly.
 - **Read only** locks the note for presentation: title/tags are not editable,
   save/delete are hidden, the editor is non-editable, and task checkboxes are
   disabled. Wikilinks stay clickable for navigation.
@@ -619,9 +625,14 @@ picked is actually visible.
   proxied through the OpalNote server. Configure an OpenRouter key or a local
   OpenAI-compatible endpoint (Ollama, LM Studio, vLLM) in the agent's own
   Settings view; the tab works without a notebook selected. The Graph tab
-  renders an interactive local/full notebook graph: click a node to highlight
-  its links, double-click to open its page, hover to preview links, and switch
-  between the active page's neighborhood and the complete graph. A **Tags**
+  renders an interactive local/full notebook graph. Its page graph
+  (`unfoldOnClick`) loads a clicked node's direct connections into the view —
+  `unfoldGraph` unions them, `mergeExpandedLayout` keeps existing nodes in place
+  and seeds newcomers beside the node that pulled them in, and Reset folds
+  everything back. The full-page notebook graph and plugin graphs leave the prop
+  off because every node is already present, so a click there only highlights;
+  double-click opens a page, hover previews links, and the Local/Full switch
+  chooses between the active page's neighborhood and the complete graph. A **Tags**
   toggle adds tag nodes connected to their pages and starts enabled. The full graph
   follows Logseq's all-pages layout: d3-force for connected pages and a
   deterministic ring of isolated pages around the connected cluster. Connected

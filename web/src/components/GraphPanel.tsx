@@ -13,6 +13,7 @@ import type { GraphData, GraphEdge, GraphNode } from "../api/types";
 import {
   createLiveSimulation,
   layoutGraph,
+  mergeExpandedLayout,
   type LiveGraphSimulation,
   type PositionedNode,
 } from "../lib/graphLayout";
@@ -38,6 +39,7 @@ export function GraphPanel({
   defaultIncludeTags = true,
   fill = false,
   panel = false,
+  unfoldOnClick = false,
   title,
 }: {
   notebookId: string;
@@ -50,6 +52,11 @@ export function GraphPanel({
   fill?: boolean;
   /** Right-panel layout: compact controls over a canvas that fills the panel. */
   panel?: boolean;
+  /**
+   * Clicking a node unfolds its direct connections into the graph. Only the
+   * single-page graph enables this: the notebook graph already holds every node.
+   */
+  unfoldOnClick?: boolean;
   title?: string;
 }) {
   const revision = useAtomValue(notesRevisionAtom);
@@ -61,11 +68,28 @@ export function GraphPanel({
       navigate({ view: "note", noteId: id });
     }
   };
+  const expandNode = (id: string) => {
+    if (!unfoldOnClick) return;
+    setAnchorId(id);
+    setExpanded((current) => {
+      if (current.has(id)) return current;
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+  };
+  const collapseGraph = () => {
+    setExpanded(new Set());
+    setAnchorId(null);
+  };
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>(defaultScope);
   const [includeTags, setIncludeTags] = useState(defaultIncludeTags);
+  // Nodes whose direct connections were unfolded into the graph by a click.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [anchorId, setAnchorId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,12 +116,18 @@ export function GraphPanel({
     };
   }, [includeTags, notebookId, revision]);
 
+  // A new base (notebook, scope, tags, active page, reindex) starts over.
+  useEffect(() => {
+    setExpanded(new Set());
+    setAnchorId(null);
+  }, [activeNoteId, graph, includeTags, notebookId, revision, scope]);
+
+  // The unfolding only makes sense for one page's neighbourhood; the notebook
+  // graph already contains every node.
+  const canUnfold = unfoldOnClick && Boolean(activeNoteId) && scope === "local";
   const shown = useMemo(
-    () =>
-      scope === "all" || !activeNoteId
-        ? graph
-        : localGraph(graph, activeNoteId),
-    [activeNoteId, graph, scope],
+    () => unfoldGraph(graph, scope, activeNoteId, expanded, canUnfold),
+    [activeNoteId, canUnfold, expanded, graph, scope],
   );
 
   if (loading && !graph) {
@@ -160,7 +190,9 @@ export function GraphPanel({
                 {shown.edges.length === 1 ? "link" : "links"}
               </p>
               <p className="mt-1 font-mono text-[14px] text-faint">
-                Click to select · double-click to open
+                {canUnfold
+                  ? "Click to load its connections · double-click to open"
+                  : "Click to select · double-click to open"}
               </p>
             </div>
           </div>
@@ -170,10 +202,13 @@ export function GraphPanel({
             nodes={shown.nodes}
             edges={shown.edges}
             activeNoteId={activeNoteId}
+            anchorId={anchorId}
             width={width}
             height={height}
             fill
             onOpenNote={openGraphNode}
+            onExpand={expandNode}
+            onCollapse={collapseGraph}
           />
         </div>
       </div>
@@ -232,7 +267,9 @@ export function GraphPanel({
         {panel
           ? isolated
             ? " · no connections yet"
-            : " · click to select, double-click to open"
+            : canUnfold
+              ? " · click to load connections, double-click to open"
+              : " · click to select, double-click to open"
           : ""}
       </p>
 
@@ -242,10 +279,13 @@ export function GraphPanel({
             nodes={shown.nodes}
             edges={shown.edges}
             activeNoteId={activeNoteId}
+            anchorId={anchorId}
             width={width}
             height={height}
             fill
             onOpenNote={openGraphNode}
+            onExpand={expandNode}
+            onCollapse={collapseGraph}
           />
         </div>
       ) : (
@@ -254,15 +294,18 @@ export function GraphPanel({
             nodes={shown.nodes}
             edges={shown.edges}
             activeNoteId={activeNoteId}
+            anchorId={anchorId}
             width={width}
             height={height}
             onOpenNote={openGraphNode}
+            onExpand={expandNode}
+            onCollapse={collapseGraph}
           />
 
           <p className="font-mono text-[14px] leading-relaxed text-faint">
             {isolated
               ? "This page has no connections yet. Switch to Full to see the notebook."
-              : "Click a node to highlight its links; double-click to open its page."}
+              : "Click a node to load its direct connections; double-click to open its page."}
           </p>
         </>
       )}
@@ -270,20 +313,69 @@ export function GraphPanel({
   );
 }
 
-function localGraph(graph: GraphData | null, activeId: string): GraphData | null {
+/**
+ * The graph actually drawn: the scope's base nodes (the active page's
+ * neighbourhood, or everything) plus the direct connections of every node the
+ * user clicked.
+ */
+function unfoldGraph(
+  graph: GraphData | null,
+  scope: Scope,
+  activeId: string | null,
+  expanded: Set<string>,
+  unfold: boolean,
+): GraphData | null {
   if (!graph) return null;
-  if (!graph.nodes.some((node) => node.id === activeId)) return graph;
-  const ids = new Set([activeId]);
+  const neighbours = new Map<string, string[]>();
   for (const edge of graph.edges) {
-    if (edge.source === activeId) ids.add(edge.target);
-    if (edge.target === activeId) ids.add(edge.source);
+    for (const [from, to] of [
+      [edge.source, edge.target],
+      [edge.target, edge.source],
+    ] as const) {
+      const list = neighbours.get(from);
+      if (list) list.push(to);
+      else neighbours.set(from, [to]);
+    }
   }
+
+  const ids = new Set<string>();
+  if (scope === "all" || !activeId) {
+    for (const node of graph.nodes) ids.add(node.id);
+  } else if (graph.nodes.some((node) => node.id === activeId)) {
+    ids.add(activeId);
+    for (const id of neighbours.get(activeId) ?? []) ids.add(id);
+  } else {
+    for (const node of graph.nodes) ids.add(node.id);
+  }
+
+  let grew = unfold;
+  while (grew) {
+    grew = false;
+    for (const id of expanded) {
+      if (!ids.has(id)) continue;
+      for (const neighbour of neighbours.get(id) ?? []) {
+        if (ids.has(neighbour)) continue;
+        ids.add(neighbour);
+        grew = true;
+      }
+    }
+  }
+
   return {
     nodes: graph.nodes.filter((node) => ids.has(node.id)),
     edges: graph.edges.filter(
       (edge) => ids.has(edge.source) && ids.has(edge.target),
     ),
   };
+}
+
+/** Pointer capture can fail for synthetic pointers; never break the drag. */
+function capturePointer(target: Element, pointerId: number): void {
+  try {
+    target.setPointerCapture(pointerId);
+  } catch {
+    // The pointer is already gone (or the event was synthesized).
+  }
 }
 
 type ViewTransform = { x: number; y: number; k: number };
@@ -314,18 +406,27 @@ function GraphCanvas({
   nodes,
   edges,
   activeNoteId,
+  anchorId = null,
   width,
   height,
   fill = false,
   onOpenNote,
+  onExpand,
+  onCollapse,
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
   activeNoteId: string | null;
+  /** Node whose connections were loaded last, used to seed the new ones. */
+  anchorId?: string | null;
   width: number;
   height: number;
   fill?: boolean;
   onOpenNote: (path: string) => void;
+  /** Single click: unfold the node's direct connections into the graph. */
+  onExpand?: (id: string) => void;
+  /** Reset: fold every unfolded node again. */
+  onCollapse?: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -362,19 +463,28 @@ function GraphCanvas({
   );
   const [positions, setPositions] =
     useState<PositionedNode[]>(initialLayout);
+  // Last drawn positions, so loading a node's connections can keep the graph
+  // still instead of re-laying it out from scratch.
+  const previousRef = useRef<PositionedNode[]>([]);
 
   useEffect(() => {
+    // A pure addition (a click loaded one node's connections) keeps the
+    // existing positions and seeds the newcomers next to their neighbour;
+    // anything else is a fresh graph and gets a fresh layout.
+    const merged = mergeExpandedLayout(previousRef.current, nodes, edges);
+    const seed = merged ?? initialLayout;
     autoFitRef.current = true;
-    setPositions(initialLayout);
-    setView(fitView(initialLayout, size.width, size.height));
-    setSelectedId(activeNoteId);
+    setPositions(seed);
+    setView(fitView(seed, size.width, size.height));
+    previousRef.current = seed;
+    if (!merged) setSelectedId(activeNoteId);
 
     const live = createLiveSimulation(
       nodes,
       edges,
       size.width,
       size.height,
-      initialLayout,
+      seed,
     );
     simulationRef.current = live;
     const onTick = () => {
@@ -389,6 +499,7 @@ function GraphCanvas({
           : node;
       });
       setPositions(next);
+      previousRef.current = next;
       if (autoFitRef.current) {
         setView(fitView(next, size.width, size.height));
       }
@@ -402,6 +513,7 @@ function GraphCanvas({
     };
   }, [
     activeNoteId,
+    anchorId,
     edges,
     initialLayout,
     nodes,
@@ -453,7 +565,7 @@ function GraphCanvas({
       viewY: view.y,
       moved: false,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointer(event.currentTarget, event.pointerId);
   }
 
   function startNodeDrag(
@@ -482,7 +594,7 @@ function GraphCanvas({
       startGraphY: start.y,
       moved: false,
     };
-    svgRef.current?.setPointerCapture(event.pointerId);
+    if (svgRef.current) capturePointer(svgRef.current, event.pointerId);
   }
 
   function handlePointerMove(event: ReactPointerEvent<SVGSVGElement>) {
@@ -562,6 +674,7 @@ function GraphCanvas({
       }
       lastNodeClickRef.current = { id: drag.nodeId, time: now };
       setSelectedId(drag.nodeId);
+      onExpand?.(drag.nodeId);
     } else {
       lastNodeClickRef.current = null;
       setSelectedId(null);
@@ -598,6 +711,7 @@ function GraphCanvas({
   }
 
   function resetView() {
+    onCollapse?.();
     autoFitRef.current = true;
     const live = simulationRef.current;
     if (live?.simulation) {

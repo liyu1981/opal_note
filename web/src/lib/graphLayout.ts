@@ -333,3 +333,55 @@ function graphRadius(nodes: PositionedNode[]): number {
   const maxY = Math.max(...nodes.map((node) => node.y));
   return Math.max(maxX - minX, maxY - minY) / 2;
 }
+
+/**
+ * Positions for a graph that only gained nodes (a node was expanded).
+ *
+ * Existing nodes keep their place so the view does not jump, and each new node
+ * is seeded just outside the neighbour that pulled it in; the live simulation
+ * then settles them. Returns `null` when the change is not a pure addition, so
+ * the caller can fall back to a full layout.
+ */
+export function mergeExpandedLayout(
+  previous: PositionedNode[],
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): PositionedNode[] | null {
+  if (previous.length === 0) return null;
+  const previousById = new Map(previous.map((node) => [node.id, node]));
+  if (!previous.every((node) => nodes.some((next) => next.id === node.id))) {
+    return null;
+  }
+  if (nodes.length <= previous.length) return null;
+
+  const neighbours = new Map<string, string[]>();
+  for (const edge of edges) {
+    neighbours.get(edge.source)?.push(edge.target) ??
+      neighbours.set(edge.source, [edge.target]);
+    neighbours.get(edge.target)?.push(edge.source) ??
+      neighbours.set(edge.target, [edge.source]);
+  }
+
+  let added = 0;
+  return nodes.map((node) => {
+    const existing = previousById.get(node.id);
+    if (existing) return existing;
+
+    // Place the newcomer next to a neighbour that already has a position.
+    const anchor = (neighbours.get(node.id) ?? [])
+      .map((id) => previousById.get(id))
+      .find((candidate) => candidate !== undefined);
+    const angle = (added * Math.PI * 2) / 5 + node.id.length;
+    const distance = (anchor?.radius ?? 4) + 34;
+    added += 1;
+    const x = (anchor?.x ?? 0) + Math.cos(angle) * distance;
+    const y = (anchor?.y ?? 0) + Math.sin(angle) * distance;
+    return {
+      ...node,
+      x,
+      y,
+      radius: node.kind === "tag" ? 4.5 : node.id.startsWith("journals/") ? 4.4 : 3.8,
+      degree: neighbours.get(node.id)?.length ?? 0,
+    };
+  });
+}

@@ -182,6 +182,13 @@ web/
 - Structural changes (new/deleted notes or notebooks, notebook switches,
   reindex) use `refreshAtom`; note content/title/tag saves use
   `refreshNotesAtom`. Do not call global refresh from the autosave path.
+- A **resumed tab or installed PWA is never reloaded**, so `useRevalidateOnResume`
+  (mounted in `Workspace`) bumps `notesRevisionAtom` — never `revisionAtom`, which
+  would suspend the shell — on visibility, bfcache `pageshow` and `online` after a
+  ≥2 s absence. Editors and journal cards then **adopt a changed server copy only
+  when they hold no draft** (`NoteEditor`, `JournalCard` compare against the last
+  server copy), and `JournalFeed` silently re-reads its loaded first page. A
+  resume therefore updates an untouched page but never clobbers unsaved typing.
 - Keep API types in `src/api/types.ts` in sync with `src/store/model.rs`.
 - `scripts/certs.mjs` / `devCertificateNames()` cover `localhost`, `127.0.0.1`,
   `::1` and every non-internal IPv4 address (plus `OPALNOTE_TLS_HOSTS`);
@@ -488,7 +495,14 @@ web/
   and dragging a node sets its `fx/fy` so link forces pull its neighbours.
   Auto-fit follows the simulation until the user pans or zooms; Reset restores
   the initial seed, fit and simulation. Double-clicking (or Enter on) a node
-  uses `useAppNavigate`; a single click only highlights that node's connections.
+  uses `useAppNavigate`. With the `unfoldOnClick` prop a single click **loads that
+  node's direct connections** into the graph (`unfoldGraph` + `mergeExpandedLayout`,
+  so existing nodes keep their positions and newcomers are seeded beside the node
+  that pulled them in) and highlights them; double-click (or Enter) opens the page,
+  and Reset folds everything back. Only the right panel's page graph enables it —
+  the prop stays off for the full-page notebook graph and plugin graphs, where
+  every node is already present, and the hint text follows the flag. In Full scope
+  inside the panel a click only highlights.
   Preserve this distinction and the ResizeObserver-driven full-page sizing.
 - Plugins have three kinds. `server` plugins run in QuickJS; `client` plugins are
   built into the web bundle; `viewer` plugins are sandboxed iframe bundles

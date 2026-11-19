@@ -11,6 +11,7 @@ import { DiagramLightbox } from "./diagram/DiagramLightbox";
 import { ImageLightbox } from "./lightbox/ImageLightbox";
 import { TopBar } from "./TopBar";
 import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
+import { useRevalidateOnResume } from "../lib/useRevalidateOnResume";
 import {
   applySettings,
   bootstrapSettings,
@@ -43,6 +44,8 @@ export function Workspace() {
   );
 
   useKeyboardShortcuts();
+  // A resumed PWA keeps its old state; re-read notes changed elsewhere.
+  useRevalidateOnResume();
 
   // On phones and small tablets the panels float over the page, so opening
   // something from them should reveal it instead of leaving the drawer on top.

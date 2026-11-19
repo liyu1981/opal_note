@@ -194,7 +194,15 @@ function NoteEditor({ note }: { note: Note }) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [tagsInput, setTagsInput] = useState(tagList(note.explicit_tags));
+  // Server copy last seen, so a background refresh can tell "changed
+  // elsewhere" from "this editor echoed its own save".
+  const serverNoteRef = useRef({
+    content: note.content,
+    title: note.title,
+    tags: tagList(note.explicit_tags),
+  });
   const [status, setStatus] = useState<SaveStatus>("saved");
+
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [editTick, setEditTick] = useState(0);
@@ -216,6 +224,24 @@ function NoteEditor({ note }: { note: Note }) {
   const savedNoteRef = useRef(note);
   draftRef.current = { title, content, tagsInput };
   dirtyRef.current = dirty;
+  // A resume or another device changed the note: adopt it when this editor has
+  // no draft. With unsaved edits the local text wins until it is saved.
+  useEffect(() => {
+    const server = {
+      content: note.content,
+      title: note.title,
+      tags: tagList(note.explicit_tags),
+    };
+    const previous = serverNoteRef.current;
+    serverNoteRef.current = server;
+    if (dirty) return;
+    if (server.content !== previous.content) {
+      setContent(server.content);
+      setEditTick((tick) => tick + 1);
+    }
+    if (server.title !== previous.title) setTitle(server.title);
+    if (server.tags !== previous.tags) setTagsInput(server.tags);
+  }, [dirty, note.content, note.explicit_tags, note.title]);
 
   useEffect(() => {
     savedNoteRef.current = note;

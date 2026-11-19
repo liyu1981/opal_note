@@ -73,6 +73,9 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
     const dirtyRef = useRef(dirty);
     const versionRef = useRef(0);
     const savingRef = useRef(false);
+    // Content last seen from the server, so a refresh can tell "changed
+    // elsewhere" apart from "this card echoed its own save".
+    const serverContentRef = useRef(page.content);
     contentRef.current = content;
     dirtyRef.current = dirty;
 
@@ -85,6 +88,20 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
       }),
       [],
     );
+
+    // A background refresh (resume, remote edit) replaces untouched cards;
+    // a card with a local draft keeps it and shows the draft until it saves.
+    useEffect(() => {
+      if (page.content === serverContentRef.current) return;
+      serverContentRef.current = page.content;
+      if (dirtyRef.current || savingRef.current) return;
+      contentRef.current = page.content;
+      versionRef.current += 1;
+      setContent(page.content);
+      setTags(page.tags);
+      setUpdatedAt(page.updated_at);
+      setStatus("saved");
+    }, [page.content, page.tags, page.updated_at]);
 
     const save = useCallback(async (): Promise<boolean> => {
       if (savingRef.current) return false;

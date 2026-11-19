@@ -15,6 +15,7 @@ import { JournalCard, type JournalCardHandle } from "./JournalCard";
 import { ListFilter } from "./ListFilter";
 import {
   activeNotebookIdAtom,
+  notesRevisionAtom,
   notesAtom,
   readOnlyAtom,
   refreshNotesAtom,
@@ -32,6 +33,7 @@ export function JournalFeed() {
   const [pages, setPages] = useState<JournalPage[]>([]);
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const revision = useAtomValue(notesRevisionAtom);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
@@ -133,6 +135,29 @@ export function JournalFeed() {
       }
     })();
   }, [load, locked, notebookId, refreshNotes]);
+
+  // Re-read the pages already on screen when notes change elsewhere (resume,
+  // another device). Cards without a draft adopt the new text; a card being
+  // edited keeps its draft.
+  const appliedRevisionRef = useRef(revision);
+  useEffect(() => {
+    if (revision === appliedRevisionRef.current) return;
+    appliedRevisionRef.current = revision;
+    if (!notebookId || pages.length === 0) return;
+    void (async () => {
+      const generation = generationRef.current;
+      try {
+        const batch = await api.listJournals(notebookId, undefined, PAGE_SIZE);
+        if (generation !== generationRef.current) return;
+        setPages((current) => {
+          const fresh = new Map(batch.map((page) => [page.id, page]));
+          return current.map((page) => fresh.get(page.id) ?? page);
+        });
+      } catch {
+        // Keep what is on screen; the next resume retries.
+      }
+    })();
+  }, [notebookId, pages.length, revision]);
 
   useEffect(() => {
     const target = pendingNextPageRef.current;

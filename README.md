@@ -32,6 +32,8 @@ next read. Delete the index at any time and it comes back.
   keywords.
 - **Graph** — a d3-force notebook graph in the sidebar view and the right
   panel, with tag nodes, drag, zoom and a Logseq-style ring for isolated pages.
+  In the right panel's page graph, click a node to load its direct connections
+  into the view; double-click any node to open the page.
 - **Assets** — upload images, audio, video, PDFs, office files and archives
   (4 GB default, configurable), browse and rename them, and jump from a file to
   every page that references it. Diagrams get rendered previews in the grid and
