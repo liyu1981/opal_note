@@ -472,7 +472,7 @@ impl Store {
     /// fewer) lines: the marker then forces one full re-read, because files with
     /// an unchanged mtime are otherwise skipped.
     fn take_task_rules_backfill(&self) -> bool {
-        const TASK_RULES_VERSION: u32 = 2;
+        const TASK_RULES_VERSION: u32 = 3;
         let marker = self.data_dir.join("index").join("tasks.rules");
         let current = fs::read_to_string(&marker)
             .ok()
@@ -3249,7 +3249,7 @@ mod tests {
         fs::remove_file(&marker).unwrap();
         assert!(store.take_task_rules_backfill());
         assert!(!store.take_task_rules_backfill());
-        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "2");
+        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "3");
     }
 
     #[test]

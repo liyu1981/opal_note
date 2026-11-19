@@ -594,7 +594,10 @@ web/
   its unmount flush (the next view, e.g. Todos, may already be mounted and must be
   told). `web/src/lib/tasks.ts`
   `taskSignature` mirrors `extract_tasks`: keep the two in step — fenced code is
-  skipped, `-`/`*`/`+` bullets only **with any whitespace run after the bullet**
+  skipped — note a fence may be a list child (`- ``` … ``` `), so opening
+  detection allows a bullet prefix while closing stays a bare fence, or the
+  closing fence opens a block and swallows every later task/tag/link) — with
+  `-`/`*`/`+` bullets **with any whitespace run after the bullet**
   (the editor renders `-  [ ] x` and `-\t[ ] x` as checkboxes, so the server must
   index them), `[ ]`/`[x]`/`[-]` plus the Logseq keywords. Bump
   `TASK_RULES_VERSION` in `Store::take_task_rules_backfill` whenever extraction

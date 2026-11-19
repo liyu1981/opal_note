@@ -49,6 +49,23 @@ pub fn note_link_keys(title: &str, path: &str) -> Vec<String> {
     keys
 }
 
+/// The fence marker a line opens with, if any.
+///
+/// A fenced block is often written as a child of a list item (`- ``` … ``` `),
+/// which the live editor renders as code. Recognising only a fence at the very
+/// start of the line made the *closing* fence open a block instead, swallowing
+/// every tag, link and task that followed it.
+fn fence_marker(line: &str) -> Option<&'static str> {
+    let candidate = strip_bullet(line).unwrap_or(line);
+    if candidate.starts_with("```") {
+        Some("```")
+    } else if candidate.starts_with("~~~") {
+        Some("~~~")
+    } else {
+        None
+    }
+}
+
 /// Remove fenced and inline code before scanning for links/tags, so examples
 /// do not create phantom notes or tags.
 fn strip_fenced_code(content: &str) -> String {
@@ -62,16 +79,13 @@ fn strip_fenced_code(content: &str) -> String {
                     fence = None;
                 }
             }
-            None => {
-                if trimmed.starts_with("```") {
-                    fence = Some("```");
-                } else if trimmed.starts_with("~~~") {
-                    fence = Some("~~~");
-                } else {
+            None => match fence_marker(trimmed) {
+                Some(marker) => fence = Some(marker),
+                None => {
                     out.push_str(line);
                     out.push('\n');
                 }
-            }
+            },
         }
     }
     out
@@ -118,12 +132,8 @@ pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
             }
             continue;
         }
-        if trimmed.starts_with("```") {
-            fence = Some("```");
-            continue;
-        }
-        if trimmed.starts_with("~~~") {
-            fence = Some("~~~");
+        if let Some(marker) = fence_marker(trimmed) {
+            fence = Some(marker);
             continue;
         }
 
@@ -675,6 +685,50 @@ mod tests {
                 ("open", "plus"),
             ]
         );
+    }
+
+    /// A fenced block written as a list child (`- ``` … ``` `) used to swallow
+    /// the rest of the note: the closing fence opened a block instead.
+    #[test]
+    fn fenced_block_inside_a_bullet_does_not_hide_later_tasks() {
+        let content = concat!(
+            "- interest learning from dev suwu #suwu #ios #certificate\n",
+            "  - ``` \n",
+            "    Found the actual reason — it isn't your trust settings.\n",
+            "    notBefore = 2026-08-28 12:54:56\n",
+            "    #notatag inside the block\n",
+            "    ```\n",
+            " \n",
+            " - [ ] need a refresh button as in pwa mode\n",
+            " - [ ] need a way of capture ai conversation to note\n",
+            " - [ ] why task added in mobile pwa will not show up?\n",
+            "\n",
+            "- system design course #system-design #ai-agent\n",
+            "  - recording is [here](https://example.com/rec)\n",
+            "\n",
+            "- [ ] new test item\n",
+        );
+        let tasks = extract_tasks(content);
+        let texts: Vec<&str> = tasks.iter().map(|task| task.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            vec![
+                "need a refresh button as in pwa mode",
+                "need a way of capture ai conversation to note",
+                "why task added in mobile pwa will not show up?",
+                "new test item",
+            ]
+        );
+        // Tags and links after the block survive; the one inside it does not.
+        assert_eq!(
+            extract_tags(content),
+            vec!["suwu", "ios", "certificate", "system-design", "ai-agent"]
+        );
+        let targets: Vec<String> = extract_wikilinks(content)
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect();
+        assert!(targets.is_empty(), "no phantom links: {targets:?}");
     }
 
     #[test]
