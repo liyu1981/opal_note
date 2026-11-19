@@ -46,9 +46,9 @@ export function cleanTaskText(text: string): string {
 /**
  * Every task the server would derive from `content`, as `status|text` lines.
  *
- * Mirrors `extract_tasks` in `src/store/markdown.rs` (fenced code skipped,
- * `-`/`*`/`+` bullets, `[ ]`/`[x]`/`[-]` checkboxes and the Logseq
- * `TODO`/`DOING`/`DONE`/`CANCELED` keywords). Two versions of a note with the
+ * Mirrors `extract_tasks` in `src/store/markdown.rs` (fenced code skipped, any
+ * whitespace run after a `-`/`*`/`+` bullet, `[ ]`/`[x]`/`[-]` checkboxes and
+ * the Logseq `TODO`/`DOING`/`DONE`/`CANCELED` keywords). Two versions of a note with the
  * same signature produce the same rows, so an editor can tell a body edit that
  * touched tasks from one that did not.
  */
@@ -71,7 +71,8 @@ export function taskSignature(content: string): string {
       continue;
     }
 
-    const rest = /^[-*+] (.*)$/u.exec(trimmed)?.[1];
+    // Any whitespace run after the bullet counts, like the editor's rendering.
+    const rest = /^[-*+]\s+(.*)$/u.exec(trimmed)?.[1];
     if (rest === undefined) continue;
 
     const keyword = (name: string, status: string): string | null => {

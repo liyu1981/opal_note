@@ -127,11 +127,10 @@ pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
             continue;
         }
 
-        let Some(rest) = trimmed
-            .strip_prefix("- ")
-            .or_else(|| trimmed.strip_prefix("* "))
-            .or_else(|| trimmed.strip_prefix("+ "))
-        else {
+        // Any run of whitespace after the bullet counts: the live editor renders
+        // `-  [ ] x` and `-\t[ ] x` as checkboxes too, so indexing must accept
+        // them or a task shows on the page but never in the todo list.
+        let Some(rest) = strip_bullet(trimmed) else {
             continue;
         };
 
@@ -166,6 +165,19 @@ pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
     }
 
     tasks
+}
+
+/// Strip a `-`, `*` or `+` bullet and the whitespace that follows it.
+fn strip_bullet(line: &str) -> Option<&str> {
+    let mut chars = line.chars();
+    if !matches!(chars.next()?, '-' | '*' | '+') {
+        return None;
+    }
+    let rest = chars.as_str();
+    if !rest.chars().next().is_some_and(char::is_whitespace) {
+        return None;
+    }
+    Some(rest.trim_start())
 }
 
 fn keyword_task<'a>(rest: &'a str, keyword: &str, status: &'a str) -> Option<(&'a str, &'a str)> {
@@ -641,6 +653,28 @@ mod tests {
         );
         assert_eq!(tasks[0].text, "open task");
         assert_eq!(tasks[0].line, 2);
+    }
+
+    /// The live editor renders any whitespace run after a bullet as a task, so
+    /// the extractor must accept it too (a mismatch hid tasks from the todo list).
+    #[test]
+    fn accepts_extra_whitespace_after_the_bullet() {
+        let content = "\n-  [ ] two spaces\n-\t[x] tab\n- \t[-] space tab\n*  TODO spaced keyword\n+ [ ] plus\n- plain bullet\n";
+        let tasks = extract_tasks(content);
+        let rows: Vec<(&str, &str)> = tasks
+            .iter()
+            .map(|task| (task.status.as_str(), task.text.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("open", "two spaces"),
+                ("done", "tab"),
+                ("cancelled", "space tab"),
+                ("open", "spaced keyword"),
+                ("open", "plus"),
+            ]
+        );
     }
 
     #[test]

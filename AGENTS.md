@@ -591,7 +591,12 @@ web/
   the same after a save **and** after its unmount flush (the next view, e.g.
   Todos, may already be mounted and must be told). `web/src/lib/tasks.ts`
   `taskSignature` mirrors `extract_tasks`: keep the two in step — fenced code is
-  skipped, `-`/`*`/`+` bullets only, `[ ]`/`[x]`/`[-]` plus the Logseq keywords.
+  skipped, `-`/`*`/`+` bullets only **with any whitespace run after the bullet**
+  (the editor renders `-  [ ] x` and `-\t[ ] x` as checkboxes, so the server must
+  index them), `[ ]`/`[x]`/`[-]` plus the Logseq keywords. Bump
+  `TASK_RULES_VERSION` in `Store::take_task_rules_backfill` whenever extraction
+  starts matching more or fewer lines: the `data/index/tasks.rules` marker then
+  forces one full re-read, because unchanged files are skipped by the scan.
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
   the todo-kind/legacy fallback. Home renders every server plugin result plus

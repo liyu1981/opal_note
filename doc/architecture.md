@@ -942,8 +942,13 @@ the payload back to `original_path` (or a numeric suffix when it is occupied).
 Tasks are derived from markdown checkboxes and Logseq task keywords during sync,
 so a body save that adds, completes or rewrites one changes derived data: the
 editor and the journal cards compare `taskSignature(content)` before/after saving
-(`web/src/lib/tasks.ts` mirrors `extract_tasks`) and bump `notesRevisionAtom` when
-the set moved, including from the flush that runs when a card is unmounted.
+(`web/src/lib/tasks.ts` mirrors `extract_tasks`, including its tolerance for any
+whitespace run after the bullet — the editor draws `-  [ ] x` and `-\t[ ] x` as
+checkboxes, so the server must index them) and bump `notesRevisionAtom` when the
+set moved, including from the flush that runs when a card is unmounted.
+`data/index/tasks.rules` records the extraction version; bumping
+`TASK_RULES_VERSION` in the store forces one full re-read so existing files are
+re-derived after a rule change.
 Writes touching a note plus its tags/links/tasks use MnesticDB's `multi_transaction`,
 and every filesystem mutation holds a store-wide lock so scans and sends do not
 interleave.

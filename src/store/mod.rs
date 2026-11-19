@@ -450,17 +450,43 @@ impl Store {
             fs_lock: Mutex::new(()),
             default_query_timeout_secs,
         };
-        let task_backfill = store.init_schema()?;
+        let schema_backfill = store.init_schema()?;
+        // Extraction rules can change too: files whose mtime has not moved are
+        // skipped by the incremental scan, so a rule bump needs one full read.
+        let rules_backfill = store.take_task_rules_backfill();
 
         // Build/refresh the index from whatever is already on disk. A newly
-        // added task relation needs a one-time full read so existing notes get
-        // task rows without requiring a manual reindex.
-        store.sync_all_locked(task_backfill)?;
+        // added task relation (or a change to how tasks are derived) needs a
+        // one-time full read so existing notes get the right rows without a
+        // manual reindex.
+        store.sync_all_locked(schema_backfill || rules_backfill)?;
         Ok(store)
     }
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    /// Marker recording which task-extraction rules built the index. Bump
+    /// [`TASK_RULES_VERSION`] whenever `extract_tasks` starts matching more (or
+    /// fewer) lines: the marker then forces one full re-read, because files with
+    /// an unchanged mtime are otherwise skipped.
+    fn take_task_rules_backfill(&self) -> bool {
+        const TASK_RULES_VERSION: u32 = 2;
+        let marker = self.data_dir.join("index").join("tasks.rules");
+        let current = fs::read_to_string(&marker)
+            .ok()
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .unwrap_or(0);
+        if current == TASK_RULES_VERSION {
+            return false;
+        }
+        // Written before the sync: a crashed sync simply repeats it next start.
+        if let Err(err) = files::write_atomic(&marker, &format!("{TASK_RULES_VERSION}\n")) {
+            tracing::warn!(error = %err, "could not write the task rules marker");
+            return true;
+        }
+        true
     }
 
     fn init_schema(&self) -> Result<bool> {
@@ -3204,6 +3230,21 @@ mod tests {
             .read_thumbnail(&notebook.id, "photo.png")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn task_rules_marker_forces_one_backfill() {
+        let (dir, store) = store();
+        let marker = dir.path().join("index/tasks.rules");
+        // Written while opening, so nothing is pending on a normal start.
+        assert!(marker.is_file());
+        assert!(!store.take_task_rules_backfill());
+
+        // An index built by older extraction rules re-reads everything once.
+        fs::remove_file(&marker).unwrap();
+        assert!(store.take_task_rules_backfill());
+        assert!(!store.take_task_rules_backfill());
+        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "2");
     }
 
     #[test]
