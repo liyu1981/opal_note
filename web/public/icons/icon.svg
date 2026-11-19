@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- App icon: full-bleed paper tile, no border, mark at 78% of the canvas.
+       `any` icon: the corners are rounded here (~15% radius); iOS/Android still
+       apply their own mask, and because nothing is inset there is no border or
+       gap. -->
+  <rect width="64" height="64" rx="11" fill="#F8F5EC"/>
+  <g
+    fill="none"
+    stroke-width="9"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    transform="translate(32 32) scale(1.164) translate(-32 -32)"
+  >
+    <path d="M15 32A17 17 0 0 1 29.05 15.26" stroke="#F0645A"/>
+    <path d="M32 15A17 17 0 0 1 48.74 29.05" stroke="#3FBF7F"/>
+    <path d="M49 32A17 17 0 0 1 34.95 48.74" stroke="#3B82F6"/>
+    <path d="M32 49A17 17 0 0 1 15.26 34.95" stroke="#F3A43B"/>
+  </g>
+</svg>

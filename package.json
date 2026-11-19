@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "certs": "node scripts/certs.mjs",
+    "icons": "node scripts/icons.mjs",
     "build": "node scripts/build.mjs",
     "build:builtins": "node scripts/build-builtins.mjs",
     "build:builtins:check": "node scripts/build-builtins.mjs --check",

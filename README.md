@@ -109,6 +109,7 @@ cp -a ~/sb-import data/notebooks/sb-import
 | `pnpm build`                | built-ins → web client → release binary                |
 | `pnpm start`                | run `opalnote serve` (pass server args after `--`)     |
 | `pnpm certs`                | regenerate dev TLS certificates                        |
+| `pnpm icons`                | regenerate the PWA icons from `web/public/icons/*.svg` |
 | `pnpm build:web`            | client bundle only                                     |
 | `pnpm build:server`         | release binary only (expects a current `web/dist`)     |
 | `pnpm build:builtins`       | regenerate built-in plugins and backgrounds            |

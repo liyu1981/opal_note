@@ -936,7 +936,8 @@ interleave.
 ## PWA
 
 The web client is installable: `web/public/manifest.webmanifest` plus
-`icons/` (192, 512, maskable and an Apple touch icon) give browsers the app
+`icons/` (192 and 512 `any`, an opaque 512 maskable and an opaque Apple touch
+icon) give browsers the app
 name, standalone display and theme colour, and `web/public/sw.js` registers a
 minimal service worker. Offline support is intentionally minimal — the app is
 server-first, so the worker caches **only** a placeholder page: an offline
@@ -945,6 +946,16 @@ navigation (reload, deep link, installed app launch) shows
 response, note data or build asset is cached, so a reload always gets the
 current shell. `/sw.js`, the manifest, the icons and the placeholder are served
 `Cache-Control: no-cache`; hashed `assets/` stay immutable.
+
+The icons are **full-bleed and borderless** on purpose: the paper background
+reaches every edge with no inset and no stroke, so the mask iOS and Android apply
+cannot expose a border or a gap between the icon and its background.
+`web/public/icons/icon.svg` (baked rounding, mark at 78% of the canvas) produces
+the `any` PNGs, `icon-square.svg` the opaque Apple touch icon (iOS masks an
+opaque square itself) and `icon-maskable.svg` the maskable icon whose mark stays
+inside the 66% safe zone. `pnpm icons` (`scripts/icons.mjs`) rasterizes all four
+with headless Chromium; the in-app mark keeps its bordered tile because it is
+drawn on a page rather than masked.
 
 `pnpm dev` serves production bundles, so the worker is active there too; open
 `/` once, stop the server and reload to see the placeholder.

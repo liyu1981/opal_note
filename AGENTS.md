@@ -188,9 +188,18 @@ web/
   `ensureDevCerts` regenerates when the cert no longer covers the current
   addresses. A PWA needs a certificate whose SANs include the exact URL host —
   Chrome blocks the service worker (`not-from-secure-origin`) otherwise.
+- PWA app icons are **full-bleed and borderless**: the paper background reaches
+  every edge with no inset and no stroke, so iOS/Android masking cannot reveal a
+  frame or gap. `web/public/icons/icon.svg` (rounded corners, mark at 78% of the
+  canvas) feeds the `any` PNGs, `icon-square.svg` (opaque square, 78%) feeds
+  `apple-touch-icon.png` because iOS masks it itself, and `icon-maskable.svg`
+  (opaque square, 66% safe zone) feeds the maskable PNG. Edit the SVGs and run
+  `pnpm icons` (`scripts/icons.mjs`, headless Chromium) instead of touching the
+  PNGs; the in-app mark (`OpalLogo`, `favicon.svg`) keeps its bordered tile
+  because it is drawn on a page, not masked.
 - The web client is an installable **PWA** with deliberately minimal offline
-  support: `web/public/manifest.webmanifest` + `icons/` (192/512/maskable and
-  an apple-touch 180) describe the app, and `web/public/sw.js` caches only
+  support: `web/public/manifest.webmanifest` + `icons/` (192/512 `any`, an
+  opaque 512 maskable and an opaque apple-touch 180) describe the app, and `web/public/sw.js` caches only
   `/offline.html` and turns a failed navigation into that placeholder. Nothing
   else is cached — notes are server-canonical. `main.tsx` registers the worker
   in production bundles only. `src/assets.rs` serves `sw.js`,
