@@ -195,8 +195,9 @@ web/
   `apple-touch-icon.png` because iOS masks it itself, and `icon-maskable.svg`
   (opaque square, 66% safe zone) feeds the maskable PNG. Edit the SVGs and run
   `pnpm icons` (`scripts/icons.mjs`, headless Chromium) instead of touching the
-  PNGs; the in-app mark (`OpalLogo`, `favicon.svg`) keeps its bordered tile
-  because it is drawn on a page, not masked.
+  PNGs; the script also mirrors `icons/icon.svg` to `public/favicon.svg`, so the
+  tab matches the app. Only the in-app mark (`OpalLogo`) keeps a bordered tile,
+  because it is drawn on a page rather than masked.
 - The web client is an installable **PWA** with deliberately minimal offline
   support: `web/public/manifest.webmanifest` + `icons/` (192/512 `any`, an
   opaque 512 maskable and an opaque apple-touch 180) describe the app, and `web/public/sw.js` caches only

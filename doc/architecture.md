@@ -954,8 +954,9 @@ cannot expose a border or a gap between the icon and its background.
 the `any` PNGs, `icon-square.svg` the opaque Apple touch icon (iOS masks an
 opaque square itself) and `icon-maskable.svg` the maskable icon whose mark stays
 inside the 66% safe zone. `pnpm icons` (`scripts/icons.mjs`) rasterizes all four
-with headless Chromium; the in-app mark keeps its bordered tile because it is
-drawn on a page rather than masked.
+with headless Chromium and mirrors `icon.svg` to `public/favicon.svg`, so the tab
+icon is the same artwork; only the in-app mark keeps a bordered tile, because it
+is drawn on a page rather than masked.
 
 `pnpm dev` serves production bundles, so the worker is active there too; open
 `/` once, stop the server and reload to see the placeholder.

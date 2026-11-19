@@ -123,10 +123,8 @@ fn must_revalidate(path: &str) -> bool {
             | "manifest.webmanifest"
             | "offline.html"
             | "favicon.svg"
-            | "icons/apple-touch-icon.png"
-            | "icons/icon-192.png"
-            | "icons/icon-512.png"
-    )
+            | "favicon.ico"
+    ) || path.starts_with("icons/")
 }
 
 fn asset_response(path: &str, bytes: Vec<u8>) -> Response {
@@ -167,7 +165,9 @@ mod tests {
             "favicon.svg",
             "icons/icon-192.png",
             "icons/icon-512.png",
+            "icons/icon-512-maskable.png",
             "icons/apple-touch-icon.png",
+            "icons/icon.svg",
         ] {
             assert!(must_revalidate(path), "{path} must not be cached forever");
         }

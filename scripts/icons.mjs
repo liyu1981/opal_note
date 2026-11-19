@@ -30,6 +30,10 @@ const TARGETS = [
   ["icon-square.svg", "apple-touch-icon.png", 180],
 ];
 
+/** The favicon mirrors the rounded app icon, so the tab and the app match. */
+const FAVICON = path.join(ROOT, "web/public/favicon.svg");
+const FAVICON_SOURCE = "icon.svg";
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function fail(message) {
@@ -94,6 +98,10 @@ try {
       `  wrote ${path.relative(ROOT, path.join(ICONS, output))} (${size}×${size})`,
     );
   }
+
+  // Same artwork for the browser tab: one source, no drifting copy.
+  fs.copyFileSync(path.join(ICONS, FAVICON_SOURCE), FAVICON);
+  console.log(`  wrote ${path.relative(ROOT, FAVICON)} (from icons/${FAVICON_SOURCE})`);
 } finally {
   session.close();
   chrome.kill("SIGKILL");

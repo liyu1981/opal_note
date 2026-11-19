@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- App icon: full-bleed paper tile, no border, mark at 78% of the canvas.
-       `any` icon: the corners are rounded here (~15% radius); iOS/Android still
-       apply their own mask, and because nothing is inset there is no border or
-       gap. -->
+  <!-- The Opal mark as an app icon: full-bleed paper tile, no border, mark at
+       78% of the canvas. Corners are rounded here (~15% radius); iOS/Android
+       still apply their own mask, and because nothing is inset there is no
+       border or gap. `pnpm icons` rasterizes this file and mirrors it to
+       `public/favicon.svg`. -->
   <rect width="64" height="64" rx="11" fill="#F8F5EC"/>
   <g
     fill="none"
