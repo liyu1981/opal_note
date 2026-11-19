@@ -482,6 +482,11 @@ impl Store {
             return false;
         }
         // Written before the sync: a crashed sync simply repeats it next start.
+        tracing::info!(
+            from = current,
+            to = TASK_RULES_VERSION,
+            "task extraction rules changed; re-reading every note"
+        );
         if let Err(err) = files::write_atomic(&marker, &format!("{TASK_RULES_VERSION}\n")) {
             tracing::warn!(error = %err, "could not write the task rules marker");
             return true;

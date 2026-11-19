@@ -29,6 +29,15 @@ export const refreshNotesAtom = atom(null, (_get, set) => {
   set(notesRevisionAtom, (revision) => revision + 1);
 });
 
+/** Bumped when a save changes the derived task set. The todo list and the
+ * "Open todos" card listen to it, so a checkbox edit refreshes them without
+ * invalidating notesAtom/tagsAtom (which would suspend the open route). */
+export const tasksRevisionAtom = atom(0);
+
+export const refreshTasksAtom = atom(null, (_get, set) => {
+  set(tasksRevisionAtom, (revision) => revision + 1);
+});
+
 /** Bumped by journal-card saves so the plugin rail can refresh without
  * invalidating notesAtom (and therefore without suspending the journal feed). */
 export const journalPluginsRevisionAtom = atom(0);

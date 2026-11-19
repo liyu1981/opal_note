@@ -42,6 +42,7 @@ import {
   notesRevisionAtom,
   refreshAtom,
   refreshNotesAtom,
+  refreshTasksAtom,
   renameNoteRefsAtom,
   revisionAtom,
   toggleFavoriteAtom,
@@ -61,9 +62,6 @@ function arraysEqual<T>(left: T[], right: T[]): boolean {
 function noteMetadataChanged(previous: Note, next: Note): boolean {
   return (
     previous.title !== next.title ||
-    // Tasks are derived from the body, so a body edit that adds, completes or
-    // rewrites one must refresh the todo list (and the Home plugin card).
-    taskSignature(previous.content) !== taskSignature(next.content) ||
     !arraysEqual(previous.explicit_tags, next.explicit_tags) ||
     !arraysEqual(previous.tags, next.tags) ||
     JSON.stringify(previous.links) !== JSON.stringify(next.links) ||
@@ -182,6 +180,7 @@ function ActiveNote() {
 function NoteEditor({ note }: { note: Note }) {
   const refresh = useSetAtom(refreshAtom);
   const refreshNotes = useSetAtom(refreshNotesAtom);
+  const refreshTasks = useSetAtom(refreshTasksAtom);
   const revision = useAtomValue(revisionAtom);
   const saveRequest = useAtomValue(saveRequestAtom);
   const lastSaveRequest = useRef(saveRequest);
@@ -312,6 +311,10 @@ function NoteEditor({ note }: { note: Note }) {
             noteMetadataChanged(note, updated)
           ) {
             refreshNotes();
+          } else if (
+            taskSignature(note.content) !== taskSignature(updated.content)
+          ) {
+            refreshTasks();
           }
         })
         .catch(() => {
@@ -319,7 +322,7 @@ function NoteEditor({ note }: { note: Note }) {
           // autosave/edit path will surface it if the user returns.
         });
     };
-  }, [note.id, note.notebook_id, refreshNotes]);
+  }, [note.id, note.notebook_id, refreshNotes, refreshTasks]);
 
   const touch = useCallback(() => {
     changeVersion.current += 1;
@@ -361,6 +364,12 @@ function NoteEditor({ note }: { note: Note }) {
         noteMetadataChanged(previous, updated)
       ) {
         refreshNotes();
+      } else if (
+        // Tasks are derived from the body: refresh the todo list quietly,
+        // without touching the atoms the open route reads.
+        taskSignature(previous.content) !== taskSignature(updated.content)
+      ) {
+        refreshTasks();
       }
       if (changeVersion.current === version) {
         setTitle(updated.title);

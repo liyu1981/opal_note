@@ -944,8 +944,10 @@ so a body save that adds, completes or rewrites one changes derived data: the
 editor and the journal cards compare `taskSignature(content)` before/after saving
 (`web/src/lib/tasks.ts` mirrors `extract_tasks`, including its tolerance for any
 whitespace run after the bullet — the editor draws `-  [ ] x` and `-\t[ ] x` as
-checkboxes, so the server must index them) and bump `notesRevisionAtom` when the
-set moved, including from the flush that runs when a card is unmounted.
+checkboxes, so the server must index them) and bump `tasksRevisionAtom` when the
+set moved, including from the flush that runs when a card is unmounted. The todo
+list and the Home plugin list watch that atom; `notesRevisionAtom` is reserved for
+metadata so a checkbox edit never suspends the open route.
 `data/index/tasks.rules` records the extraction version; bumping
 `TASK_RULES_VERSION` in the store forces one full re-read so existing files are
 re-derived after a rule change.

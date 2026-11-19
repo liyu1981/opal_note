@@ -22,6 +22,7 @@ import {
   activeNotebookIdAtom,
   favoritesAtom,
   journalPluginsRevisionAtom,
+  tasksRevisionAtom,
   notesAtom,
   notesRevisionAtom,
   readOnlyAtom,
@@ -49,6 +50,7 @@ export function HomeView() {
   const recents = useAtomValue(recentsAtom);
   const notesRevision = useAtomValue(notesRevisionAtom);
   const pluginRevision = useAtomValue(journalPluginsRevisionAtom);
+  const tasksRevision = useAtomValue(tasksRevisionAtom);
   const locked = useAtomValue(readOnlyAtom);
   const refresh = useSetAtom(refreshAtom);
   const refreshNotes = useSetAtom(refreshNotesAtom);
@@ -150,7 +152,7 @@ export function HomeView() {
     return () => {
       cancelled = true;
     };
-  }, [notebookId, notesRevision, pluginRevision]);
+  }, [notebookId, notesRevision, pluginRevision, tasksRevision]);
 
   function handlePluginAction(action: PluginAction) {
     switch (action.type) {

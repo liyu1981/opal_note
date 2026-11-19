@@ -25,6 +25,7 @@ import {
 import {
   activeNotebookIdAtom,
   notesRevisionAtom,
+  tasksRevisionAtom,
   taskStatusFilterAtom,
   tasksPageSizeAtom,
 } from "../state/atoms";
@@ -44,6 +45,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 export function TasksView() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
   const revision = useAtomValue(notesRevisionAtom);
+  const tasksRevision = useAtomValue(tasksRevisionAtom);
   const navigate = useAppNavigate();
 
   const [storedPageSize, setStoredPageSize] = useAtom(tasksPageSizeAtom);
@@ -123,6 +125,7 @@ export function TasksView() {
     sortKey,
     sortDir,
     revision,
+    tasksRevision,
   ]);
 
   const tasks = data?.tasks ?? [];

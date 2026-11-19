@@ -12,7 +12,7 @@ import { api } from "../api/client";
 import type { JournalPage, Note } from "../api/types";
 import { relativeTime } from "../lib/format";
 import { formatJournalDate } from "../lib/journal";
-import { refreshJournalPluginsAtom, refreshNotesAtom } from "../state/atoms";
+import { refreshJournalPluginsAtom, refreshTasksAtom } from "../state/atoms";
 import { taskSignature } from "../lib/tasks";
 import type { LinkTarget } from "../lib/livePreview";
 import { IconFile, IconLock } from "./Icons";
@@ -69,7 +69,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
     const [error, setError] = useState<string | null>(null);
 
     const refreshPlugins = useSetAtom(refreshJournalPluginsAtom);
-    const refreshNotes = useSetAtom(refreshNotesAtom);
+    const refreshTasks = useSetAtom(refreshTasksAtom);
     const editorRef = useRef<LiveMarkdownEditorHandle>(null);
     const contentRef = useRef(content);
     const dirtyRef = useRef(dirty);
@@ -127,7 +127,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
         const tasks = taskSignature(body);
         if (tasks !== savedTasksRef.current) {
           savedTasksRef.current = tasks;
-          refreshNotes();
+          refreshTasks();
         }
         if (versionRef.current === version) {
           setDirty(false);
@@ -169,7 +169,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
               // The next view may already be mounted (e.g. Todos): tell it.
               if (taskSignature(body) !== savedTasksRef.current) {
                 savedTasksRef.current = taskSignature(body);
-                refreshNotes();
+                refreshTasks();
               }
             })
             .catch(() => {
@@ -177,7 +177,7 @@ export const JournalCard = forwardRef<JournalCardHandle, JournalCardProps>(
             });
         }
       };
-    }, [notebookId, page.id, refreshNotes, refreshPlugins]);
+    }, [notebookId, page.id, refreshPlugins, refreshTasks]);
 
     function change(next: string) {
       contentRef.current = next;
