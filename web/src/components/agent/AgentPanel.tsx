@@ -4,6 +4,7 @@ import {
   AgentUnlockDialog,
   OPALNOTE_HOST_PROVIDERS,
   useOpalNoteAgentProvider,
+  useOpalNoteCallGate,
 } from "./AgentProviderCard";
 
 /**
@@ -16,6 +17,7 @@ import {
  */
 export function AgentPanel() {
   useOpalNoteAgentProvider();
+  const beforeAgentCall = useOpalNoteCallGate();
   return (
     <div className="agent-surface relative flex h-full min-h-0 flex-col">
       <ReAgent
@@ -23,6 +25,7 @@ export function AgentPanel() {
         theme="light"
         storagePrefix="opalnote"
         hostProviders={OPALNOTE_HOST_PROVIDERS}
+        beforeAgentCall={beforeAgentCall}
         className="h-full"
       />
       <AgentUnlockDialog />

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useAtomValue } from "jotai";
-import type { ReAgentHostProvider, ReAgentHostProviderProps } from "@liyu1981/reagent";
+import { getDefaultStore, useAtomValue } from "jotai";
+import type {
+  ReAgentCallContext,
+  ReAgentCallDecision,
+  ReAgentCallGate,
+  ReAgentHostProvider,
+  ReAgentHostProviderProps,
+} from "@liyu1981/reagent";
 
 import { api } from "../../api/client";
 import {
@@ -18,6 +24,7 @@ import {
   agentUnlockAtom,
   dismissAgentUnlock,
   expireUnlockIfNeeded,
+  requestAgentUnlock,
 } from "../../state/agentUnlock";
 import {
   OPALNOTE_PROVIDER_ID,
@@ -32,6 +39,8 @@ import {
   syncProvider,
   useUnlockProvider,
 } from "./opalnoteProvider";
+
+const store = getDefaultStore();
 
 const field =
   "h-8 min-w-0 rounded-md border border-border/60 bg-background px-2 font-mono text-xs outline-none focus:border-foreground/40";
@@ -413,6 +422,31 @@ export function AgentUnlockDialog() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Pre-call gate: ReAgent asks before appending a message to the transcript, so a
+ * locked provider stops the call with the typed prompt still in the composer
+ * instead of producing a failed turn. Only the OpalNote provider is gated —
+ * ReAgent's own providers never need our password.
+ */
+export function useOpalNoteCallGate(): ReAgentCallGate {
+  return useCallback(
+    (context: ReAgentCallContext): ReAgentCallDecision => {
+      if (context.model?.providerId !== OPALNOTE_PROVIDER_ID) return true;
+      expireUnlockIfNeeded();
+      const info = store.get(agentInfoAtom);
+      if (!storedEnvelope(info)) return true; // keyless local endpoint
+      if (store.get(agentUnlockAtom).key) return true;
+      requestAgentUnlock();
+      return {
+        ok: false,
+        message:
+          "The OpalNote provider is locked — enter its password to send this.",
+      };
+    },
+    [],
   );
 }
 

@@ -873,7 +873,10 @@ re-saved envelope changes its fingerprint, which invalidates any remembered key.
 
 **Client.** `opalnoteProvider.tsx` registers a ReAgent **host provider** whose
 `fetch` hook attaches the derived key, fails fast with `agent_locked` when
-locked, and locks again if the server rejects the key. `AgentProviderCard.tsx`
+locked, and locks again if the server rejects the key. `useOpalNoteCallGate`
+(the provider's `beforeAgentCall` hook) additionally stops a call to a locked
+provider *before* ReAgent appends the message, so the prompt stays in the
+composer and the unlock dialog opens instead of a failed turn. `AgentProviderCard.tsx`
 renders the setup card and the unlock dialog inside Settings → Agent → Model.
 Since ReAgent 0.2.1 that page lists every provider with an on/off switch; the
 OpalNote switch hides the card, and switching it back reconnects from

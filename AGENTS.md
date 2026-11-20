@@ -325,10 +325,12 @@ web/
   allow-list into a general forwarder or let the client choose the upstream. The
   client side is a ReAgent host provider (`web/src/components/agent/`) whose
   `fetch` hook attaches the derived key and turns `401 agent_locked` into the
-  password prompt.
+  password prompt, plus a `beforeAgentCall` gate (`useOpalNoteCallGate`) that
+  stops a call to a *locked* provider before the message is appended — the
+  prompt stays in the composer and our unlock dialog opens.
 - ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
-  `main`, linked as a pnpm workspace package (`workspace:*`), because its
-  published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
+  `main` (currently `14afb13`), linked as a pnpm workspace package
+  (`workspace:*`), because its published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
   it (`tsc` in the submodule, skipped when `dist/` is newer than `src/`) and runs
   from `pnpm build`, `pnpm typecheck` and `pnpm build:watch`; `pnpm dev` also
   watches `web/vendor/reagent/src`. Bumping it means updating the submodule
