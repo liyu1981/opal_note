@@ -1597,7 +1597,14 @@ class TaskWidget extends WidgetType {
     wrapper.className = this.readOnly
       ? "cm-live-task-box is-readonly"
       : "cm-live-task-box";
-    wrapper.addEventListener("mousedown", (event) => event.stopPropagation());
+    // Ticking a box must not focus the editor: the first click after focus left
+    // the note would otherwise reveal this line as source and destroy the input
+    // mid-click (the box never ticks). Suppressing the default keeps the caret
+    // where it was; the click still activates the checkbox.
+    wrapper.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
 
     const input = document.createElement("input");
     input.type = "checkbox";
@@ -1612,20 +1619,27 @@ class TaskWidget extends WidgetType {
     const tick = document.createElement("span");
     tick.className = "cm-live-task-tick";
 
-    input.addEventListener("mousedown", (event) => event.stopPropagation());
-    if (!this.readOnly) {
-      input.addEventListener("change", () => {
-        const current = this.view.state.sliceDoc(this.checkFrom, this.checkTo);
-        if (!/^\[[ xX]\]$/u.test(current)) return;
-        this.view.dispatch({
-          changes: {
-            from: this.checkFrom,
-            to: this.checkTo,
-            insert: input.checked ? "[x]" : "[ ]",
-          },
-        });
+    // The box is a view of the markdown, not a stateful control: clicks toggle
+    // the source text ourselves. Letting the browser toggle the input and
+    // forward the change breaks as soon as the click also focuses the editor —
+    // the first click after focus left the note lands on a line that is about
+    // to be re-rendered as source, and the change never fires.
+    const toggle = () => {
+      const current = this.view.state.sliceDoc(this.checkFrom, this.checkTo);
+      if (!/^\[[ xX]\]$/u.test(current)) return;
+      this.view.dispatch({
+        changes: {
+          from: this.checkFrom,
+          to: this.checkTo,
+          insert: current.includes("x") || current.includes("X") ? "[ ]" : "[x]",
+        },
       });
-    }
+    };
+    wrapper.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.readOnly) toggle();
+    });
 
     wrapper.append(input, tick);
     return wrapper;

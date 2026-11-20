@@ -187,9 +187,10 @@ const COMMANDS: SlashCommand[] = [
 ];
 
 /**
- * `/` block menu. It deliberately only opens at the start of a source line
- * (after indentation), so slashes inside URLs and prose do not interrupt
- * editing.
+ * `/` block menu. It opens at the start of a source line — after indentation,
+ * after quote markers, after a list bullet or number (with an optional task
+ * checkbox) and after heading marks — but not inside prose or URLs, so slashes
+ * in text never interrupt editing.
  */
 type SyntaxCursor = { name: string; parent: SyntaxCursor | null };
 
@@ -205,6 +206,14 @@ function insideFencedCode(context: CompletionContext): boolean {
   return false;
 }
 
+/**
+ * A source line that starts with `/`, optionally behind block prefixes:
+ * indentation, quote markers, a bullet or number with an optional task
+ * checkbox, and heading marks. The slash stays the start of the command text.
+ */
+const SLASH_LINE =
+  /^(\s*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?(?:#{1,6}\s+)?)\/([^/\n]*)$/u;
+
 export function slashCommandSource(
   context: CompletionContext,
   slashOptions: SlashCommandOptions = {},
@@ -213,7 +222,7 @@ export function slashCommandSource(
 
   const line = context.state.doc.lineAt(context.pos);
   const before = line.text.slice(0, context.pos - line.from);
-  const match = /^(\s*)\/([^/\n]*)$/u.exec(before);
+  const match = SLASH_LINE.exec(before);
   if (!match) return null;
 
   const query = (match[2] ?? "").trim().toLowerCase();

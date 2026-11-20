@@ -105,6 +105,16 @@ function readOnlyExtensions(readOnly: boolean): Extension[] {
   ];
 }
 
+/** Files carried by a paste or drop; text and HTML payloads are left alone. */
+function dataTransferFiles(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  if (data.files.length > 0) return Array.from(data.files);
+  return Array.from(data.items)
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
+}
+
 export const LiveMarkdownEditor = forwardRef<
   LiveMarkdownEditorHandle,
   Props
@@ -256,21 +266,28 @@ export const LiveMarkdownEditor = forwardRef<
       });
   }
 
-  /** Upload a file chosen from the `/upload` command and insert its markdown. */
-  function insertUploadedAsset(file: File, from: number) {
+  /**
+   * Upload files — from the `/upload` command, the clipboard or a drop — and
+   * insert their markdown at `from`, one per line so images stay separate.
+   */
+  function insertUploadedFiles(files: File[], from: number) {
+    if (files.length === 0) return;
     const limit = maxUploadBytesRef.current;
-    if (file.size > limit) {
+    const accepted = files.filter((file) => {
+      if (file.size <= limit) return true;
       window.alert(
         `“${file.name}” is ${formatBytes(file.size)}, larger than the ${formatBytes(limit)} upload limit (Settings → Files).`,
       );
-      return;
-    }
-    void api
-      .uploadAsset(notebookId, file)
-      .then((asset) => {
+      return false;
+    });
+    if (accepted.length === 0) return;
+    void Promise.all(
+      accepted.map((file) => api.uploadAsset(notebookId, file)),
+    )
+      .then((assets) => {
         const view = viewRef.current;
         if (!view) return;
-        const markdown = assetMarkdown(asset);
+        const markdown = assets.map((asset) => assetMarkdown(asset)).join("\n");
         const at = Math.min(from, view.state.doc.length);
         view.dispatch({
           changes: { from: at, insert: markdown },
@@ -284,6 +301,11 @@ export const LiveMarkdownEditor = forwardRef<
           cause instanceof Error ? cause.message : "Could not upload the file",
         );
       });
+  }
+
+  /** Upload a file chosen from the `/upload` command and insert its markdown. */
+  function insertUploadedAsset(file: File, from: number) {
+    insertUploadedFiles([file], from);
   }
 
   function requestUpload(view: EditorView, from: number, to: number) {
@@ -473,6 +495,36 @@ export const LiveMarkdownEditor = forwardRef<
             ?.writeText(url.toString())
             .then(() => flash("Block link copied"))
             .catch(() => flash("Could not copy the block link"));
+        },
+      }),
+      EditorView.domEventHandlers({
+        // Pasting or dropping files uploads them and links the result. Without
+        // this a dropped image would navigate away from the editor.
+        paste: (event, view) => {
+          if (readOnlyRef.current) return false;
+          const files = dataTransferFiles(event.clipboardData);
+          if (files.length === 0) return false;
+          event.preventDefault();
+          insertUploadedFiles(files, view.state.selection.main.from);
+          return true;
+        },
+        dragover: (event) => {
+          if (readOnlyRef.current) return false;
+          if (!event.dataTransfer?.types.includes("Files")) return false;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          return true;
+        },
+        drop: (event, view) => {
+          if (readOnlyRef.current) return false;
+          const files = dataTransferFiles(event.dataTransfer);
+          if (files.length === 0) return false;
+          event.preventDefault();
+          const at =
+            view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+            view.state.selection.main.from;
+          insertUploadedFiles(files, at);
+          return true;
         },
       }),
       noteEditorTheme,

@@ -464,6 +464,12 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   lists, task, quote, code block, divider, page link and inline code. Arrows
   and Enter apply a command; Escape cancels. The menu does not appear inside
   fenced code blocks.
+- **Task checkboxes** toggle the source text from the widget (`[ ]` ⇄ `[x]`)
+  and swallow mousedown, so ticking a box neither reveals the line as source
+  nor moves the caret. `/` commands fire behind line prefixes (`- /`,
+  `1. /`, `- [ ] /`, `> /`, `## /`). Pasting or dropping files uploads them and
+  inserts `assetMarkdown` at the caret or drop point; the `maxUploadMb` cap
+  applies and read-only notes ignore it.
 - **Blocks**: every block gets a hover handle in the gutter (`web/src/lib/blocks.ts`
   parses, `components/editor/blockHandles.ts` decorates). The handle menu offers
   copy link, fold/unfold, move up/down and delete; dragging the handle reorders

@@ -261,6 +261,19 @@ web/
   the active-line tint remains the focus cue. Keep the source hanging indent
   (`.cm-live-hang` + content-column `--block-pad`) so wrapped focused list and
   paragraph lines stay under their content, not at the editor edge.
+- Task checkboxes are **views of the markdown**: a click toggles the source
+  `[ ]`/`[x]` from the widget itself instead of letting the browser toggle the
+  input, because the first click after focus left the note used to reveal the
+  line as source and swallow the change. The widget also suppresses mousedown
+  so ticking a box never moves the caret.
+- `/` commands trigger behind block prefixes as well as at line start:
+  indentation, quote markers, a bullet or number (with an optional task
+  checkbox) and heading marks. Slashes in prose and URLs stay literal.
+- Pasting or dropping files onto the editor uploads them through the same
+  `insertUploadedFiles` path as `/upload` and inserts `assetMarkdown` at the
+  caret or drop point, one per line; the sparse `maxUploadMb` cap applies and
+  read-only editors ignore the event. A drop without this handler would
+  navigate the browser away from the note.
 - Inline tags are marks (`.cm-live-tag`), so `livePreview` opens them on
   `mousedown`: CodeMirror's selection handling would otherwise re-render the
   line as source and destroy the mark before a `click` could land on it.

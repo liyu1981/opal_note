@@ -23,6 +23,8 @@ next read. Delete the index at any time and it comes back.
   autolinking, syntax-highlighted code with copy buttons and autosave that
   never interrupts typing. Click an image to enlarge it in a zoomable
   lightbox with a full-screen focus mode (Alt-click edits its source).
+- **Files** — paste a screenshot or drag an image onto a note and it is
+  uploaded to the notebook's assets and linked in place.
 - **Blocks** — every paragraph, heading, list item, code block or quote gets a
   hover handle: drag to reorder, fold, delete, or copy a link that reopens the
   note at that exact block. Nothing is added to the markdown, so files stay
