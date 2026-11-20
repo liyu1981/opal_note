@@ -464,6 +464,13 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   lists, task, quote, code block, divider, page link and inline code. Arrows
   and Enter apply a command; Escape cancels. The menu does not appear inside
   fenced code blocks.
+- **Blocks**: every block gets a hover handle in the gutter (`web/src/lib/blocks.ts`
+  parses, `components/editor/blockHandles.ts` decorates). The handle menu offers
+  copy link, fold/unfold, move up/down and delete; dragging the handle reorders
+  the block as one transaction; Tab/Shift-Tab indents list items. Folding and
+  handles are block decorations, so they come from a `StateField`. A block link
+  is `?p=<path>&block=<hash>&at=<seq>`; the note editor resolves it and flashes
+  the range. Nothing is written into the markdown (R1 of `doc/blocks.md`).
 - **Resuming refreshes**: an installed PWA or a backgrounded tab keeps its state
   instead of reloading, so coming back re-reads note-derived data
   (`useRevalidateOnResume` → `notesRevisionAtom` on visibility/`pageshow`/`online`
@@ -925,7 +932,14 @@ note     { notebook_id, path => title, content, summary,
 note_tag { notebook_id, note_path, tag }
 link     { notebook_id, from_note, target => label }
 task     { notebook_id, note_path, line => text, status, updated_at }
+block    { notebook_id, note_path, seq => start_line, end_line, kind, depth,
+                                 parent_seq, text, hash, updated_at }
 ```
+
+`block` is R1 of [blocks.md](blocks.md): one row per block (`paragraph`,
+`heading`, `list_item`, `task`, `code`, `quote`, `table`, `hr`, `math`, `html`),
+keyed by its position in the note, with a short hash of its text for deep links.
+Nothing is written into the markdown for it.
 
 The index is keyed by relative path, so two notebooks may both contain
 `pages/index.md`. A secondary `note:by_notebook` index and a BM25 full-text
@@ -941,6 +955,13 @@ trash_entry { id => notebook_id, notebook_name, original_path, kind,
 
 `trashed_path` points into `data/.trash/entries/<uuid>/`, so a restore can move
 the payload back to `original_path` (or a numeric suffix when it is occupied).
+
+Blocks are not identified today. The plan in [blocks.md](blocks.md) is split:
+**R1** (committed) derives positional blocks — `block` relation, handles, fold,
+drag, block search and hash-based deep links — and writes nothing into the
+markdown; **R2** (deferred, needs its own review) would add persistent
+references, embeds and block backlinks, which is where the identity-token design
+lives.
 
 Tasks are derived from markdown checkboxes and Logseq task keywords during sync,
 so a body save that adds, completes or rewrites one changes derived data — and a
@@ -1118,6 +1139,9 @@ request failing.
 | GET    | `/notebooks/{id}/search`                     | `?q=&limit=` BM25 search                       |
 | GET    | `/notebooks/{id}/tags`                       | Tag counts                                     |
 | GET    | `/notebooks/{id}/notes/{*path}`              | Note + tags + links + backlinks                |
+| GET    | `/notebooks/{id}/blocks?path=`               | Derived blocks of one note                     |
+| GET    | `/notebooks/{id}/block?path=&hash=&seq=`     | Resolve a block deep link                      |
+| GET    | `/notebooks/{id}/block-search?q=`            | Block hits across the notebook                 |
 | PATCH  | `/notebooks/{id}/notes/{*path}`              | `{title?, content?, tags?}` — may rename file  |
 | DELETE | `/notebooks/{id}/notes/{*path}`              | Move the file to the trash                     |
 | GET    | `/trash`                                     | `?limit=&offset=&q=&kind=&sort=&dir=`          |
@@ -1207,7 +1231,7 @@ web/
   src/components/backgrounds/  React Bits renderer implementations
   src/components/editor/  live CodeMirror editor surface
   src/components/agent/   @liyu1981/reagent chat mounted in the right panel
-  src/lib/           navigation, live preview, completion, editor theme
+  src/lib/           navigation, live preview, blocks, completion, editor theme
 ```
 
 ## Security notes

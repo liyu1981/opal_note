@@ -107,6 +107,9 @@ pub fn router(state: AppState, dev_cors: bool) -> Router {
                 .put(assets::put_thumbnail)
                 .layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
         )
+        .route("/notebooks/{id}/block", get(notes::block))
+        .route("/notebooks/{id}/blocks", get(notes::blocks))
+        .route("/notebooks/{id}/block-search", get(notes::block_search))
         .route("/notebooks/{id}/search", get(notes::search))
         .route("/notebooks/{id}/journals", get(notes::journals))
         .route("/notebooks/{id}/tags", get(notebooks::tags))

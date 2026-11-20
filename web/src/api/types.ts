@@ -398,3 +398,29 @@ export type AgentInfo = {
   models: string[];
   stored: StoredAgentConfig | null;
 };
+
+/** One derived block of a note (see doc/blocks.md R1). */
+export type BlockOverview = {
+  seq: number;
+  start_line: number;
+  end_line: number;
+  kind: string;
+  depth: number;
+  parent_seq: number;
+  text: string;
+  hash: string;
+};
+
+/** A resolved block deep link. */
+export type BlockTarget = {
+  note_path: string;
+  block: BlockOverview;
+  /** False when the recorded hash is gone and the block at `seq` was returned. */
+  exact: boolean;
+};
+
+/** A block hit from the notebook-wide block search. */
+export type BlockHit = {
+  note_path: string;
+  block: BlockOverview;
+};

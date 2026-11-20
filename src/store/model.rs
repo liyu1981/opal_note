@@ -51,6 +51,34 @@ pub struct PageList {
     pub offset: usize,
 }
 
+/// One block of a note, as derived during sync (see `doc/blocks.md` R1).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BlockOverview {
+    /// 1-based position of the block inside the note.
+    pub seq: i64,
+    pub start_line: i64,
+    pub end_line: i64,
+    /// `paragraph`, `heading`, `list_item`, `task`, `code`, `quote`, `table`,
+    /// `hr`, `math` or `html`.
+    pub kind: String,
+    /// Outline nesting for list items, heading level (1-6) for headings.
+    pub depth: i64,
+    /// `seq` of the enclosing list item, or 0 for a top-level block.
+    pub parent_seq: i64,
+    pub text: String,
+    /// Short digest of the text; used by deep links and drift detection.
+    pub hash: String,
+}
+
+/// A resolved block for a deep link.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BlockTarget {
+    pub note_path: String,
+    pub block: BlockOverview,
+    /// False when the exact hash is gone and the nearest block was returned.
+    pub exact: bool,
+}
+
 /// One markdown checkbox / Logseq task row for the todo directory.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TaskOverview {

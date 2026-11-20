@@ -108,6 +108,417 @@ fn strip_code(content: &str) -> String {
     out
 }
 
+/// One block of a note body: a line range plus what it is.
+///
+/// `kind` is one of `paragraph`, `heading`, `list_item`, `task`, `code`, `quote`,
+/// `table`, `hr`, `math`, `html`. `depth` is the outline nesting for list items
+/// and the heading level (1-6) for headings; `parent_seq` points at the nearest
+/// enclosing list item (0 for top-level blocks).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedBlock {
+    pub start_line: usize,
+    pub end_line: usize,
+    pub kind: String,
+    pub depth: usize,
+    pub parent_seq: usize,
+    pub text: String,
+    pub hash: String,
+}
+
+const MAX_BLOCK_TEXT_CHARS: usize = 4_000;
+
+/// Parse a note body into blocks.
+///
+/// Doc mode treats one CommonMark leaf-or-container element as a block (a
+/// paragraph, heading, fenced code, table, quote or thematic break), with each
+/// list item a block of its own. Outline mode needs no special case: every
+/// bullet line already becomes a block, and indentation supplies `depth` and
+/// `parent_seq`. A blank line ends the current block; fenced code, tables and
+/// quotes are never split by one.
+pub fn parse_blocks(body: &str) -> Vec<ParsedBlock> {
+    let lines: Vec<&str> = body.lines().collect();
+    let mut blocks: Vec<ParsedBlock> = Vec::new();
+    let mut index = 0;
+
+    // List items that can still be a parent: (start_line, indent).
+    let mut list_stack: Vec<(usize, usize)> = Vec::new();
+
+    while index < lines.len() {
+        let line = lines[index];
+        let trimmed = line.trim_start();
+
+        if trimmed.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        // ---- fenced code -------------------------------------------------
+        if let Some(fence) = fence_marker(trimmed) {
+            let start = index;
+            let mut end = lines.len() - 1;
+            let mut cursor = index + 1;
+            while cursor < lines.len() {
+                if lines[cursor].trim_start().starts_with(fence) {
+                    end = cursor;
+                    break;
+                }
+                cursor += 1;
+            }
+            let text = block_text(&lines[start..=end], "code");
+            blocks.push(block(start, end, "code", 0, 0, text));
+            list_stack.clear();
+            index = end + 1;
+            continue;
+        }
+
+        // ---- display math ------------------------------------------------
+        if trimmed.starts_with("$$") && is_display_math_fence(trimmed) {
+            let start = index;
+            let mut end = lines.len() - 1;
+            let mut cursor = index + 1;
+            while cursor < lines.len() {
+                if is_display_math_fence(lines[cursor].trim_start()) {
+                    end = cursor;
+                    break;
+                }
+                cursor += 1;
+            }
+            let text = block_text(&lines[start..=end], "math");
+            blocks.push(block(start, end, "math", 0, 0, text));
+            list_stack.clear();
+            index = end + 1;
+            continue;
+        }
+
+        // ---- table -------------------------------------------------------
+        if trimmed.starts_with('|') {
+            let start = index;
+            let mut end = index;
+            while end + 1 < lines.len() && lines[end + 1].trim_start().starts_with('|') {
+                end += 1;
+            }
+            let text = block_text(&lines[start..=end], "table");
+            blocks.push(block(start, end, "table", 0, 0, text));
+            list_stack.clear();
+            index = end + 1;
+            continue;
+        }
+
+        // ---- thematic break ---------------------------------------------
+        if is_thematic_break(trimmed) {
+            blocks.push(block(index, index, "hr", 0, 0, String::new()));
+            list_stack.clear();
+            index += 1;
+            continue;
+        }
+
+        // ---- heading -----------------------------------------------------
+        if let Some(level) = heading_level(trimmed) {
+            let start = index;
+            let mut end = index;
+            // A heading may continue over soft-wrapped lines.
+            while end + 1 < lines.len()
+                && !lines[end + 1].trim_start().is_empty()
+                && !starts_new_block(lines[end + 1].trim_start())
+            {
+                end += 1;
+            }
+            let text = block_text(&lines[start..=end], "heading");
+            blocks.push(block(start, end, "heading", level, 0, text));
+            list_stack.clear();
+            index = end + 1;
+            continue;
+        }
+
+        // ---- block quote -------------------------------------------------
+        if trimmed.starts_with('>') {
+            let start = index;
+            let mut end = index;
+            while end + 1 < lines.len() {
+                let next = lines[end + 1].trim_start();
+                if next.starts_with('>') {
+                    end += 1;
+                    continue;
+                }
+                // A quote may contain a lazily continued paragraph.
+                if !next.is_empty() && !starts_new_block(next) {
+                    end += 1;
+                    continue;
+                }
+                break;
+            }
+            let text = block_text(&lines[start..=end], "quote");
+            blocks.push(block(start, end, "quote", 0, 0, text));
+            list_stack.clear();
+            index = end + 1;
+            continue;
+        }
+
+        // ---- HTML comment ------------------------------------------------
+        if trimmed.starts_with("<!--") {
+            let start = index;
+            let mut end = index;
+            while end + 1 < lines.len() && !lines[end].contains("-->") {
+                end += 1;
+                if lines[end].contains("-->") {
+                    break;
+                }
+            }
+            let text = block_text(&lines[start..=end], "html");
+            blocks.push(block(start, end, "html", 0, 0, text));
+            list_stack.clear();
+            index = end + 1;
+            continue;
+        }
+
+        // ---- list item ---------------------------------------------------
+        if let Some(item) = list_marker(trimmed) {
+            let indent = leading_indent_columns(line);
+            let start = index;
+            let mut end = index;
+            // Continuation lines (indented deeper than the marker) belong to
+            // this item; a following item at the same depth starts a new block.
+            while end + 1 < lines.len() {
+                let next = lines[end + 1];
+                let next_trimmed = next.trim_start();
+                if next_trimmed.is_empty() {
+                    break;
+                }
+                if next_trimmed.starts_with('>') || next_trimmed.starts_with('|') {
+                    break;
+                }
+                if list_marker(next_trimmed).is_some() {
+                    break;
+                }
+                if leading_indent_columns(next) <= indent {
+                    break;
+                }
+                if fence_marker(next_trimmed).is_some() {
+                    break;
+                }
+                end += 1;
+            }
+
+            while let Some((_, parent_indent)) = list_stack.last() {
+                if *parent_indent >= indent {
+                    list_stack.pop();
+                } else {
+                    break;
+                }
+            }
+            let parent_seq = list_stack
+                .last()
+                .map(|(parent_start, _)| *parent_start)
+                .unwrap_or(0);
+            let kind = if item.is_task { "task" } else { "list_item" };
+            let text = block_text(&lines[start..=end], kind);
+            blocks.push(block(start, end, kind, indent / 2, parent_seq, text));
+            list_stack.push((start + 1, indent));
+            index = end + 1;
+            continue;
+        }
+
+        // ---- paragraph ---------------------------------------------------
+        let start = index;
+        let mut end = index;
+        while end + 1 < lines.len() {
+            let next = lines[end + 1].trim_start();
+            if next.is_empty() || starts_new_block(next) {
+                break;
+            }
+            end += 1;
+        }
+        let text = block_text(&lines[start..=end], "paragraph");
+        blocks.push(block(start, end, "paragraph", 0, 0, text));
+        list_stack.clear();
+        index = end + 1;
+    }
+
+    blocks
+}
+
+fn block(
+    start: usize,
+    end: usize,
+    kind: &str,
+    depth: usize,
+    parent_seq: usize,
+    text: String,
+) -> ParsedBlock {
+    ParsedBlock {
+        start_line: start + 1,
+        end_line: end + 1,
+        kind: kind.to_string(),
+        depth,
+        parent_seq,
+        hash: block_hash(&text),
+        text,
+    }
+}
+
+/// Plain text of a block: block markers removed, inline markup kept, capped.
+fn block_text(lines: &[&str], kind: &str) -> String {
+    let mut text = String::new();
+    for line in lines {
+        let mut value = line.trim_start();
+        if kind == "quote" {
+            value = value.strip_prefix('>').unwrap_or(value).trim_start();
+        } else if kind == "list_item" || kind == "task" {
+            if let Some(rest) = strip_list_marker(value) {
+                value = rest;
+            }
+            if kind == "task" {
+                value = strip_task_marker(value);
+            }
+        } else if kind == "heading" {
+            value = value.trim_start_matches('#').trim_start();
+        }
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(value.trim_end());
+    }
+    text.truncate(MAX_BLOCK_TEXT_CHARS);
+    text
+}
+
+/// Drop a checkbox or Logseq keyword from a task's text.
+fn strip_task_marker(value: &str) -> &str {
+    for checkbox in ["[ ]", "[x]", "[X]", "[-]"] {
+        if let Some(rest) = value.strip_prefix(checkbox) {
+            return rest.trim_start();
+        }
+    }
+    for keyword in ["TODO", "DOING", "DONE", "CANCELED", "CANCELLED"] {
+        if let Some(rest) = value.strip_prefix(keyword) {
+            if rest.chars().next().is_some_and(char::is_whitespace) {
+                return rest.trim_start();
+            }
+        }
+    }
+    value
+}
+
+/// Short, stable digest of block text: FNV-1a over a normalised string.
+///
+/// The client implements the same function, so a deep link can be built without
+/// asking the server. It only has to recognise the same block, not resist
+/// tampering.
+pub fn block_hash(text: &str) -> String {
+    let mut hash: u32 = 0x811c9dc5;
+    for byte in text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_end_matches(['.', ',', ';', ':', '!', '?'])
+        .as_bytes()
+    {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    format!("{hash:08x}")
+}
+
+fn is_display_math_fence(trimmed: &str) -> bool {
+    trimmed
+        .strip_prefix("$$")
+        .is_some_and(|rest| rest.trim().is_empty())
+}
+
+fn is_thematic_break(trimmed: &str) -> bool {
+    let mut chars = trimmed.chars();
+    let Some(marker) = chars.next() else {
+        return false;
+    };
+    if !matches!(marker, '-' | '*' | '_') {
+        return false;
+    }
+    let rest: String = chars.collect();
+    let compact: String = rest.chars().filter(|ch| !ch.is_whitespace()).collect();
+    compact.len() >= 2 && compact.chars().all(|ch| ch == marker)
+}
+
+fn heading_level(trimmed: &str) -> Option<usize> {
+    let hashes = trimmed.chars().take_while(|ch| *ch == '#').count();
+    if hashes == 0 || hashes > 6 {
+        return None;
+    }
+    trimmed
+        .chars()
+        .nth(hashes)
+        .is_some_and(char::is_whitespace)
+        .then_some(hashes)
+}
+
+fn starts_new_block(trimmed: &str) -> bool {
+    trimmed.starts_with('>')
+        || trimmed.starts_with('|')
+        || trimmed.starts_with("<!--")
+        || is_display_math_fence(trimmed)
+        || is_thematic_break(trimmed)
+        || heading_level(trimmed).is_some()
+        || list_marker(trimmed).is_some()
+        || fence_marker(trimmed).is_some()
+}
+
+fn leading_indent_columns(line: &str) -> usize {
+    let mut columns = 0;
+    for ch in line.chars() {
+        match ch {
+            ' ' => columns += 1,
+            '\t' => columns += 4,
+            _ => break,
+        }
+    }
+    columns
+}
+
+struct ListMarker {
+    is_task: bool,
+}
+
+fn list_marker(trimmed: &str) -> Option<ListMarker> {
+    let rest = strip_list_marker(trimmed)?;
+    let is_task = rest.starts_with("[ ]")
+        || rest.starts_with("[x]")
+        || rest.starts_with("[X]")
+        || rest.starts_with("[-]")
+        || rest.starts_with("TODO ")
+        || rest.starts_with("DOING ")
+        || rest.starts_with("DONE ")
+        || rest.starts_with("CANCELED ")
+        || rest.starts_with("CANCELLED ");
+    Some(ListMarker { is_task })
+}
+
+/// Strip a `-`, `*`, `+` or `1.`/`1)` marker and its trailing whitespace.
+fn strip_list_marker(trimmed: &str) -> Option<&str> {
+    let mut chars = trimmed.chars();
+    let first = chars.next()?;
+    let rest = chars.as_str();
+    if matches!(first, '-' | '*' | '+') {
+        if rest.chars().next().is_some_and(char::is_whitespace) {
+            return Some(rest.trim_start());
+        }
+        return None;
+    }
+    if !first.is_ascii_digit() {
+        return None;
+    }
+    let digits = trimmed.chars().take_while(char::is_ascii_digit).count();
+    let after = &trimmed[digits..];
+    let mut after_chars = after.chars();
+    let delimiter = after_chars.next()?;
+    if !matches!(delimiter, '.' | ')') {
+        return None;
+    }
+    let remainder = after_chars.as_str();
+    if !remainder.chars().next().is_some_and(char::is_whitespace) {
+        return None;
+    }
+    Some(remainder.trim_start())
+}
+
 /// A task/checkbox extracted from a note body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTask {
@@ -729,6 +1140,91 @@ mod tests {
             .map(|(target, _)| target)
             .collect();
         assert!(targets.is_empty(), "no phantom links: {targets:?}");
+    }
+
+    #[test]
+    fn parses_doc_blocks_with_kinds_and_parents() {
+        let body = "# Title\n\nIntro paragraph\nwrapped over two lines.\n\n- parent\n  - child\n- sibling\n\n> quoted\n> lines\n\n```js\nconst a = 1;\n```\n\n| a | b |\n|---|---|\n\n---\n";
+        let blocks = parse_blocks(body);
+        let rows: Vec<(&str, usize, usize, usize, usize)> = blocks
+            .iter()
+            .map(|b| {
+                (
+                    b.kind.as_str(),
+                    b.start_line,
+                    b.end_line,
+                    b.depth,
+                    b.parent_seq,
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("heading", 1, 1, 1, 0),
+                ("paragraph", 3, 4, 0, 0),
+                ("list_item", 6, 6, 0, 0),
+                ("list_item", 7, 7, 1, 6),
+                ("list_item", 8, 8, 0, 0),
+                ("quote", 10, 11, 0, 0),
+                ("code", 13, 15, 0, 0),
+                ("table", 17, 18, 0, 0),
+                ("hr", 20, 20, 0, 0),
+            ]
+        );
+        assert_eq!(blocks[1].text, "Intro paragraph\nwrapped over two lines.");
+        assert_eq!(blocks[3].text, "child");
+        assert_eq!(blocks[5].text, "quoted\nlines");
+        assert!(blocks.iter().all(|b| b.hash.len() == 8));
+    }
+
+    #[test]
+    fn parses_outline_blocks_with_nesting() {
+        let body = "- one\n  - two\n    - three\n  - two again\n- four\n";
+        let blocks = parse_blocks(body);
+        let rows: Vec<(&str, usize, usize, usize, usize)> = blocks
+            .iter()
+            .map(|b| {
+                (
+                    b.kind.as_str(),
+                    b.start_line,
+                    b.end_line,
+                    b.depth,
+                    b.parent_seq,
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("list_item", 1, 1, 0, 0),
+                ("list_item", 2, 2, 1, 1),
+                ("list_item", 3, 3, 2, 2),
+                ("list_item", 4, 4, 1, 1),
+                ("list_item", 5, 5, 0, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn marks_tasks_and_keeps_fenced_blocks_whole() {
+        let body = "- [ ] open\n- TODO keyword\n- plain\n\n  - ``` \n    code #notatag\n    ```\n\n- [ ] after the block\n";
+        let blocks = parse_blocks(body);
+        let kinds: Vec<&str> = blocks.iter().map(|b| b.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["task", "task", "list_item", "code", "task"]);
+        // The bullet-opened fence is code, and the task after it is its own block.
+        assert_eq!(blocks[3].start_line, 5);
+        assert_eq!(blocks[3].end_line, 7);
+        assert_eq!(blocks[4].text, "after the block");
+    }
+
+    #[test]
+    fn block_hash_ignores_whitespace_and_trailing_punctuation() {
+        assert_eq!(
+            block_hash("Some  text\nhere."),
+            block_hash("Some text here")
+        );
+        assert_ne!(block_hash("some text"), block_hash("some other text"));
     }
 
     #[test]

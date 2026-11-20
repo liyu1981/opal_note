@@ -3,6 +3,9 @@ import type {
   AssetEntry,
   AssetInfo,
   AssetList,
+  BlockHit,
+  BlockOverview,
+  BlockTarget,
   BackgroundList,
   GraphData,
   Health,
@@ -368,6 +371,24 @@ export const api = {
 
   /** Whether the server-side agent provider is configured, and its models. */
   agentInfo: () => request<AgentInfo>("/agent"),
+
+  /** Derived blocks of one note, in document order. */
+  noteBlocks: (notebookId: string, path: string) =>
+    request<BlockOverview[]>(
+      `/notebooks/${encode(notebookId)}/blocks?path=${encode(path)}`,
+    ),
+
+  /** Resolve a block deep link (hash, plus the position it was copied from). */
+  resolveBlock: (notebookId: string, path: string, hash: string, seq: number) =>
+    request<BlockTarget>(
+      `/notebooks/${encode(notebookId)}/block?path=${encode(path)}&hash=${encode(hash)}&seq=${seq}`,
+    ),
+
+  /** Blocks across the notebook whose text contains `query`. */
+  searchBlocks: (notebookId: string, query: string, limit = 20) =>
+    request<BlockHit[]>(
+      `/notebooks/${encode(notebookId)}/block-search?q=${encode(query)}&limit=${limit}`,
+    ),
 
   /** Store the provider connection (envelope encrypted in the browser). */
   saveAgentConfig: (body: {

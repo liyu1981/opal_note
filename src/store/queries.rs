@@ -61,6 +61,7 @@ pub const RELATIONS: &[(&str, &str)] = &[
             updated_at: Float
         }"#,
     ),
+    ("block", BLOCK_CREATE),
 ];
 
 pub const INDEXES: &[&str] = &[
@@ -70,6 +71,8 @@ pub const INDEXES: &[&str] = &[
         tokenizer: Simple,
         filters: [Lowercase, Stemmer('English')]
     }"#,
+    BLOCK_INDEX_NOTE,
+    BLOCK_INDEX_HASH,
 ];
 
 // ---------------------------------------------------------------------------
@@ -395,4 +398,57 @@ pub const SCHEMA_MIGRATIONS_LIST: &str = r#"
 pub const SCHEMA_MIGRATIONS_PUT: &str = r#"
 ?[version, name, applied_at] <- [[$version, $name, $applied_at]]
 :put schema_migrations {version => name, applied_at}
+"#;
+
+// ---- blocks (positional, derived; see doc/blocks.md R1) --------------------
+
+pub const BLOCK_CREATE: &str = r#":create block {
+    notebook_id: String,
+    note_path: String,
+    seq: Int
+    =>
+    start_line: Int,
+    end_line: Int,
+    kind: String,
+    depth: Int,
+    parent_seq: Int,
+    text: String,
+    hash: String,
+    updated_at: Float
+}"#;
+
+pub const BLOCK_INDEX_NOTE: &str = r#"::index create block:by_note { notebook_id, note_path }"#;
+
+pub const BLOCK_INDEX_HASH: &str =
+    r#"::index create block:by_hash { notebook_id, note_path, hash }"#;
+
+pub const DELETE_BLOCK_ROWS: &str = r#"
+?[notebook_id, note_path, seq] :=
+    *block{notebook_id, note_path, seq},
+    notebook_id = $notebook_id,
+    note_path in $paths
+:rm block {notebook_id, note_path, seq}
+"#;
+
+pub const PUT_BLOCK_ROWS: &str = r#"
+?[notebook_id, note_path, seq, start_line, end_line, kind, depth, parent_seq, text, hash, updated_at] <-
+    $rows
+:put block {notebook_id, note_path, seq => start_line, end_line, kind, depth, parent_seq, text, hash, updated_at}
+"#;
+
+pub const BLOCKS_FOR_NOTE: &str = r#"
+?[seq, start_line, end_line, kind, depth, parent_seq, text, hash] :=
+    *block{notebook_id, note_path, seq, start_line, end_line, kind, depth, parent_seq, text, hash},
+    notebook_id = $notebook_id,
+    note_path = $note_path
+:order seq
+"#;
+
+pub const BLOCK_SEARCH: &str = r#"
+?[note_path, seq, start_line, end_line, kind, depth, parent_seq, text, hash] :=
+    *block{notebook_id, note_path, seq, start_line, end_line, kind, depth, parent_seq, text, hash},
+    notebook_id = $notebook_id,
+    str_includes(lowercase(text), $needle)
+:order note_path, seq
+:limit $limit
 "#;

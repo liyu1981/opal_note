@@ -22,14 +22,14 @@ use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, ScriptRunOptions}
 use sha2::{Digest, Sha256};
 
 use self::markdown::{
-    extract_tasks, extract_wikilinks, merge_tags, note_link_keys, parse_page, render_page,
-    summarize, ParsedTask,
+    extract_tasks, extract_wikilinks, merge_tags, note_link_keys, parse_blocks, parse_page,
+    render_page, summarize, ParsedBlock, ParsedTask,
 };
 use self::model::{
-    AssetEntry, AssetInfo, AssetList, AssetReference, BacklinkRef, GraphData, GraphEdge, GraphNode,
-    JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList, PageOverview, Stats, TagCount,
-    TaskList, TaskOverview, TaskStatusCounts, TrashDetail, TrashEntry, TrashList,
-    TrashRestoreResult,
+    AssetEntry, AssetInfo, AssetList, AssetReference, BacklinkRef, BlockOverview, BlockTarget,
+    GraphData, GraphEdge, GraphNode, JournalPage, LinkRef, Note, NoteSummary, Notebook, PageList,
+    PageOverview, Stats, TagCount, TaskList, TaskOverview, TaskStatusCounts, TrashDetail,
+    TrashEntry, TrashList, TrashRestoreResult,
 };
 use self::trash::{TrashDb, TrashRecord};
 
@@ -355,6 +355,19 @@ impl TaskSortKey {
 }
 
 /// Display order: work still in flight first, then finished items.
+fn block_overview(row: &[DataValue]) -> BlockOverview {
+    BlockOverview {
+        seq: col_i64(row, 0),
+        start_line: col_i64(row, 1),
+        end_line: col_i64(row, 2),
+        kind: col_str(row, 3),
+        depth: col_i64(row, 4),
+        parent_seq: col_i64(row, 5),
+        text: col_str(row, 6),
+        hash: col_str(row, 7),
+    }
+}
+
 fn task_status_rank(status: &str) -> u8 {
     match status {
         "open" => 0,
@@ -373,6 +386,7 @@ struct PageRecord {
     tags: Vec<String>,
     links: Vec<(String, String)>,
     tasks: Vec<ParsedTask>,
+    blocks: Vec<ParsedBlock>,
     mtime_ns: i64,
     size: i64,
     created_at: f64,
@@ -662,6 +676,7 @@ impl Store {
                 tags: merge_tags(&parsed.body, &parsed.tags),
                 links: extract_wikilinks(&parsed.body),
                 tasks: extract_tasks(&parsed.body),
+                blocks: parse_blocks(&parsed.body),
                 summary: summarize(&parsed.body, SUMMARY_CHARS),
                 path: file.rel.clone(),
                 title,
@@ -732,7 +747,8 @@ impl Store {
             ]);
             statements.push((queries::DELETE_TAG_ROWS, par.clone()));
             statements.push((queries::DELETE_LINK_ROWS, par.clone()));
-            statements.push((queries::DELETE_TASK_ROWS, par));
+            statements.push((queries::DELETE_TASK_ROWS, par.clone()));
+            statements.push((queries::DELETE_BLOCK_ROWS, par));
 
             let tag_rows: Vec<DataValue> = changed
                 .iter()
@@ -792,6 +808,33 @@ impl Store {
                 statements.push((
                     queries::PUT_TASK_ROWS,
                     params([("rows", DataValue::List(task_rows))]),
+                ));
+            }
+
+            let block_rows: Vec<DataValue> = changed
+                .iter()
+                .flat_map(|page| {
+                    page.blocks.iter().enumerate().map(|(index, block)| {
+                        DataValue::List(vec![
+                            DataValue::from(notebook_id),
+                            DataValue::from(page.path.as_str()),
+                            DataValue::from(index as i64 + 1),
+                            DataValue::from(block.start_line as i64),
+                            DataValue::from(block.end_line as i64),
+                            DataValue::from(block.kind.as_str()),
+                            DataValue::from(block.depth as i64),
+                            DataValue::from(block.parent_seq as i64),
+                            DataValue::from(block.text.as_str()),
+                            DataValue::from(block.hash.as_str()),
+                            DataValue::from(page.updated_at),
+                        ])
+                    })
+                })
+                .collect();
+            if !block_rows.is_empty() {
+                statements.push((
+                    queries::PUT_BLOCK_ROWS,
+                    params([("rows", DataValue::List(block_rows))]),
                 ));
             }
         }
@@ -1189,6 +1232,85 @@ impl Store {
         let mut pages = self.all_page_overviews_locked(notebook_id)?;
         pages.retain(|page| page.is_orphan);
         Ok(pages)
+    }
+
+    /// Blocks of one note, in document order.
+    pub fn note_blocks(&self, notebook_id: &str, note_path: &str) -> Result<Vec<BlockOverview>> {
+        self.ensure_synced()?;
+        let rows = self.run(
+            queries::BLOCKS_FOR_NOTE,
+            params([
+                ("notebook_id", DataValue::from(notebook_id)),
+                ("note_path", DataValue::from(note_path)),
+            ]),
+            ScriptMutability::Immutable,
+        )?;
+        Ok(rows.rows.iter().map(|row| block_overview(row)).collect())
+    }
+
+    /// Resolve a block deep link. An exact hash match wins; otherwise the block
+    /// that was at `seq` when the link was copied is returned with
+    /// `exact: false`, so a paragraph that was edited can still be found.
+    pub fn resolve_block(
+        &self,
+        notebook_id: &str,
+        note_path: &str,
+        hash: &str,
+        seq: Option<i64>,
+    ) -> Result<Option<BlockTarget>> {
+        let blocks = self.note_blocks(notebook_id, note_path)?;
+        if blocks.is_empty() {
+            return Ok(None);
+        }
+        let exact = blocks.iter().find(|block| block.hash == hash).cloned();
+        if let Some(block) = exact {
+            return Ok(Some(BlockTarget {
+                note_path: note_path.to_string(),
+                block,
+                exact: true,
+            }));
+        }
+        // The text drifted: fall back to the block at the recorded position,
+        // clamped to the note, and let the UI say it moved.
+        let fallback = seq
+            .and_then(|seq| blocks.iter().find(|block| block.seq == seq).cloned())
+            .unwrap_or_else(|| blocks[0].clone());
+        Ok(Some(BlockTarget {
+            note_path: note_path.to_string(),
+            block: fallback,
+            exact: false,
+        }))
+    }
+
+    /// Full-text scan over derived blocks, newest note first.
+    pub fn search_blocks(
+        &self,
+        notebook_id: &str,
+        needle: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, BlockOverview)>> {
+        let needle = needle.trim().to_lowercase();
+        if needle.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.ensure_synced()?;
+        let rows = self.run(
+            queries::BLOCK_SEARCH,
+            params([
+                ("notebook_id", DataValue::from(notebook_id)),
+                ("needle", DataValue::from(needle.as_str())),
+                ("limit", DataValue::from(limit as i64)),
+            ]),
+            ScriptMutability::Immutable,
+        )?;
+        Ok(rows
+            .rows
+            .iter()
+            .map(|row| {
+                let block = block_overview(&row[1..]);
+                (col_str(row, 0), block)
+            })
+            .collect())
     }
 
     /// Tasks derived from markdown checkboxes and Logseq keywords, filtered and
@@ -3250,6 +3372,67 @@ mod tests {
         assert!(store.take_task_rules_backfill());
         assert!(!store.take_task_rules_backfill());
         assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "3");
+    }
+
+    #[test]
+    fn blocks_are_indexed_listed_and_resolved() {
+        let (_dir, store) = store();
+        let notebook = store.create_notebook("Blocks", "").unwrap().unwrap();
+        store
+            .create_note(
+                &notebook.id,
+                "Blocks",
+                "# Title\n\nIntro paragraph.\n\n- parent\n  - child\n- [ ] a task\n\n> quoted\n\n```js\nconst a = 1;\n```\n",
+                &[],
+            )
+            .unwrap();
+
+        let path = "pages/Blocks.md";
+        let blocks = store.note_blocks(&notebook.id, path).unwrap();
+        let rows: Vec<(&str, i64, i64, i64)> = blocks
+            .iter()
+            .map(|block| {
+                (
+                    block.kind.as_str(),
+                    block.start_line,
+                    block.end_line,
+                    block.parent_seq,
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("heading", 1, 1, 0),
+                ("paragraph", 3, 3, 0),
+                ("list_item", 5, 5, 0),
+                ("list_item", 6, 6, 5),
+                ("task", 7, 7, 0),
+                ("quote", 9, 9, 0),
+                ("code", 11, 13, 0),
+            ]
+        );
+        assert_eq!(blocks[4].text, "a task");
+
+        // Exact deep link, then a drifted one that falls back to its position.
+        let target = &blocks[1];
+        let exact = store
+            .resolve_block(&notebook.id, path, &target.hash, Some(target.seq))
+            .unwrap()
+            .unwrap();
+        assert!(exact.exact);
+        assert_eq!(exact.block.start_line, 3);
+        let drifted = store
+            .resolve_block(&notebook.id, path, "deadbeef", Some(target.seq))
+            .unwrap()
+            .unwrap();
+        assert!(!drifted.exact);
+        assert_eq!(drifted.block.seq, target.seq);
+
+        // Block search hits the edited text, not markers.
+        let hits = store.search_blocks(&notebook.id, "quoted", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].1.kind, "quote");
     }
 
     #[test]

@@ -49,6 +49,7 @@ import {
 import { wikiLinkCompletionSource } from "../../lib/wikiCompletion";
 import { slashCommandSource } from "../../lib/slashCommands";
 import { tagCompletionSource } from "../../lib/tagCompletion";
+import { blockHandles } from "./blockHandles";
 
 const STARTERS: Record<string, string> = {
   mermaid: "flowchart LR\n  A[Start] --> B[End]\n",
@@ -71,6 +72,8 @@ export type LiveMarkdownEditorHandle = {
   blur: () => void;
   focusStart: () => void;
   focusEnd: () => void;
+  /** Scroll a 1-based line range into view and flash it (block deep links). */
+  revealLines: (fromLine: number, toLine: number) => void;
 };
 
 type Props = {
@@ -337,9 +340,56 @@ export const LiveMarkdownEditor = forwardRef<
       blur: () => viewRef.current?.contentDOM.blur(),
       focusStart: () => focusAt("start"),
       focusEnd: () => focusAt("end"),
+      revealLines: (fromLine, toLine) => revealLines(fromLine, toLine),
     }),
     [],
   );
+
+  function revealLines(fromLine: number, toLine: number) {
+    const view = viewRef.current;
+    if (!view) return;
+    const last = view.state.doc.lines;
+    const start = view.state.doc.line(Math.min(last, Math.max(1, fromLine)));
+    const end = view.state.doc.line(Math.min(last, Math.max(start.number, toLine)));
+    view.dispatch({
+      selection: { anchor: start.from },
+      effects: EditorView.scrollIntoView(start.from, { y: "center" }),
+    });
+    view.dom
+      .querySelectorAll<HTMLElement>(".cm-block-flash")
+      .forEach((element) => element.classList.remove("cm-block-flash"));
+    for (let number = start.number; number <= end.number; number += 1) {
+      lineElement(view, number)?.classList.add("cm-block-flash");
+    }
+    window.setTimeout(() => {
+      view.dom
+        .querySelectorAll<HTMLElement>(".cm-block-flash")
+        .forEach((element) => element.classList.remove("cm-block-flash"));
+    }, 1600);
+  }
+
+  /** The DOM line element for a 1-based line number. */
+  function lineElement(
+    view: EditorView,
+    lineNumber: number,
+  ): HTMLElement | null {
+    const line = view.state.doc.line(
+      Math.min(view.state.doc.lines, Math.max(1, lineNumber)),
+    );
+    const node = view.domAtPos(line.from).node;
+    const element =
+      node instanceof HTMLElement ? node : node.parentElement ?? null;
+    return element?.closest<HTMLElement>(".cm-line") ?? null;
+  }
+
+  /** Transient toast for block actions (clipboard feedback). */
+  function flash(message: string) {
+    const badge = document.createElement("div");
+    badge.className = "cm-block-toast";
+    badge.textContent = message;
+    document.body.appendChild(badge);
+    window.setTimeout(() => badge.remove(), 1800);
+  }
 
   function focusAt(edge: "start" | "end") {
     const view = viewRef.current;
@@ -409,6 +459,22 @@ export const LiveMarkdownEditor = forwardRef<
         readOnlyExtensions(initialReadOnlyRef.current),
       ),
       livePreview(optionsRef),
+      blockHandles({
+        readOnly,
+        onCopyLink: (block) => {
+          const url = new URL(window.location.href);
+          url.pathname = `/${encodeURIComponent(notebookId)}/page`;
+          url.search = new URLSearchParams({
+            p: notePath,
+            block: block.hash,
+            at: String(block.seq),
+          }).toString();
+          void navigator.clipboard
+            ?.writeText(url.toString())
+            .then(() => flash("Block link copied"))
+            .catch(() => flash("Could not copy the block link"));
+        },
+      }),
       noteEditorTheme,
       placeholder(
         "Write in markdown. Type [[ to link a note, # to tag, - for a block.",

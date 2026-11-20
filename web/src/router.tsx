@@ -329,8 +329,17 @@ const pageRoute = createRoute({
   path: "page",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { p?: string } => ({
+  ): { p?: string; block?: string; at?: number } => ({
     p: typeof search.p === "string" ? search.p : undefined,
+    // Deep link to a block: its content hash, plus the position it was copied
+    // from so an edited block can still be found (doc/blocks.md).
+    block: typeof search.block === "string" ? search.block : undefined,
+    at:
+      typeof search.at === "number"
+        ? search.at
+        : typeof search.at === "string" && search.at.trim() !== ""
+          ? Number(search.at)
+          : undefined,
   }),
   component: PageRoute,
 });

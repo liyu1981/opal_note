@@ -16,6 +16,7 @@ import { useAppNavigate } from "../lib/appNavigation";
 import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
 import { bindingLabel } from "../lib/shortcuts";
 import { useViewAutoFocus } from "../lib/useViewFocus";
+import { useSearch } from "@tanstack/react-router";
 import { settingsAtom } from "../lib/settings";
 import {
   IconCheck,
@@ -213,12 +214,37 @@ function NoteEditor({ note }: { note: Note }) {
   const [targetNotes, setTargetNotes] = useState<NoteSummary[]>([]);
 
   const editorRef = useRef<LiveMarkdownEditorHandle>(null);
+  const deepLink = useSearch({ strict: false }) as {
+    block?: string;
+    at?: number;
+  };
+  const revealedRef = useRef<string | null>(null);
   useViewAutoFocus(
     "note",
     () => editorRef.current?.focus(),
     true,
     note.id,
   );
+
+  // A block link (`?p=…&block=<hash>&at=<seq>`) jumps to its range once.
+  useEffect(() => {
+    const hash = deepLink.block;
+    if (!hash) return;
+    const key = `${note.id}:${hash}:${deepLink.at ?? 0}`;
+    if (revealedRef.current === key) return;
+    revealedRef.current = key;
+    void api
+      .resolveBlock(note.notebook_id, note.id, hash, deepLink.at ?? 0)
+      .then((target) => {
+        editorRef.current?.revealLines(
+          target.block.start_line,
+          target.block.end_line,
+        );
+      })
+      .catch(() => {
+        revealedRef.current = null;
+      });
+  }, [deepLink.at, deepLink.block, note.id, note.notebook_id]);
   const draftRef = useRef({ title, content, tagsInput });
   const dirtyRef = useRef(dirty);
   const deletedRef = useRef(false);

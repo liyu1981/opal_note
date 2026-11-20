@@ -23,6 +23,10 @@ next read. Delete the index at any time and it comes back.
   autolinking, syntax-highlighted code with copy buttons and autosave that
   never interrupts typing. Click an image to enlarge it in a zoomable
   lightbox with a full-screen focus mode (Alt-click edits its source).
+- **Blocks** — every paragraph, heading, list item, code block or quote gets a
+  hover handle: drag to reorder, fold, delete, or copy a link that reopens the
+  note at that exact block. Nothing is added to the markdown, so files stay
+  plain and portable.
 - **Journals** — an editable, newest-first feed of journal cards with
   per-card saving and arrow-key navigation between days.
 - **Pages, tags and todos** — an all-pages table across pages and journals with
@@ -216,6 +220,7 @@ old binary until the next restart. Details:
 | -------- | -------- |
 | [doc/architecture.md](doc/architecture.md) | Storage model and sync, stack, build and update mechanics, editor internals, workspace layout, plugins, backgrounds, routes, index schema, PWA, HTTP API, configuration reference, project layout |
 | [doc/rich-content.md](doc/rich-content.md) | Viewer plugins: Mermaid and Excalidraw diagrams end to end |
+| [doc/blocks.md](doc/blocks.md) | Block plan: R1 positional blocks (handles, fold, drag, deep links) and the deferred R2 design for references |
 | [doc/adr/](doc/adr/README.md) | Architecture decision records (`opalnote.db`, migrations) |
 | [AGENTS.md](AGENTS.md) | Coding conventions for contributors |
 

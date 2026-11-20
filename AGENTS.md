@@ -37,6 +37,10 @@ Longer design notes live in `doc/`:
 - `doc/plugin-ui-expansion.md` — plugin UI expansion phases
 - `doc/rich-content.md` — planned asset-backed diagrams: Mermaid (Pele) and
   Excalidraw as two sandboxed iframe `viewer` plugins (a new plugin type)
+- `doc/blocks.md` — block plan: **R1** positional blocks (grammar, derived `block`
+  index, handles/fold/drag, hash deep links, no markdown changes) is the committed
+  scope; references/`^id` are **R2**, deferred. Nothing outside the doc should
+  assume block identity or block refs exist
 
 ## Stack
 
@@ -344,6 +348,14 @@ web/
   add new lightboxes the same way instead of copying the shell. Editor images
   open the image lightbox on click; Alt/Option-click keeps the caret-in-source
   behaviour so an image-only line stays editable.
+- Blocks are **positional only** (`doc/blocks.md` R1): `src/store/markdown.rs`
+  `parse_blocks` derives them, the sync pass fills the `block` relation, and
+  nothing is written into the markdown — no ids, no refs. `blockHandles` draws
+  the gutter handle, folding, drag, delete and Tab indent; decorations come from
+  a `StateField` because CodeMirror rejects block decorations from view plugins.
+  `web/src/lib/blocks.ts` mirrors the parser (parity with the Rust side), and a
+  block link is `?p=<path>&block=<hash>&at=<seq>`. Rules changes bump the
+  `blocks.rules` marker, like `tasks.rules`.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
   CodeMirror completion source after wikilinks. They trigger only when `/` is
   the first non-whitespace character of a source line and are suppressed inside

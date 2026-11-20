@@ -7,7 +7,8 @@ use crate::error::{ApiResult, AppError};
 use crate::routes::{check_content, check_tags, clamp_limit, clamp_offset, clean_title, db_call};
 use crate::state::AppState;
 use crate::store::model::{
-    GraphData, JournalPage, Note, NoteSummary, PageList, PageOverview, TaskList,
+    BlockOverview, BlockTarget, GraphData, JournalPage, Note, NoteSummary, PageList, PageOverview,
+    TaskList,
 };
 use crate::store::{NoteSection, NoteUpdate, PageListOptions, TaskListOptions};
 
@@ -434,4 +435,93 @@ pub async fn delete(
     } else {
         Err(AppError::not_found("note not found"))
     }
+}
+
+/// Blocks of one note (`?path=`), in document order.
+pub async fn blocks(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<NoteBlocksQuery>,
+) -> ApiResult<Json<Vec<BlockOverview>>> {
+    let path = query.path.trim().to_string();
+    if path.is_empty() {
+        return Err(AppError::bad_request("path must not be empty"));
+    }
+    let store = state.store.clone();
+    let blocks = db_call(
+        move || store.note_blocks(&notebook_id, &path),
+        AppError::Internal,
+    )
+    .await?;
+    Ok(Json(blocks))
+}
+
+#[derive(Deserialize)]
+pub struct NoteBlocksQuery {
+    path: String,
+}
+
+/// Resolve a block deep link (`?path=…&hash=…&seq=…`).
+pub async fn block(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<BlockPathQuery>,
+) -> ApiResult<Json<BlockTarget>> {
+    let path = query.path.trim().to_string();
+    if path.is_empty() {
+        return Err(AppError::bad_request("path must not be empty"));
+    }
+    let hash = query.hash.unwrap_or_default().trim().to_string();
+    if hash.is_empty() {
+        return Err(AppError::bad_request("hash must not be empty"));
+    }
+    let store = state.store.clone();
+    let target = db_call(
+        move || store.resolve_block(&notebook_id, &path, &hash, query.seq),
+        AppError::Internal,
+    )
+    .await?;
+    target
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("note has no blocks"))
+}
+
+/// Block hits across the notebook (`?q=&limit=`), for block-aware search rows.
+pub async fn block_search(
+    State(state): State<AppState>,
+    Path(notebook_id): Path<String>,
+    Query(query): Query<BlockSearchQuery>,
+) -> ApiResult<Json<Vec<BlockHit>>> {
+    let needle = query.q.unwrap_or_default().trim().to_string();
+    let limit = clamp_limit(query.limit.unwrap_or(20)).min(50);
+    let store = state.store.clone();
+    let hits = db_call(
+        move || store.search_blocks(&notebook_id, &needle, limit),
+        AppError::Internal,
+    )
+    .await?;
+    Ok(Json(
+        hits.into_iter()
+            .map(|(note_path, block)| BlockHit { note_path, block })
+            .collect(),
+    ))
+}
+
+#[derive(serde::Serialize)]
+pub struct BlockHit {
+    pub note_path: String,
+    pub block: BlockOverview,
+}
+
+#[derive(Deserialize)]
+pub struct BlockSearchQuery {
+    q: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+pub struct BlockPathQuery {
+    path: String,
+    hash: Option<String>,
+    seq: Option<i64>,
 }
