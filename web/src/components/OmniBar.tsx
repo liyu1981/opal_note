@@ -9,7 +9,8 @@ import {
 import { useAtom, useAtomValue } from "jotai";
 
 import { api } from "../api/client";
-import type { NoteSummary, TagCount } from "../api/types";
+import type { BlockHit, NoteSummary, TagCount } from "../api/types";
+import { blockGlyph } from "../lib/blocks";
 import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import {
@@ -28,6 +29,10 @@ import {
 } from "../state/atoms";
 import { IconCalendar, IconFile, IconSearch, IconTag, IconX } from "./Icons";
 
+/** Block rows shown under the note rows; one note cannot flood the list. */
+const BLOCK_RESULT_LIMIT = 20;
+const BLOCK_RESULTS_PER_NOTE = 3;
+
 export function OmniBar() {
   const [query, setQuery] = useAtom(omniQueryAtom);
   const focusRequest = useAtomValue(omniFocusRequestAtom);
@@ -40,6 +45,7 @@ export function OmniBar() {
 
   const [tags, setTags] = useState<TagCount[]>([]);
   const [results, setResults] = useState<NoteSummary[]>([]);
+  const [blockResults, setBlockResults] = useState<BlockHit[]>([]);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -79,6 +85,19 @@ export function OmniBar() {
       );
   }, [tagMode, tagQuery, tags]);
 
+  const blocks = useMemo(() => {
+    const perNote = new Map<string, number>();
+    const kept: BlockHit[] = [];
+    for (const hit of blockResults) {
+      const seen = perNote.get(hit.note_path) ?? 0;
+      if (seen >= BLOCK_RESULTS_PER_NOTE) continue;
+      perNote.set(hit.note_path, seen + 1);
+      kept.push(hit);
+      if (kept.length >= BLOCK_RESULT_LIMIT) break;
+    }
+    return kept;
+  }, [blockResults]);
+
   const searchBinding = bindingLabel(
     "nav.search",
     settings.keybindings,
@@ -106,6 +125,7 @@ export function OmniBar() {
   useEffect(() => {
     if (!open || !notebookId || !trimmed || tagMode || commandMode) {
       setResults([]);
+      setBlockResults([]);
       setLoading(false);
       setError(null);
       return;
@@ -115,14 +135,22 @@ export function OmniBar() {
     setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
-        const found = await api.searchNotes(notebookId, trimmed, 30);
+        const [found, blocks] = await Promise.all([
+          api.searchNotes(notebookId, trimmed, 30),
+          // Block hits let a query land on the paragraph, not just the note.
+          api
+            .searchBlocks(notebookId, trimmed, BLOCK_RESULT_LIMIT * 2)
+            .catch(() => [] as BlockHit[]),
+        ]);
         if (cancelled) return;
         setResults(found);
+        setBlockResults(blocks);
         setSelected(0);
         setError(null);
       } catch (cause) {
         if (cancelled) return;
         setResults([]);
+        setBlockResults([]);
         setError(
           cause instanceof Error ? cause.message : "Could not search notes",
         );
@@ -187,6 +215,20 @@ export function OmniBar() {
     [navigate, requestViewFocus, setQuery],
   );
 
+  const openBlock = useCallback(
+    (hit: BlockHit) => {
+      setQuery("");
+      setOpen(false);
+      requestViewFocus("note", hit.note_path);
+      navigate({
+        view: "note",
+        noteId: hit.note_path,
+        block: { hash: hit.block.hash, at: hit.block.seq },
+      });
+    },
+    [navigate, requestViewFocus, setQuery],
+  );
+
   const openTag = useCallback(
     (tag: string) => {
       setQuery(`#${tag}`);
@@ -215,7 +257,7 @@ export function OmniBar() {
         ? commandResults.length
         : tagMode
           ? tagResults.length
-          : results.length;
+          : results.length + blocks.length;
       if (length === 0) return;
       event.preventDefault();
       setSelected((current) =>
@@ -236,11 +278,16 @@ export function OmniBar() {
         if (!tag) return;
         event.preventDefault();
         openTag(tag.tag);
-      } else {
+      } else if (selected < results.length) {
         const note = results[selected];
         if (!note) return;
         event.preventDefault();
         openNote(note);
+      } else {
+        const hit = blocks[selected - results.length];
+        if (!hit) return;
+        event.preventDefault();
+        openBlock(hit);
       }
     }
   }
@@ -385,66 +432,110 @@ export function OmniBar() {
               <p className="mx-1 rounded-lg bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
                 {error}
               </p>
-            ) : results.length === 0 ? (
-              <OmniHint>No notes match “{trimmed}”.</OmniHint>
+            ) : results.length === 0 && blocks.length === 0 ? (
+              <OmniHint>No notes or blocks match “{trimmed}”.</OmniHint>
             ) : (
               <>
-                <div className="flex items-center justify-between px-2 pb-1 pt-1 font-mono text-[14px] uppercase tracking-[0.12em] text-faint">
-                  <span>
-                    {results.length} {results.length === 1 ? "result" : "results"}
-                  </span>
-                  <span>Notes</span>
-                </div>
-                {results.map((note, index) => {
-                  const journal = note.id.startsWith("journals/");
-                  return (
-                    <button
-                      key={note.id}
-                      type="button"
-                      data-omni-index={index}
-                      onMouseEnter={() => setSelected(index)}
-                      onClick={() => openNote(note)}
-                      className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
-                        index === selected
-                          ? "bg-accent-soft/70"
-                          : "hover:bg-panel"
-                      }`}
-                    >
-                      <span
-                        className={`mt-0.5 shrink-0 ${
-                          index === selected ? "text-accent" : "text-faint"
-                        }`}
-                      >
-                        {journal ? (
-                          <IconCalendar className="h-3.5 w-3.5" />
-                        ) : (
-                          <IconFile className="h-3.5 w-3.5" />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-sans text-[14px] font-medium text-ink">
-                          <Highlight
-                            text={
-                              journal
-                                ? formatJournalDate(note.title)
-                                : note.title
-                            }
-                            terms={terms}
-                          />
-                        </span>
-                        <span className="mt-0.5 line-clamp-2 font-sans text-[14px] leading-relaxed text-muted">
-                          <Highlight
-                            text={note.excerpt || note.id}
-                            terms={terms}
-                          />
-                        </span>
-                      </span>
-                      <span className="max-w-[35%] shrink-0 truncate pt-0.5 font-mono text-[14px] text-faint">
-                        <Highlight text={note.id} terms={terms} />
-                      </span>
-                    </button>
-                  );
-                })}
+                {results.length > 0 && (
+                  <>
+                    <OmniSection count={results.length} label="Notes" />
+                    {results.map((note, index) => {
+                      const journal = note.id.startsWith("journals/");
+                      return (
+                        <button
+                          key={note.id}
+                          type="button"
+                          data-omni-index={index}
+                          onMouseEnter={() => setSelected(index)}
+                          onClick={() => openNote(note)}
+                          className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                            index === selected
+                              ? "bg-accent-soft/70"
+                              : "hover:bg-panel"
+                          }`}
+                        >
+                          <span
+                            className={`mt-0.5 shrink-0 ${
+                              index === selected ? "text-accent" : "text-faint"
+                            }`}
+                          >
+                            {journal ? (
+                              <IconCalendar className="h-3.5 w-3.5" />
+                            ) : (
+                              <IconFile className="h-3.5 w-3.5" />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-sans text-[14px] font-medium text-ink">
+                              <Highlight
+                                text={
+                                  journal
+                                    ? formatJournalDate(note.title)
+                                    : note.title
+                                }
+                                terms={terms}
+                              />
+                            </span>
+                            <span className="mt-0.5 line-clamp-2 font-sans text-[14px] leading-relaxed text-muted">
+                              <Highlight
+                                text={note.excerpt || note.id}
+                                terms={terms}
+                              />
+                            </span>
+                          </span>
+                          <span className="max-w-[35%] shrink-0 truncate pt-0.5 font-mono text-[14px] text-faint">
+                            <Highlight text={note.id} terms={terms} />
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
+
+                {blocks.length > 0 && (
+                  <>
+                    <OmniSection count={blocks.length} label="Blocks" />
+                    {blocks.map((hit, index) => {
+                      const rowIndex = results.length + index;
+                      return (
+                        <button
+                          key={`${hit.note_path}:${hit.block.seq}`}
+                          type="button"
+                          data-omni-index={rowIndex}
+                          onMouseEnter={() => setSelected(rowIndex)}
+                          onClick={() => openBlock(hit)}
+                          className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                            rowIndex === selected
+                              ? "bg-accent-soft/70"
+                              : "hover:bg-panel"
+                          }`}
+                        >
+                          <span
+                            className={`mt-0.5 w-5 shrink-0 text-center font-mono text-[14px] ${
+                              rowIndex === selected
+                                ? "text-accent"
+                                : "text-faint"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {blockGlyph(hit.block.kind)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="line-clamp-2 font-mono text-[14px] leading-relaxed text-ink">
+                              <Highlight
+                                text={hit.block.text || hit.note_path}
+                                terms={terms}
+                              />
+                            </span>
+                            <span className="mt-0.5 block truncate font-mono text-[12px] text-faint">
+                              {hit.note_path} · line {hit.block.start_line}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -503,6 +594,15 @@ function Highlight({ text, terms }: { text: string; terms: string[] }) {
         ),
       )}
     </>
+  );
+}
+
+function OmniSection({ count, label }: { count: number; label: string }) {
+  return (
+    <div className="flex items-center justify-between px-2 pb-1 pt-1 font-mono text-[14px] uppercase tracking-[0.12em] text-faint">
+      <span>{count}</span>
+      <span>{label}</span>
+    </div>
   );
 }
 

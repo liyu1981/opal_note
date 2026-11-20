@@ -576,7 +576,10 @@ picked is actually visible.
   inner editor box; journal cards use the same renderer.
 - **Omni bar** — the global header hosts one input for note search, tag
   navigation and commands. Type normally to search the server's `note:fts`
-  index; type `#` to browse available tags; type `>` to search and run every
+  index together with the notebook's blocks: note hits come first, then block
+  hits (kind glyph, block text, `path · line N`, at most 3 per note and 20 in
+  total). Choosing a block row opens its note with `?p=…&block=<hash>&at=<seq>`
+  and flashes that block. Type `#` to browse available tags; type `>` to search and run every
   workspace command. Tag pages prefill `#tag`. The old centered search and
   command dialogs are gone. `Ctrl+Shift+P` or leader → `M` opens command mode.
 - **Settings** — a large left-tabbed dialog. Fonts are configured by role

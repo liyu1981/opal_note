@@ -14,8 +14,8 @@ split into two releases because they carry very different costs:
 
 Status: **R1 is implemented** — parser, `block` index relation, the three read
 routes, gutter handles with fold / drag / delete, Tab indentation, and
-`?block=<hash>&at=<seq>` deep links all ship. Block rows inside the OmniBar
-search results are the remaining R1 item. R2 (references) is untouched and still
+`?block=<hash>&at=<seq>` deep links all ship, and the OmniBar lists block hits
+under its note hits. R2 (references) is untouched and still
 needs its own review.
 
 ## Why blocks
@@ -148,8 +148,7 @@ Nothing in this list writes metadata into the markdown.
 | **P3 drag + outline** | drag-reorder with drop indicator and conflict guard, Tab/Enter helpers | 2–3 days |
 | **P4 deep links + search** | hash resolution with drift fallback, block rows in search results | 1 day |
 
-P0–P3 and the deep-link half of P4 are implemented; wiring block rows into the
-OmniBar list is the open piece.
+P0–P4 are implemented.
 
 ## 6. Compatibility
 

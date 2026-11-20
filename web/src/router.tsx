@@ -429,8 +429,10 @@ const legacyPageRoute = createRoute({
   path: "/page",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { p?: string } => ({
+  ): { p?: string; block?: string; at?: number } => ({
     p: typeof search.p === "string" ? search.p : undefined,
+    block: typeof search.block === "string" ? search.block : undefined,
+    at: typeof search.at === "number" ? search.at : undefined,
   }),
   beforeLoad: async ({ search }) => {
     const notebook = await pickNotebook();
@@ -440,7 +442,7 @@ const legacyPageRoute = createRoute({
     throw redirect({
       to: "/$notebook/page",
       params: { notebook: notebook.id },
-      search: { p: search.p },
+      search: { p: search.p, block: search.block, at: search.at },
       replace: true,
     });
   },

@@ -44,8 +44,9 @@ next read. Delete the index at any time and it comes back.
   on their detail page, and can be exported as PNG.
 - **Responsive workspace** — collapsible side panels that dock on a desktop and
   float over the page as drawers on phones and small tablets.
-- **Search and commands** — one omni bar: text searches the full-text index,
-  `#` browses tags, `>` runs commands. Keyboard-first, with rebindable leader
+- **Search and commands** — one omni bar: text finds matching notes and the
+  blocks inside them (pick a block to jump straight to that paragraph), `#`
+  browses tags, `>` runs commands. Keyboard-first, with rebindable leader
   chords and a command palette.
 - **Trash** — deletes move pages, assets and notebooks to a recoverable bin
   with configurable retention; restoring a conflicting path auto-suffixes.

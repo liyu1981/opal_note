@@ -19,6 +19,25 @@ export type BlockKind =
   | "math"
   | "html";
 
+/** One-glyph marker for a block kind, used by block rows in search results. */
+export const BLOCK_KIND_GLYPH: Record<BlockKind, string> = {
+  heading: "H",
+  paragraph: "¶",
+  list_item: "•",
+  task: "☐",
+  code: "</>",
+  quote: "❝",
+  table: "▦",
+  hr: "—",
+  math: "∑",
+  html: "◇",
+};
+
+/** Glyph for a block kind coming from the API (which types it as a string). */
+export function blockGlyph(kind: string): string {
+  return BLOCK_KIND_GLYPH[kind as BlockKind] ?? "¶";
+}
+
 export type NoteBlock = {
   /** 1-based position in the note. */
   seq: number;

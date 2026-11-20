@@ -12,7 +12,12 @@ export type AppTarget =
   | { view: "assets" }
   | { view: "asset"; path: string }
   | { view: "trash" }
-  | { view: "note"; noteId: string }
+  | {
+      view: "note";
+      noteId: string;
+      /** Optional block deep link: jump to and flash that block. */
+      block?: { hash: string; at?: number };
+    }
   | { view: "tag"; tag: string };
 
 export type AppNavigateOptions = {
@@ -135,13 +140,21 @@ export function useAppNavigate() {
           void navigate({
             to: "/$notebook/page",
             params: { notebook },
-            search: { p: target.noteId },
+            search: {
+              p: target.noteId,
+              block: target.block?.hash,
+              at: target.block?.at,
+            },
             replace,
           });
         } else {
           void navigate({
             to: "/page",
-            search: { p: target.noteId },
+            search: {
+              p: target.noteId,
+              block: target.block?.hash,
+              at: target.block?.at,
+            },
             replace,
           });
         }

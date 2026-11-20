@@ -394,8 +394,9 @@ web/
   and Recent pages are client-side built-in plugins under
   `builtin/src/plugins/OpalNote/`; Open todos and other server plugins share the same
   list. There is no right plugin strip or plugin section label. The global top bar hosts the
-  **OmniBar** (with the Home button beside it): normal text searches notes, a
-  leading `#` lists tags, and a leading `>` lists commands. `Ctrl+Shift+P` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
+  **OmniBar** (with the Home button beside it): normal text searches notes
+  **and** blocks (two sections, notes first), a leading `#` lists tags, and a
+  leading `>` lists commands. `Ctrl+Shift+P` / leader → `M` enters command mode; leader → `T` opens tag search. Tag
   views prefill `#tag` in the bar. Do not reintroduce the old centered search
   or command dialogs, and do not put search back into `LeftSidebar` or make
   `notesAtom` query-dependent.
@@ -480,6 +481,12 @@ web/
   calls `GET /notebooks/{id}/search` and opens results with `useAppNavigate`.
   Search returns match-centered plain-text excerpts; `OmniBar` highlights
   query terms in titles, excerpts and paths with the `--color-mark` token.
+  A text query also calls `GET /notebooks/{id}/block-search` and lists block
+  rows under the notes (kind glyph, block text, `path · line N`), capped at 3
+  per note and 20 overall so one page cannot flood the list; choosing a block
+  row opens the note through `useAppNavigate` with `block`/`at`, so it lands on
+  and flashes that block. Arrow keys and Enter traverse both sections as one
+  list.
 - `Todos` opens the todo directory (`tasksViewAtom`, `TasksView`), a read-only
   list over the derived `task` relation with `GET /notebooks/{id}/tasks`
   (default 20/page, user-selectable sizes, server-side `status`/`q`/`sort`/`dir`).
