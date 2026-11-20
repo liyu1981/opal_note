@@ -224,7 +224,10 @@ web/
   builds read them from disk. `scripts/lib.mjs` owns the web build/sync step.
   Any new embedded asset location must be wired through both modes.
 - Use Tailwind theme tokens (`text-ink`, `bg-panel`, `border-line`, …) defined
-  in `src/index.css`; do not hard-code new hex colors.
+  in `src/index.css`; do not hard-code new hex colors. When adding a rule next
+  to an existing selector list, add a **separate** rule — splicing a selector
+  into a shared list silently gives every member the new declarations (a block
+  flash rule once turned every editor line into an accent-soft "quote").
 - Browser auth lives in `web/src/lib/session.ts`: the server token is exchanged
   for an HttpOnly session cookie, the CSRF token is kept in memory, and the API
   client sends `x-opalnote-csrf` on mutations. Never persist the bearer token

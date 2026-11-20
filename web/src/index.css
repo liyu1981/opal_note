@@ -238,7 +238,12 @@ select:focus-visible {
 .cm-editor .cm-line,
 .cm-live-wikilink,
 .cm-live-link,
-/* A block deep link flashes the target range. */
+.cm-live-tag {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* A block deep link flashes the target range; nothing else shares this rule. */
 .cm-line.cm-block-flash {
   background: var(--color-accent-soft);
   box-shadow: inset 2px 0 0 var(--color-accent);
@@ -259,11 +264,6 @@ select:focus-visible {
   font-family: var(--font-mono);
   font-size: 12px;
   box-shadow: var(--shadow-panel, 0 8px 24px rgba(0, 0, 0, 0.12));
-}
-
-.cm-live-tag {
-  -webkit-user-select: text;
-  user-select: text;
 }
 
 .cm-content[contenteditable="false"] {
