@@ -415,11 +415,19 @@ web/
   the editor grows with its content. Do not put the editor back in a fixed
   height container with an internal `.cm-scroller` scrollbar. Journal cards
   use the same auto-height renderer and the same `--note-ch` hanging indent.
-- The workspace opens on `HomeView` (`homeViewAtom`): today's editable journal
-  card with a New page action, followed by a main-area plugin list. Favorites
-  and Recent pages are client-side built-in plugins under
+- The workspace opens on `HomeView` (`homeViewAtom`): an editable journal card
+  with a New page action, followed by a main-area plugin list. The card steps
+  back through `‹ Today ›` up to five days (`homeDayOffsetAtom`, 0–5, memory
+  only): only today's page is created on open — older days load read-only and
+  are created on request ("Write that entry") so merely stepping back never
+  writes files. Stepping to a day hands the cursor to its card.
+  Favorites and Recent pages are client-side built-in plugins under
   `builtin/src/plugins/OpalNote/`; Open todos and other server plugins share the same
-  list. There is no right plugin strip or plugin section label. The global top bar hosts the
+  list. Each of those three sections can be switched off in Settings → Home
+  (`homeShowTodos`/`homeShowFavorites`/`homeShowRecent`, sparse booleans,
+  default on); HomeView filters both the server plugin list and the built-in
+  client plugins by plugin id through one `sectionSwitch` map. There is no
+  right plugin strip or plugin section label. The global top bar hosts the
   **OmniBar** (with the Home button beside it): normal text searches notes
   **and** blocks (two sections, notes first), a leading `#` lists tags, and a
   leading `>` lists commands. `Ctrl+Shift+P` / leader → `M` enters command mode; leader → `T` opens tag search. Tag

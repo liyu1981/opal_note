@@ -8,6 +8,13 @@ export function todayKey(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Journal key for a day `offset` days before today (0 = today). */
+export function dayKeyOffset(offset: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - offset);
+  return todayKey(date);
+}
+
 const MONTHS = [
   "Jan",
   "Feb",

@@ -592,6 +592,14 @@ picked is actually visible.
   writing surface to fill the window.
   The single-page editor grows with its content and scrolls the page, not an
   inner editor box; journal cards use the same renderer.
+- **Home** — the workspace opens on today's editable journal card with a day
+  switcher (`‹ Today ›` back to five days ago) and a New page action, then the
+  notebook's home plugins: Open todos (server), Favorites and Recent pages
+  (built-in client plugins). Settings → Home switches those three sections off
+  individually (`homeShowTodos`, `homeShowFavorites`, `homeShowRecent`); the
+  journal card itself is always shown. Only today's entry is created on open —
+  stepping back loads an existing entry and creates one only when you ask, so
+  browsing history never writes files.
 - **Omni bar** — the global header hosts one input for note search, tag
   navigation and commands. Type normally to search the server's `note:fts`
   index together with the notebook's blocks: note hits come first, then block

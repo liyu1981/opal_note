@@ -59,6 +59,13 @@ export const activeNoteIdAtom = atomWithStorage<string | null>(
 /** When true the main pane is the home dashboard. */
 export const homeViewAtom = atom(true);
 
+/**
+ * Day shown by the home view's journal card, counted back from today
+ * (0 = today, up to 5). Kept in an atom so stepping back, opening a page and
+ * returning keeps the day; it is memory-only, so a fresh load starts at today.
+ */
+export const homeDayOffsetAtom = atom(0);
+
 /** When true the main pane is the journal feed rather than a single note. */
 export const journalViewAtom = atom(false);
 

@@ -29,6 +29,9 @@ next read. Delete the index at any time and it comes back.
   hover handle: drag to reorder, fold, delete, or copy a link that reopens the
   note at that exact block. Nothing is added to the markdown, so files stay
   plain and portable.
+- **Home** — today's journal entry, one click away from yesterday and the four
+  days before it, followed by open todos, favorites and recent pages. Each of
+  those sections can be switched off in Settings → Home.
 - **Journals** — an editable, newest-first feed of journal cards with
   per-card saving and arrow-key navigation between days.
 - **Pages, tags and todos** — an all-pages table across pages and journals with

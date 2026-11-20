@@ -20,6 +20,8 @@ import {
   DEFAULT_MAX_UPLOAD_MB,
   DEFAULT_TRASH_RETENTION_DAYS,
   FONT_PRESETS,
+  HOME_SECTIONS,
+  type HomeSection,
   FONT_ROLES,
   MAX_TRASH_RETENTION_DAYS,
   MAX_UPLOAD_MB,
@@ -66,6 +68,7 @@ type Tab =
   | "fonts"
   | "code"
   | "background"
+  | "home"
   | "shortcuts"
   | "trash"
   | "files"
@@ -90,6 +93,11 @@ const TABS: Array<{ id: Tab; label: string; description: string }> = [
     id: "background",
     label: "Background",
     description: "Choose the main view backdrop.",
+  },
+  {
+    id: "home",
+    label: "Home",
+    description: "Choose which sections the home view shows under today's entry.",
   },
   {
     id: "shortcuts",
@@ -292,6 +300,21 @@ export function SettingsDialog() {
     setFontStatus("saving");
   }
 
+  function updateHomeSection(key: HomeSection, enabled: boolean) {
+    const next: AppSettings = {
+      ...draft,
+      ...(key === "todos"
+        ? { homeShowTodos: enabled }
+        : key === "favorites"
+          ? { homeShowFavorites: enabled }
+          : { homeShowRecent: enabled }),
+    };
+    setDraft(next);
+    setSettings(next);
+    setDirty(true);
+    setFontStatus("saving");
+  }
+
   function updateTrashRetention(days: number) {
     const next: AppSettings = { ...draft, trashRetentionDays: days };
     setDraft(next);
@@ -431,6 +454,7 @@ export function SettingsDialog() {
                 tab === "shortcuts" ||
                 tab === "trash" ||
                 tab === "files" ||
+                tab === "home" ||
                 tab === "background") && (
               <span
                 className={`mt-1 font-mono text-[14px] ${
@@ -487,6 +511,13 @@ export function SettingsDialog() {
                 onChange={updateBackground}
                 onOptionChange={updateBackgroundOption}
                 onResetOptions={resetBackgroundOptions}
+                error={fontError}
+              />
+            )}
+            {tab === "home" && (
+              <HomeTab
+                settings={draft}
+                onChange={updateHomeSection}
                 error={fontError}
               />
             )}
@@ -1068,6 +1099,59 @@ function BackgroundCard({
             onReset={onResetOptions}
           />
         </div>
+      )}
+    </section>
+  );
+}
+
+function HomeTab({
+  settings,
+  onChange,
+  error,
+}: {
+  settings: AppSettings;
+  onChange: (key: HomeSection, enabled: boolean) => void;
+  error: string | null;
+}) {
+  const flags: Record<HomeSection, boolean> = {
+    todos: settings.homeShowTodos,
+    favorites: settings.homeShowFavorites,
+    recent: settings.homeShowRecent,
+  };
+
+  return (
+    <section className="max-w-2xl space-y-4">
+      <p className="font-sans text-[14px] leading-relaxed text-muted">
+        The home view always opens today&apos;s journal entry. The sections under
+        it are optional — anything you hide stays reachable from the sidebar.
+      </p>
+      <div className="space-y-2.5">
+        {HOME_SECTIONS.map((section) => (
+          <label
+            key={section.id}
+            className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-white/60 px-3 py-2.5 transition hover:border-line-strong hover:bg-white"
+          >
+            <input
+              type="checkbox"
+              checked={flags[section.id]}
+              onChange={(event) => onChange(section.id, event.target.checked)}
+              className="mt-0.5 accent-accent"
+            />
+            <span className="min-w-0">
+              <span className="block font-sans text-[14px] font-medium text-ink">
+                {section.label}
+              </span>
+              <span className="mt-0.5 block font-sans text-[14px] leading-relaxed text-faint">
+                {section.description}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {error && (
+        <p className="rounded bg-danger/10 px-3 py-2 font-sans text-[14px] text-danger">
+          {error}
+        </p>
       )}
     </section>
   );

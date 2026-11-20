@@ -1,26 +1,34 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type {
   JournalPage,
   JournalPluginResult,
   Note,
   PluginAction,
 } from "../api/types";
-import { formatJournalDate, todayKey, ensureJournalPage } from "../lib/journal";
+import {
+  dayKeyOffset,
+  ensureJournalPage,
+  formatJournalDate,
+  todayKey,
+} from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { useViewAutoFocus } from "../lib/useViewFocus";
 import { useShortcutRunner } from "../lib/useShortcutRunner";
 import { noteLinkKeys, normalizeLinkTarget, safeExternalUrl } from "../lib/markdown";
+import { settingsAtom } from "../lib/settings";
 import { JournalCard, type JournalCardHandle } from "./JournalCard";
 import { PluginHost } from "./PluginHost";
-import { IconPlus } from "./Icons";
+import { IconChevron, IconPlus } from "./Icons";
 import { BUILTIN_CLIENT_PLUGINS } from "../../../builtin/plugins/index.js";
 import type { HomePluginContext } from "../plugins/types";
+import type { AppSettings } from "../lib/settings";
 import {
   activeNotebookIdAtom,
   favoritesAtom,
+  homeDayOffsetAtom,
   journalPluginsRevisionAtom,
   tasksRevisionAtom,
   notesAtom,
@@ -43,8 +51,27 @@ function toJournalPage(note: Note): JournalPage {
   };
 }
 
+/** Days back from today the home journal card can be stepped through. */
+const DAY_WINDOW = 5;
+
+function dayLabel(offset: number): string {
+  if (offset === 0) return "Today";
+  if (offset === 1) return "Yesterday";
+  return `${offset} days ago`;
+}
+
+/** Which home sections the settings keep switched on, by plugin id. */
+function sectionSwitch(settings: AppSettings): Record<string, boolean> {
+  return {
+    "OpalNote/todos": settings.homeShowTodos,
+    "OpalNote/favorites": settings.homeShowFavorites,
+    "OpalNote/recent": settings.homeShowRecent,
+  };
+}
+
 export function HomeView() {
   const notebookId = useAtomValue(activeNotebookIdAtom);
+  const settings = useAtomValue(settingsAtom);
   const notes = useAtomValue(notesAtom);
   const favorites = useAtomValue(favoritesAtom);
   const recents = useAtomValue(recentsAtom);
@@ -58,6 +85,7 @@ export function HomeView() {
   const runCommand = useShortcutRunner();
   const todayCardRef = useRef<JournalCardHandle>(null);
 
+  const [dayOffset, setDayOffset] = useAtom(homeDayOffsetAtom);
   const [today, setToday] = useState<JournalPage | null>(null);
   const [loadingToday, setLoadingToday] = useState(true);
   const [todayError, setTodayError] = useState<string | null>(null);
@@ -70,6 +98,22 @@ export function HomeView() {
     () => todayCardRef.current?.focus(),
     Boolean(today),
   );
+
+  // Stepping to another day hands the cursor to that card, so typing continues
+  // where the switcher went. Keyed on the loaded page (not the offset) because
+  // the day only becomes focusable once its note has arrived.
+  const dayOffsetRef = useRef(dayOffset);
+  dayOffsetRef.current = dayOffset;
+  const focusedDayRef = useRef(dayOffset);
+  useEffect(() => {
+    if (!today || focusedDayRef.current === dayOffsetRef.current) return;
+    focusedDayRef.current = dayOffsetRef.current;
+    const timer = window.setTimeout(
+      () => todayCardRef.current?.focus(),
+      80,
+    );
+    return () => window.clearTimeout(timer);
+  }, [today]);
 
   const favoriteRefs = notebookId ? (favorites[notebookId] ?? []) : [];
   const recentRefs = notebookId ? (recents[notebookId] ?? []) : [];
@@ -92,30 +136,40 @@ export function HomeView() {
     let cancelled = false;
     setLoadingToday(true);
     setTodayError(null);
-    const path = `journals/${todayKey()}`;
+    const key = dayKeyOffset(dayOffset);
+    const path = `journals/${key}.md`;
 
     void (async () => {
       try {
-        if (locked) {
-          try {
-            const note = await api.getNote(notebookId, path);
-            if (!cancelled) setToday(toJournalPage(note));
-          } catch {
-            if (!cancelled) setToday(null);
-          }
+        // Only today is created on open; older days load (and can be created on
+        // request) so merely stepping back never writes files.
+        if (!locked && dayOffset === 0) {
+          const { note, created } = await ensureJournalPage(notebookId, key);
+          if (cancelled) return;
+          setToday(toJournalPage(note));
+          if (created) refreshNotes();
           return;
         }
-
-        const { note, created } = await ensureJournalPage(notebookId);
-        if (cancelled) return;
-        setToday(toJournalPage(note));
-        if (created) refreshNotes();
+        try {
+          const note = await api.getNote(notebookId, path);
+          if (!cancelled) setToday(toJournalPage(note));
+        } catch (cause) {
+          if (cancelled) return;
+          // A missing journal file is an empty day, not an error.
+          setToday(null);
+          if (cause instanceof ApiError && cause.status === 404) return;
+          setTodayError(
+            cause instanceof Error
+              ? cause.message
+              : "Could not open that journal day",
+          );
+        }
       } catch (cause) {
         if (!cancelled) {
           setTodayError(
             cause instanceof Error
               ? cause.message
-              : "Could not open today's journal",
+              : "Could not open that journal day",
           );
           setToday(null);
         }
@@ -127,7 +181,7 @@ export function HomeView() {
     return () => {
       cancelled = true;
     };
-  }, [locked, notebookId, refreshNotes]);
+  }, [dayOffset, locked, notebookId, refreshNotes]);
 
   useEffect(() => {
     if (!notebookId) {
@@ -181,10 +235,19 @@ export function HomeView() {
       .slice(0, 3);
   }, [notes]);
 
+  const switches = useMemo(() => sectionSwitch(settings), [settings]);
   const homePlugins = useMemo(() => {
     const builtinIds = new Set(BUILTIN_CLIENT_PLUGINS.map((plugin) => plugin.id));
-    return plugins.filter((plugin) => !builtinIds.has(plugin.id));
-  }, [plugins]);
+    return plugins.filter(
+      (plugin) =>
+        !builtinIds.has(plugin.id) && (switches[plugin.id] ?? true),
+    );
+  }, [plugins, switches]);
+  const homeBuiltins = useMemo(
+    () =>
+      BUILTIN_CLIENT_PLUGINS.filter((plugin) => switches[plugin.id] ?? true),
+    [switches],
+  );
 
   function openWiki(target: string) {
     const needle = normalizeLinkTarget(target);
@@ -192,6 +255,24 @@ export function HomeView() {
       noteLinkKeys(note.title, note.id).includes(needle),
     );
     if (hit) navigate({ view: "note", noteId: hit.id });
+  }
+
+  /** Create the journal page for the day the switcher shows. */
+  async function createJournalEntry() {
+    if (!notebookId || locked) return;
+    const key = dayKeyOffset(dayOffset);
+    try {
+      const { note } = await ensureJournalPage(notebookId, key);
+      setToday(toJournalPage(note));
+      refreshNotes();
+      window.setTimeout(() => todayCardRef.current?.focus(), 60);
+    } catch (cause) {
+      window.alert(
+        cause instanceof Error
+          ? cause.message
+          : "Could not create the journal entry",
+      );
+    }
   }
 
   async function createPage() {
@@ -241,12 +322,34 @@ export function HomeView() {
       <div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-6">
         <section>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
-              Today
-            </h2>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setDayOffset((offset) => Math.min(DAY_WINDOW, offset + 1))}
+                disabled={dayOffset >= DAY_WINDOW}
+                aria-label="Previous day"
+                title="Previous day"
+                className="rounded p-1 text-faint transition hover:bg-panel hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <IconChevron className="h-3.5 w-3.5 rotate-90" />
+              </button>
+              <h2 className="w-28 text-center font-mono text-[14px] font-semibold uppercase tracking-[0.14em] text-faint">
+                {dayLabel(dayOffset)}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDayOffset((offset) => Math.max(0, offset - 1))}
+                disabled={dayOffset === 0}
+                aria-label="Next day"
+                title="Next day"
+                className="rounded p-1 text-faint transition hover:bg-panel hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <IconChevron className="h-3.5 w-3.5 -rotate-90" />
+              </button>
+            </div>
             <div className="flex items-center gap-3">
               <span className="font-mono text-[14px] text-faint">
-                {formatJournalDate(todayKey())}
+                {formatJournalDate(dayKeyOffset(dayOffset))}
               </span>
               <button
                 type="button"
@@ -268,6 +371,7 @@ export function HomeView() {
             </p>
           ) : today ? (
             <JournalCard
+              key={`${notebookId}:${today.id}`}
               ref={todayCardRef}
               page={today}
               notebookId={notebookId}
@@ -281,9 +385,21 @@ export function HomeView() {
               onTag={(tag) => navigate({ view: "tag", tag })}
             />
           ) : (
-            <p className="rounded-xl border border-line bg-paper px-4 py-8 text-center font-sans text-[14px] text-faint">
-              No journal page for today yet.
-            </p>
+            <div className="rounded-xl border border-line bg-paper px-4 py-8 text-center">
+              <p className="font-sans text-[14px] text-faint">
+                No journal entry for {formatJournalDate(dayKeyOffset(dayOffset))}.
+              </p>
+              {!locked && (
+                <button
+                  type="button"
+                  onClick={() => void createJournalEntry()}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-line bg-white/60 px-2.5 py-1.5 font-sans text-[14px] text-muted transition hover:border-line-strong hover:bg-white hover:text-ink"
+                >
+                  <IconPlus className="h-3.5 w-3.5" />
+                  {dayOffset === 0 ? "Write today's entry" : "Write that entry"}
+                </button>
+              )}
+            </div>
           )}
         </section>
 
@@ -307,7 +423,7 @@ export function HomeView() {
                 onTag={(tag) => navigate({ view: "tag", tag })}
               />
             ))}
-            {BUILTIN_CLIENT_PLUGINS.map((plugin) => (
+            {homeBuiltins.map((plugin) => (
               <Fragment key={plugin.id}>
                 {plugin.render(pluginContext)}
               </Fragment>

@@ -47,6 +47,14 @@ export const MAX_TRASH_RETENTION_DAYS = 3_650;
 export const DEFAULT_MAX_UPLOAD_MB = 4_096;
 export const MAX_UPLOAD_MB = 102_400;
 export const DEFAULT_BACKGROUND_ID = "OpalNote/grid-scan";
+/** Home sections can be hidden one by one; all are on by default. */
+export const HOME_SECTIONS = [
+  { id: "todos", label: "Open todos", description: "Tasks not done or cancelled across the notebook." },
+  { id: "favorites", label: "Favorites", description: "Pages you starred in the editor." },
+  { id: "recent", label: "Recent pages", description: "The three most recently updated pages." },
+] as const;
+
+export type HomeSection = (typeof HOME_SECTIONS)[number]["id"];
 
 export type AppSettings = {
   fonts: Record<FontRole, FontChoice>;
@@ -56,6 +64,10 @@ export type AppSettings = {
   maxUploadMb: number;
   backgroundId: string;
   backgroundOptions: Record<string, Record<string, unknown>>;
+  /** Per-section switches for the home view. */
+  homeShowTodos: boolean;
+  homeShowFavorites: boolean;
+  homeShowRecent: boolean;
   [key: string]: unknown;
 };
 
@@ -72,6 +84,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxUploadMb: DEFAULT_MAX_UPLOAD_MB,
   backgroundId: DEFAULT_BACKGROUND_ID,
   backgroundOptions: {},
+  homeShowTodos: true,
+  homeShowFavorites: true,
+  homeShowRecent: true,
 };
 
 export const FONT_PRESETS = [
@@ -163,6 +178,10 @@ export function mergeSettings(value: unknown): AppSettings {
       : DEFAULT_BACKGROUND_ID;
 
   const backgroundOptions = sanitizeBackgroundOptions(root.backgroundOptions);
+  const flag = (key: string): boolean =>
+    typeof root[key] === "boolean"
+      ? (root[key] as boolean)
+      : (DEFAULT_SETTINGS[key] as boolean);
 
   return {
     ...DEFAULT_SETTINGS,
@@ -174,6 +193,9 @@ export function mergeSettings(value: unknown): AppSettings {
     maxUploadMb,
     backgroundId,
     backgroundOptions,
+    homeShowTodos: flag("homeShowTodos"),
+    homeShowFavorites: flag("homeShowFavorites"),
+    homeShowRecent: flag("homeShowRecent"),
   };
 }
 
