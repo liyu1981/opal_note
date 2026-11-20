@@ -7,7 +7,11 @@ import { formatJournalDate } from "../lib/journal";
 import { useAppNavigate } from "../lib/appNavigation";
 import { filterTerms, matchesFilter } from "../lib/filter";
 import { useViewAutoFocus } from "../lib/useViewFocus";
-import { noteLinkKeys, normalizeLinkTarget } from "../lib/markdown";
+import {
+  fencedLines,
+  noteLinkKeys,
+  normalizeLinkTarget,
+} from "../lib/markdown";
 import {
   activeNoteIdAtom,
   activeNotebookIdAtom,
@@ -421,15 +425,11 @@ function findTaggedBlock(content: string, tag: string): TagBlock | null {
     "iu",
   );
   const indentOf = (line: string) => line.match(/^\s*/u)?.[0].length ?? 0;
-  let inFence = false;
+  const inCode = fencedLines(lines);
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
-    if (/^\s*(```|~~~)/u.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence || !matcher.test(line)) continue;
+    if (inCode[index] || !matcher.test(line)) continue;
 
     const indent = indentOf(line);
     const isList = /^\s*(?:[-*+]|\d+[.)])\s+/u.test(line);

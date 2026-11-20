@@ -65,3 +65,50 @@ export function safeExternalUrl(raw: string): string | null {
     return null;
   }
 }
+
+/* ---------------------------------------------------------------- fences -- */
+
+export type Fence = "```" | "~~~";
+
+/**
+ * The fence a line opens with, allowing a list-marker prefix because Logseq
+ * writes fences as list children (`  - ```js`). Mirrors `fence_marker` in
+ * `src/store/markdown.rs`: a fence may *open* after a bullet, but only a bare
+ * fence closes it — otherwise the closing fence would open a block and swallow
+ * the rest of the note.
+ */
+export function fenceOpener(line: string): Fence | null {
+  // Bullets only, exactly like `strip_bullet`, so the client and the index
+  // agree on what is code.
+  const candidate = line.trimStart().replace(/^[-*+]\s+/u, "");
+  if (candidate.startsWith("```")) return "```";
+  if (candidate.startsWith("~~~")) return "~~~";
+  return null;
+}
+
+/** True when a line closes `fence` (a bare fence, list markers not allowed). */
+export function closesFence(line: string, fence: Fence): boolean {
+  return line.trimStart().startsWith(fence);
+}
+
+/**
+ * Which lines sit inside a fenced block, fence lines included. Every consumer
+ * that has to ignore code (tags, tasks, blocks) uses this so the bullet-fence
+ * rule cannot drift between them.
+ */
+export function fencedLines(lines: string[]): boolean[] {
+  const mask = lines.map(() => false);
+  let fence: Fence | null = null;
+  lines.forEach((line, index) => {
+    if (fence !== null) {
+      mask[index] = true;
+      if (closesFence(line, fence)) fence = null;
+      return;
+    }
+    const opener = fenceOpener(line);
+    if (opener === null) return;
+    fence = opener;
+    mask[index] = true;
+  });
+  return mask;
+}

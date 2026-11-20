@@ -261,6 +261,15 @@ web/
   the active-line tint remains the focus cue. Keep the source hanging indent
   (`.cm-live-hang` + content-column `--block-pad`) so wrapped focused list and
   paragraph lines stay under their content, not at the editor edge.
+- Fences have **one rule**: a fence may open after a `-`/`*`/`+` bullet
+  (`- ```js`), but only a bare fence closes it. `fence_marker` in
+  `src/store/markdown.rs` is the server copy; the client uses `fenceOpener`,
+  `closesFence` and `fencedLines` from `web/src/lib/markdown.ts` (tags, tasks
+  and blocks all consume them). A naive `inFence` toggle let the closing fence
+  of a bullet fence *open* a block, which hid every later tag — tag pages said
+  "No tagged block found in the page body". Ordered markers (`1. ``` `) are
+  rendered as code by the live editor but are not fences for the indexers; keep
+  the two sides aligned before changing that.
 - Task checkboxes are **views of the markdown**: a click toggles the source
   `[ ]`/`[x]` from the widget itself instead of letting the browser toggle the
   input, because the first click after focus left the note used to reveal the

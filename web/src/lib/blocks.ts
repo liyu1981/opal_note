@@ -7,6 +7,8 @@
  * the same fixtures through both.
  */
 
+import { closesFence, fenceOpener } from "./markdown";
+
 export type BlockKind =
   | "paragraph"
   | "heading"
@@ -69,13 +71,6 @@ export function blockHash(text: string): string {
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
-}
-
-function fenceOf(line: string): "```" | "~~~" | null {
-  const candidate = /^[-*+]\s+/u.test(line) ? line.replace(/^[-*+]\s+/u, "") : line;
-  if (candidate.startsWith("```")) return "```";
-  if (candidate.startsWith("~~~")) return "~~~";
-  return null;
 }
 
 function isDisplayMathFence(line: string): boolean {
@@ -141,7 +136,7 @@ function startsNewBlock(line: string): boolean {
     isThematicBreak(line) ||
     headingLevel(line) !== null ||
     listMarker(line) !== null ||
-    fenceOf(line) !== null
+    fenceOpener(line) !== null
   );
 }
 
@@ -202,11 +197,11 @@ export function parseBlocks(body: string): NoteBlock[] {
       continue;
     }
 
-    const fence = fenceOf(trimmed);
+    const fence = fenceOpener(trimmed);
     if (fence !== null) {
       let end = lines.length - 1;
       for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
-        if ((lines[cursor] ?? "").trimStart().startsWith(fence)) {
+        if (closesFence(lines[cursor] ?? "", fence)) {
           end = cursor;
           break;
         }
@@ -308,7 +303,7 @@ export function parseBlocks(body: string): NoteBlock[] {
         if (nextTrimmed.startsWith(">") || nextTrimmed.startsWith("|")) break;
         if (listMarker(nextTrimmed) !== null) break;
         if (indentColumns(next) <= indent) break;
-        if (fenceOf(nextTrimmed) !== null) break;
+        if (fenceOpener(nextTrimmed) !== null) break;
         end += 1;
       }
       while (listStack.length > 0 && (listStack[listStack.length - 1]?.indent ?? 0) >= indent) {

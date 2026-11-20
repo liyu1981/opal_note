@@ -464,6 +464,13 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   lists, task, quote, code block, divider, page link and inline code. Arrows
   and Enter apply a command; Escape cancels. The menu does not appear inside
   fenced code blocks.
+- **Fenced code** is detected by one rule on both sides: a fence may open after
+  a list bullet (`- ```js`), and only a bare fence closes it. The server copy is
+  `fence_marker`; the client shares `fenceOpener` / `closesFence` /
+  `fencedLines` from `web/src/lib/markdown.ts` across tags, tasks and blocks.
+  Tag views used to hold their own naive toggle, so the closing fence of a
+  bullet fence opened a block and hid every later tag ("No tagged block found
+  in the page body").
 - **Task checkboxes** toggle the source text from the widget (`[ ]` ⇄ `[x]`)
   and swallow mousedown, so ticking a box neither reveals the line as source
   nor moves the caret. `/` commands fire behind line prefixes (`- /`,

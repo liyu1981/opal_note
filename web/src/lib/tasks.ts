@@ -1,5 +1,7 @@
 import type { TaskStatus } from "../api/types";
 
+import { closesFence, fenceOpener } from "./markdown";
+
 /** Status order used by filters, sorting and the status badges. */
 export const TASK_STATUSES: TaskStatus[] = [
   "open",
@@ -52,14 +54,6 @@ export function cleanTaskText(text: string): string {
  * same signature produce the same rows, so an editor can tell a body edit that
  * touched tasks from one that did not.
  */
-/** The fence a line opens with (```` ``` ```` or `~~~`), bullet prefix allowed. */
-function fenceOpener(line: string): "```" | "~~~" | null {
-  const candidate = /^[-*+]\s+/.test(line) ? line.replace(/^[-*+]\s+/, "") : line;
-  if (candidate.startsWith("```")) return "```";
-  if (candidate.startsWith("~~~")) return "~~~";
-  return null;
-}
-
 export function taskSignature(content: string): string {
   const rows: string[] = [];
   let fence: "```" | "~~~" | null = null;
@@ -67,7 +61,7 @@ export function taskSignature(content: string): string {
   for (const line of content.split("\n")) {
     const trimmed = line.trimStart();
     if (fence) {
-      if (trimmed.startsWith(fence)) fence = null;
+      if (closesFence(line, fence)) fence = null;
       continue;
     }
     // A fence may be written as a list child (`- ``` … ``` `), which the editor

@@ -1057,6 +1057,16 @@ mod tests {
         assert_eq!(tags, vec!["real"]);
     }
 
+    /// A fence written as a list child (`- ``` … ``` `) must not leave the
+    /// closing fence to open a block: that swallowed the rest of the note and
+    /// hid every later tag (a deployed journal entry showed no tagged block).
+    #[test]
+    fn ignores_tags_in_a_code_fence_inside_a_bullet() {
+        let content = "- intro #before\n  - ```\n    body #incode\n    ```\n- later #after\n";
+        let tags = extract_tags(content);
+        assert_eq!(tags, vec!["before", "after"]);
+    }
+
     #[test]
     fn merges_and_normalizes_tags() {
         let tags = merge_tags("body #Inline", &["#Explicit".into(), " inline ".into()]);
