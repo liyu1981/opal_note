@@ -261,15 +261,15 @@ web/
   the active-line tint remains the focus cue. Keep the source hanging indent
   (`.cm-live-hang` + content-column `--block-pad`) so wrapped focused list and
   paragraph lines stay under their content, not at the editor edge.
-- Fences have **one rule**: a fence may open after a `-`/`*`/`+` bullet
-  (`- ```js`), but only a bare fence closes it. `fence_marker` in
-  `src/store/markdown.rs` is the server copy; the client uses `fenceOpener`,
+- Fences have **one rule**: a fence may open after a list marker — a
+  `-`/`*`/`+` bullet or an ordered `1.`/`1)` (`- ```js`, `1. ```js`) — but only
+  a bare fence closes it. `fence_marker` in `src/store/markdown.rs` (via
+  `strip_list_marker`) is the server copy; the client uses `fenceOpener`,
   `closesFence` and `fencedLines` from `web/src/lib/markdown.ts` (tags, tasks
   and blocks all consume them). A naive `inFence` toggle let the closing fence
-  of a bullet fence *open* a block, which hid every later tag — tag pages said
-  "No tagged block found in the page body". Ordered markers (`1. ``` `) are
-  rendered as code by the live editor but are not fences for the indexers; keep
-  the two sides aligned before changing that.
+  of a list-child fence *open* a block, which hid every later tag — tag pages
+  said "No tagged block found in the page body". Changing this rule means
+  bumping both `TASK_RULES_VERSION` and `BLOCK_RULES_VERSION`.
 - Task checkboxes are **views of the markdown**: a click toggles the source
   `[ ]`/`[x]` from the widget itself instead of letting the browser toggle the
   input, because the first click after focus left the note used to reveal the
@@ -379,9 +379,10 @@ web/
   block link is `?p=<path>&block=<hash>&at=<seq>`. Rules changes bump the
   `blocks.rules` marker, like `tasks.rules`.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
-  CodeMirror completion source after wikilinks. They trigger only when `/` is
-  the first non-whitespace character of a source line and are suppressed inside
-  fenced code blocks. Use `apply` callbacks to edit the line, keep Escape and
+  CodeMirror completion source after wikilinks. They trigger when `/` starts the
+  line's text behind block prefixes — indentation, quote markers, a bullet or
+  number (with an optional task checkbox) and heading marks — and are suppressed
+  inside fenced code blocks. Use `apply` callbacks to edit the line, keep Escape and
   arrow/Enter selection behavior from CodeMirror, and keep the wiki-link source
   working after the "Link to page" command. "Upload file" is `kind: "upload"`:
   it clears the typed `/upload`, opens the host file picker, and inserts
@@ -646,6 +647,8 @@ web/
   `TASK_RULES_VERSION` in `Store::take_task_rules_backfill` whenever extraction
   starts matching more or fewer lines: the `data/index/tasks.rules` marker then
   forces one full re-read, because unchanged files are skipped by the scan.
+  `BLOCK_RULES_VERSION`/`blocks.rules` does the same for `parse_blocks`, and
+  both markers go through `Store::take_rules_marker`.
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
   the todo-kind/legacy fallback. Home renders every server plugin result plus

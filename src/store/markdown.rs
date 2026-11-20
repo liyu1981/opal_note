@@ -51,12 +51,12 @@ pub fn note_link_keys(title: &str, path: &str) -> Vec<String> {
 
 /// The fence marker a line opens with, if any.
 ///
-/// A fenced block is often written as a child of a list item (`- ``` … ``` `),
-/// which the live editor renders as code. Recognising only a fence at the very
-/// start of the line made the *closing* fence open a block instead, swallowing
-/// every tag, link and task that followed it.
+/// A fenced block is often written as a child of a list item (`- ``` … ``` ` or
+/// `1. ``` … ``` `), which the live editor renders as code. Recognising only a
+/// fence at the very start of the line made the *closing* fence open a block
+/// instead, swallowing every tag, link and task that followed it.
 fn fence_marker(line: &str) -> Option<&'static str> {
-    let candidate = strip_bullet(line).unwrap_or(line);
+    let candidate = strip_list_marker(line).unwrap_or(line);
     if candidate.starts_with("```") {
         Some("```")
     } else if candidate.starts_with("~~~") {
@@ -1065,6 +1065,31 @@ mod tests {
         let content = "- intro #before\n  - ```\n    body #incode\n    ```\n- later #after\n";
         let tags = extract_tags(content);
         assert_eq!(tags, vec!["before", "after"]);
+    }
+
+    /// Fences may also open behind an ordered marker (`1. ``` `), which the
+    /// live editor renders as code; the indexers must agree.
+    #[test]
+    fn ignores_tags_in_a_code_fence_inside_an_ordered_item() {
+        let content = "first #before\n1. ```sh\n   #notatag\n   ```\nlast #after\n";
+        let tags = extract_tags(content);
+        assert_eq!(tags, vec!["before", "after"]);
+    }
+
+    #[test]
+    fn fenced_block_inside_an_ordered_item_does_not_hide_later_tasks() {
+        let content = "1. ```\n   - [ ] not a task\n   ```\n- [ ] real task\n";
+        let tasks = extract_tasks(content);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].text, "real task");
+    }
+
+    #[test]
+    fn parses_an_ordered_item_fence_as_a_code_block() {
+        let blocks = parse_blocks("1. ```js\n   const a = 1;\n   ```\n\ntail\n");
+        assert_eq!(blocks[0].kind, "code");
+        assert_eq!((blocks[0].start_line, blocks[0].end_line), (1, 3));
+        assert_eq!(blocks[1].kind, "paragraph");
     }
 
     #[test]

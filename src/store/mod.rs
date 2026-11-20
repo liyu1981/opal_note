@@ -467,13 +467,14 @@ impl Store {
         let schema_backfill = store.init_schema()?;
         // Extraction rules can change too: files whose mtime has not moved are
         // skipped by the incremental scan, so a rule bump needs one full read.
-        let rules_backfill = store.take_task_rules_backfill();
+        let task_rules_backfill = store.take_task_rules_backfill();
+        let block_rules_backfill = store.take_block_rules_backfill();
 
         // Build/refresh the index from whatever is already on disk. A newly
         // added task relation (or a change to how tasks are derived) needs a
         // one-time full read so existing notes get the right rows without a
         // manual reindex.
-        store.sync_all_locked(schema_backfill || rules_backfill)?;
+        store.sync_all_locked(schema_backfill || task_rules_backfill || block_rules_backfill)?;
         Ok(store)
     }
 
@@ -486,23 +487,36 @@ impl Store {
     /// fewer) lines: the marker then forces one full re-read, because files with
     /// an unchanged mtime are otherwise skipped.
     fn take_task_rules_backfill(&self) -> bool {
-        const TASK_RULES_VERSION: u32 = 3;
-        let marker = self.data_dir.join("index").join("tasks.rules");
+        const TASK_RULES_VERSION: u32 = 4;
+        self.take_rules_marker("tasks.rules", TASK_RULES_VERSION, "task extraction")
+    }
+
+    /// Marker for the block derivation rules; see [`Self::take_task_rules_backfill`].
+    fn take_block_rules_backfill(&self) -> bool {
+        const BLOCK_RULES_VERSION: u32 = 1;
+        self.take_rules_marker("blocks.rules", BLOCK_RULES_VERSION, "block derivation")
+    }
+
+    /// Compare a `<relation>.rules` marker with the current rules version and
+    /// write the new one. Returns true when the caller has to re-read every note.
+    fn take_rules_marker(&self, name: &str, version: u32, what: &str) -> bool {
+        let marker = self.data_dir.join("index").join(name);
         let current = fs::read_to_string(&marker)
             .ok()
             .and_then(|value| value.trim().parse::<u32>().ok())
             .unwrap_or(0);
-        if current == TASK_RULES_VERSION {
+        if current == version {
             return false;
         }
         // Written before the sync: a crashed sync simply repeats it next start.
         tracing::info!(
             from = current,
-            to = TASK_RULES_VERSION,
-            "task extraction rules changed; re-reading every note"
+            to = version,
+            rules = what,
+            "derivation rules changed; re-reading every note"
         );
-        if let Err(err) = files::write_atomic(&marker, &format!("{TASK_RULES_VERSION}\n")) {
-            tracing::warn!(error = %err, "could not write the task rules marker");
+        if let Err(err) = files::write_atomic(&marker, &format!("{version}\n")) {
+            tracing::warn!(error = %err, rules = what, "could not write the rules marker");
             return true;
         }
         true
@@ -3371,7 +3385,22 @@ mod tests {
         fs::remove_file(&marker).unwrap();
         assert!(store.take_task_rules_backfill());
         assert!(!store.take_task_rules_backfill());
-        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "3");
+        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "4");
+    }
+
+    #[test]
+    fn block_rules_marker_forces_one_backfill() {
+        let (dir, store) = store();
+        let marker = dir.path().join("index/blocks.rules");
+        // Written while opening, so nothing is pending on a normal start.
+        assert!(marker.is_file());
+        assert!(!store.take_block_rules_backfill());
+
+        // A fence-rule change re-derives every block exactly once.
+        fs::remove_file(&marker).unwrap();
+        assert!(store.take_block_rules_backfill());
+        assert!(!store.take_block_rules_backfill());
+        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "1");
     }
 
     #[test]

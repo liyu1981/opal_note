@@ -72,15 +72,15 @@ export type Fence = "```" | "~~~";
 
 /**
  * The fence a line opens with, allowing a list-marker prefix because Logseq
- * writes fences as list children (`  - ```js`). Mirrors `fence_marker` in
- * `src/store/markdown.rs`: a fence may *open* after a bullet, but only a bare
- * fence closes it — otherwise the closing fence would open a block and swallow
- * the rest of the note.
+ * writes fences as list children (`  - ```js`, `1. ```js`). Mirrors
+ * `fence_marker` in `src/store/markdown.rs`: a fence may *open* after a list
+ * marker, but only a bare fence closes it — otherwise the closing fence would
+ * open a block and swallow the rest of the note.
  */
 export function fenceOpener(line: string): Fence | null {
-  // Bullets only, exactly like `strip_bullet`, so the client and the index
-  // agree on what is code.
-  const candidate = line.trimStart().replace(/^[-*+]\s+/u, "");
+  const candidate = line
+    .trimStart()
+    .replace(/^(?:[-*+]|\d+[.)])\s+/u, "");
   if (candidate.startsWith("```")) return "```";
   if (candidate.startsWith("~~~")) return "~~~";
   return null;

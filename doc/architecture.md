@@ -465,7 +465,8 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   and Enter apply a command; Escape cancels. The menu does not appear inside
   fenced code blocks.
 - **Fenced code** is detected by one rule on both sides: a fence may open after
-  a list bullet (`- ```js`), and only a bare fence closes it. The server copy is
+  a list marker — a bullet or an ordered `1.` (`- ```js`, `1. ```js`) — and only
+  a bare fence closes it. The server copy is
   `fence_marker`; the client shares `fenceOpener` / `closesFence` /
   `fencedLines` from `web/src/lib/markdown.ts` across tags, tasks and blocks.
   Tag views used to hold their own naive toggle, so the closing fence of a
@@ -992,8 +993,9 @@ set moved, including from the flush that runs when a card is unmounted. The todo
 list and the Home plugin list watch that atom; `notesRevisionAtom` is reserved for
 metadata so a checkbox edit never suspends the open route.
 `taskSignature` mirrors all of this. `data/index/tasks.rules` records the
-extraction version; bumping `TASK_RULES_VERSION` in the store forces one full
-re-read so existing files are re-derived after a rule change.
+extraction version and `data/index/blocks.rules` the block-derivation version;
+bumping `TASK_RULES_VERSION` / `BLOCK_RULES_VERSION` in the store forces one full
+re-read so existing files are re-derived after a rule change (`Store::take_rules_marker`).
 Writes touching a note plus its tags/links/tasks use MnesticDB's `multi_transaction`,
 and every filesystem mutation holds a store-wide lock so scans and sends do not
 interleave.
