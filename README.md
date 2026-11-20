@@ -213,8 +213,8 @@ does not expose the upstream credential. Details:
 opalnote update        # download a newer candidate (cron-friendly)
 ```
 
-`opalnote serve` applies a staged candidate at startup and keeps running the
-old binary until the next restart. Details:
+`opalnote serve` applies a staged candidate at startup and re-executes the new
+binary in place, so a single restart installs and runs it. Details:
 [self-updates](doc/architecture.md#self-updates).
 
 ## Documentation

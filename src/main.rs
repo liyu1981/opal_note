@@ -60,12 +60,17 @@ async fn main() -> anyhow::Result<()> {
 
     if !args.no_self_update && !cfg!(debug_assertions) {
         match update::apply_pending(&args.update_dir) {
-            Ok(Some(update)) => tracing::info!(
-                version = %update.version,
-                commit = %update.commit,
-                commit_time = update.commit_time,
-                "self-update applied; restart to run the new binary"
-            ),
+            Ok(Some(update)) => {
+                tracing::info!(
+                    version = %update.version,
+                    commit = %update.commit,
+                    commit_time = update.commit_time,
+                    "self-update applied; re-executing the new binary"
+                );
+                // The candidate is on disk; swap this process for it so the
+                // update lands on this start rather than the next restart.
+                update::restart_in_place(&update.executable);
+            }
             Ok(None) => {}
             Err(err) => tracing::warn!(error = %err, "self-update check failed"),
         }

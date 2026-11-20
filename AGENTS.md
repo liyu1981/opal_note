@@ -585,9 +585,15 @@ web/
   `<update-dir>/candidate/{opalnote,manifest.json}` at startup in release builds;
   it does not poll GitHub. Compare semver first and commit time as the
   tie-breaker; validate target/size/optional SHA-256; copy beside the current
-  executable and atomically rename; delete the candidate after success. Debug
-  builds and `--no-self-update` skip the startup apply. The running process
-  continues; the new binary is used on the next restart.
+  executable, prove the copy runs (`--version`) and only then atomically rename
+  it into place; delete the candidate after success. Debug builds and
+  `--no-self-update` skip the startup apply. A successful apply **re-execs** the
+  new binary in place, so one `serve` start both installs and runs it: the
+  `AppliedUpdate` carries the target path captured before the rename, because
+  `/proc/self/exe` reports `(deleted)` afterwards, and `exec` keeps the original
+  argv (a bare `Command::new` would start the server with no arguments). A
+  candidate that does not start is refused and the old binary keeps serving —
+  `exec` cannot be undone.
 - `opalnote update` performs discovery and downloads a candidate for the next
   restart, and is intended for cron. The `release` channel uses the public
   GitHub `releases/latest` API (with an optional `manifest.json` asset); the

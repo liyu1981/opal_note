@@ -252,9 +252,12 @@ Candidate manifests contain:
 A candidate is applied only when its semantic version is newer, or the version
 is equal and its commit time is newer. The binary is validated (target, size,
 optional SHA-256), copied to a temporary file beside the running executable,
-and atomically renamed into place. The running process keeps the old image;
-the new version starts on the next restart. The candidate directory is deleted
-after a successful replacement.
+and smoke-tested (`--version`) before it is atomically renamed into place — a
+payload that cannot start never replaces a working binary. After a successful
+replacement the server re-execs the new binary in place, so the same start
+installs and runs it, with the same PID, the original argv and the same systemd
+unit. If applying fails the old binary keeps serving and the candidate stays
+staged. The candidate directory is deleted after a successful replacement.
 
 The server does **not** pull updates automatically. It only applies a pending
 candidate from `<update-dir>/candidate/` when `opalnote serve` starts, in
@@ -270,10 +273,11 @@ opalnote update --update-dir ~/.opalnote/updates
 ```
 
 `opalnote update` checks the selected channel, downloads a newer candidate and
-leaves it staged for the next restart. It reports what it is doing — the
-running build, the channel and repository, the latest release or artifact it
-found, every download with its size, and the staged version/commit/hash — so a
-cron log explains why a run did or did not stage anything:
+leaves it staged for the next `serve` start (which applies it and re-execs). It
+reports what it is doing — the running build, the channel and repository, the
+latest release or artifact it found, every download with its size, and the
+staged version/commit/hash — so a cron log explains why a run did or did not
+stage anything:
 
 ```text
 OpalNote updater

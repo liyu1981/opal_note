@@ -48,6 +48,9 @@ pub struct AppliedUpdate {
     pub version: String,
     pub commit: String,
     pub commit_time: i64,
+    /// The executable path that now holds the new binary. Captured before the
+    /// rename, because `/proc/self/exe` reports it as `(deleted)` afterwards.
+    pub executable: PathBuf,
 }
 
 pub fn candidate_dir(update_dir: &Path) -> PathBuf {
@@ -172,7 +175,61 @@ pub fn apply_pending_to(update_dir: &Path, target: &Path) -> Result<Option<Appli
         version: manifest.version,
         commit: manifest.commit,
         commit_time: manifest.commit_time,
+        executable: target.to_path_buf(),
     }))
+}
+
+/// Replace the running process with the freshly installed binary.
+///
+/// The apply step renames the validated candidate over the current executable,
+/// but the process that performed it is still the old image. Re-exec'ing here
+/// finishes the update in the same start instead of leaving the service on stale
+/// code until it is restarted again.
+///
+/// `exec` only returns when it fails; the caller keeps serving with the old
+/// binary in that case, so a broken candidate cannot take the service down
+/// without a restart.
+pub fn restart_in_place(executable: &Path) {
+    match reexec(executable) {
+        Ok(()) => {}
+        Err(err) => tracing::warn!(
+            error = %err,
+            path = %executable.display(),
+            "restarting into the new binary failed; restart the service to run it"
+        ),
+    }
+}
+
+/// Whether a binary can start at all, checked with `--version`.
+fn runs(executable: &Path) -> bool {
+    std::process::Command::new(executable)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn reexec(executable: &Path) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    // Keep the original arguments: `Command` would otherwise exec the program
+    // with no arguments at all.
+    // `exec` returns only on failure.
+    let err = std::process::Command::new(executable)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    Err(err)
+}
+
+#[cfg(not(unix))]
+fn reexec(_executable: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "in-place exec is only supported on unix",
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -810,16 +867,24 @@ fn install_candidate(source: &Path, target: &Path) -> Result<()> {
     ));
 
     let result = (|| -> Result<()> {
-        let mut input = File::open(source)?;
-        let mut output = File::create(&temp)?;
-        std::io::copy(&mut input, &mut output)?;
-        output.flush()?;
-        output.sync_all()?;
+        {
+            let mut input = File::open(source)?;
+            let mut output = File::create(&temp)?;
+            std::io::copy(&mut input, &mut output)?;
+            output.flush()?;
+            output.sync_all()?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = fs::metadata(target)?.permissions().mode();
             fs::set_permissions(&temp, fs::Permissions::from_mode(mode))?;
+        }
+        // A candidate with the right size and hash can still be unrunnable
+        // (wrong libc, truncated upload, not a binary at all). `exec` has no way
+        // back, so prove it runs before it replaces the working executable.
+        if !runs(&temp) {
+            bail!("update candidate does not run; keeping the current binary");
         }
         fs::rename(&temp, target)?;
         Ok(())
@@ -861,6 +926,25 @@ impl Drop for UpdateLock {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    /// Bytes of a binary that actually starts, for the update smoke test. A
+    /// fake payload cannot be installed any more, by design.
+    fn runnable_bytes() -> Option<Vec<u8>> {
+        ["/bin/true", "/usr/bin/true"]
+            .iter()
+            .find_map(|path| fs::read(path).ok())
+    }
+
+    /// Write the executable the update replaces. Real executables are mode 0755,
+    /// and the installer copies that mode onto the new binary before it runs it.
+    fn write_target(path: &Path, bytes: &[u8]) {
+        fs::write(path, bytes).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
 
     fn write_candidate(
         update_dir: &Path,
@@ -985,30 +1069,61 @@ mod tests {
 
     #[test]
     fn installs_a_newer_candidate_and_removes_it() {
+        let Some(binary) = runnable_bytes() else {
+            return;
+        };
         let dir = tempdir().unwrap();
         let updates = dir.path().join("updates");
         let target = dir.path().join("opalnote");
-        fs::write(&target, b"old binary").unwrap();
-        let candidate = write_candidate(&updates, "0.1.0", i64::MAX, b"new binary");
+        write_target(&target, b"old binary");
+        let candidate = write_candidate(&updates, "0.1.0", i64::MAX, &binary);
 
         let applied = apply_pending_to(&updates, &target).unwrap().unwrap();
         assert_eq!(applied.version, "0.1.0");
-        assert_eq!(fs::read(&target).unwrap(), b"new binary");
+        // The path is captured before the rename replaces the inode.
+        assert_eq!(applied.executable, target);
+        assert_eq!(fs::read(&target).unwrap(), binary);
         assert!(!candidate.exists());
+    }
+
+    /// Size and hash can match while the payload cannot start at all; exec has
+    /// no way back, so such a candidate must never replace the working binary.
+    #[test]
+    fn refuses_a_candidate_that_does_not_run() {
+        let dir = tempdir().unwrap();
+        let updates = dir.path().join("updates");
+        let target = dir.path().join("opalnote");
+        write_target(&target, b"old binary");
+        let candidate = write_candidate(&updates, "9.9.9", i64::MAX, b"not a binary");
+
+        assert!(apply_pending_to(&updates, &target).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"old binary");
+        assert!(candidate.is_dir());
+        // No half-written temp file is left beside the executable.
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains("update-"))
+            .collect();
+        assert!(leftovers.is_empty(), "leftovers: {leftovers:?}");
     }
 
     #[test]
     fn refuses_older_or_bad_candidates() {
+        let Some(binary) = runnable_bytes() else {
+            return;
+        };
         let dir = tempdir().unwrap();
         let updates = dir.path().join("updates");
         let target = dir.path().join("opalnote");
-        fs::write(&target, b"old binary").unwrap();
+        write_target(&target, b"old binary");
 
-        write_candidate(&updates, "0.0.9", i64::MAX, b"old candidate");
+        write_candidate(&updates, "0.0.9", i64::MAX, &binary);
         assert!(apply_pending_to(&updates, &target).unwrap().is_none());
         assert_eq!(fs::read(&target).unwrap(), b"old binary");
 
-        let candidate = write_candidate(&updates, "9.9.9", i64::MAX, b"new candidate");
+        let candidate = write_candidate(&updates, "9.9.9", i64::MAX, &binary);
         let manifest_path = candidate.join(MANIFEST_FILE);
         let mut bad: CandidateManifest =
             serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
