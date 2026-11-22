@@ -1,5 +1,6 @@
 import type { TaskStatus } from "../api/types";
 
+import { lutezContent, lutezReady } from "./lutez";
 import { closesFence, fenceOpener } from "./markdown";
 
 /** Status order used by filters, sorting and the status badges. */
@@ -48,13 +49,27 @@ export function cleanTaskText(text: string): string {
 /**
  * Every task the server would derive from `content`, as `status|text` lines.
  *
- * Mirrors `extract_tasks` in `src/store/markdown.rs` (fenced code skipped, any
- * whitespace run after a `-`/`*`/`+` bullet, `[ ]`/`[x]`/`[-]` checkboxes and
- * the Logseq `TODO`/`DOING`/`DONE`/`CANCELED` keywords). Two versions of a note with the
- * same signature produce the same rows, so an editor can tell a body edit that
- * touched tasks from one that did not.
+ * Derived from the shared `lutez` AST (`./lutez`): only `-`/`*`/`+` list items
+ * count, with `[ ]`/`[x]`/`[-]` checkboxes and the Logseq
+ * `TODO`/`DOING`/`DONE`/`CANCELED` keywords read from the item's own line — the
+ * same rules as `extract_tasks` in `src/store/markdown.rs`. Two versions of a
+ * note with the same signature produce the same rows, so an editor can tell a
+ * body edit that touched tasks from one that did not. The legacy scanner below
+ * is the pre-load fallback.
  */
 export function taskSignature(content: string): string {
+  // The shared AST decides which lines are tasks; the legacy scanner below is
+  // the fallback before the WASM module finishes loading.
+  if (lutezReady()) {
+    const shared = lutezContent(content);
+    if (shared !== null) {
+      return shared.tasks.map((task) => `${task.status}|${task.text}`).join("\n");
+    }
+  }
+  return legacyTaskSignature(content);
+}
+
+function legacyTaskSignature(content: string): string {
   const rows: string[] = [];
   let fence: "```" | "~~~" | null = null;
 

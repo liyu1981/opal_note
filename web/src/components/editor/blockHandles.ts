@@ -236,10 +236,18 @@ function dropTarget(
   if (pos === null) return null;
   const line = view.state.doc.lineAt(pos).number;
   if (line >= source.startLine && line <= source.endLine) return null;
-  const blocks = blocksOf(view.state.doc);
-  const target = blocks.find(
-    (block) => line >= block.startLine && line <= block.endLine,
-  );
+  // Ranges can nest (an ordered sub-list inside an item), so the innermost
+  // block under the pointer is the one being dropped next to.
+  let target: NoteBlock | null = null;
+  let bestSpan = Number.POSITIVE_INFINITY;
+  for (const block of blocksOf(view.state.doc)) {
+    if (line < block.startLine || line > block.endLine) continue;
+    const span = block.endLine - block.startLine;
+    if (span < bestSpan) {
+      target = block;
+      bestSpan = span;
+    }
+  }
   if (!target) return null;
   const after = line > (target.startLine + target.endLine) / 2;
   return { line: after ? target.endLine : target.startLine, after };

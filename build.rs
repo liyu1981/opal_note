@@ -23,6 +23,7 @@ const PLACEHOLDER: &str = r#"<!doctype html>
 
 fn main() {
     emit_build_info();
+    emit_lutez_link();
 
     // Debug builds serve web/dist, builtin/plugins and builtin/backgrounds
     // from disk at runtime. They do not embed any of them, so frontend or
@@ -74,6 +75,53 @@ fn main() {
          Run `pnpm --dir web install && pnpm --dir web build` manually, then rebuild.\n\
          To build the Rust side without web assets, set OPALNOTE_SKIP_WEB_BUILD=1."
     );
+}
+
+/// Link the vendored `lutez` parser (`vendor/lutez`, a git submodule built by
+/// `scripts/build-lutez.mjs`).
+///
+/// This runs before the debug early return because both profiles index notes
+/// with the same parser. When the static library is absent (a fresh clone
+/// without Zig, or `OPALNOTE_SKIP_LUTEZ=1`) the build succeeds with the legacy
+/// hand-written scanners and a warning, so `cargo test` never depends on the
+/// Zig toolchain.
+fn emit_lutez_link() {
+    println!("cargo:rustc-check-cfg=cfg(lutez_ffi)");
+    println!("cargo:rerun-if-changed=vendor/lutez/zig-out/lib");
+    println!("cargo:rerun-if-env-changed=OPALNOTE_SKIP_LUTEZ");
+
+    if std::env::var("OPALNOTE_SKIP_LUTEZ").as_deref() == Ok("1") {
+        println!("cargo:warning=OPALNOTE_SKIP_LUTEZ=1: building with the legacy markdown parser");
+        return;
+    }
+
+    // Zig names the Windows static archive `lutez_static.lib` (the DLL import
+    // library takes `lutez.lib`); everywhere else it is `liblutez.a`.
+    let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
+    let candidates: &[(&str, &str)] = if windows {
+        &[("lutez_static.lib", "lutez_static"), ("lutez.lib", "lutez")]
+    } else {
+        &[("liblutez.a", "lutez")]
+    };
+    let directory = PathBuf::from("vendor/lutez/zig-out/lib");
+    let Some((_, link_name)) = candidates
+        .iter()
+        .find(|(file, _)| directory.join(file).exists())
+    else {
+        println!(
+            "cargo:warning=vendor/lutez/zig-out/lib has no static library; building with the \
+             legacy markdown parser. Run `node scripts/build-lutez.mjs` (needs Zig 0.17.0)."
+        );
+        return;
+    };
+    println!("cargo:rustc-link-search=native={}", directory.display());
+    println!("cargo:rustc-link-lib=static={link_name}");
+    // Zig's standard library needs libc; the server already links it on Unix,
+    // but be explicit so a static target does not lose the dependency silently.
+    if !windows {
+        println!("cargo:rustc-link-lib=c");
+    }
+    println!("cargo:rustc-cfg=lutez_ffi");
 }
 
 /// Embed the package version and git commit metadata in every build. The

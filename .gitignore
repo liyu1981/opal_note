@@ -28,3 +28,8 @@ web/*.tsbuildinfo
 
 # Local Cloudflare state
 /.cloudflare/
+
+# Vendored lutez build outputs (sources are the pinned submodule)
+/vendor/lutez/zig-out/
+/vendor/lutez/.zig-cache/
+web/public/lutez.wasm

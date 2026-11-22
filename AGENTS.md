@@ -37,6 +37,12 @@ Longer design notes live in `doc/`:
 - `doc/plugin-ui-expansion.md` — plugin UI expansion phases
 - `doc/rich-content.md` — planned asset-backed diagrams: Mermaid (Pele) and
   Excalidraw as two sandboxed iframe `viewer` plugins (a new plugin type)
+- `doc/lutez-parser.md` — the `lutez` integration: a CommonMark/GFM parser in Zig
+  (submodule `vendor/lutez`, pinned `a8a81bb`, ABI 3, wire 2) that both the Rust
+  indexer and the browser call, so a note has one parse. **Implemented** for
+  blocks/tasks/tags/links on both sides; the remaining work is the P3 editor
+  rewrite of `livePreview.ts` and deleting the legacy scanners. Records the
+  re-reviews, the measured corpus parity (§5) and every dialect decision (§6).
 - `doc/blocks.md` — block plan: **R1** positional blocks (grammar, derived `block`
   index, handles/fold/drag, hash deep links, no markdown changes) is the committed
   scope; references/`^id` are **R2**, deferred. Nothing outside the doc should
@@ -49,6 +55,9 @@ Longer design notes live in `doc/`:
   target is still imported as `cozo`. SQLite backend (bundled SQLite).
 - Client: React 19, TanStack Router, CodeMirror 6, TypeScript 7 (`tsc`
   native), Vite 8, Tailwind CSS 4, Jotai 3
+- Markdown: `lutez` (CommonMark/GFM in Zig 0.17.0), a git submodule at
+  `vendor/lutez`, compiled once into `liblutez.a` (server FFI) and
+  `lutez.wasm` (editor)
 - Package manager: pnpm
 
 ## Commands
@@ -57,6 +66,8 @@ Longer design notes live in `doc/`:
 pnpm dev               # build, then watch web/src, builtin/src and src
 pnpm build             # built-ins + web build → asset sync → release binary
 pnpm build:builtins    # regenerate builtin/plugins and builtin/backgrounds
+node scripts/build-lutez.mjs  # rebuild liblutez.a + web/public/lutez.wasm (Zig 0.17.0)
+pnpm check:parse       # server vs browser parse parity over data/notebooks
 pnpm start             # run opalnote serve
 pnpm test              # cargo test + web typecheck
 pnpm check             # cargo check + web typecheck
@@ -153,6 +164,31 @@ web/
 - Reads call `Store::ensure_synced`; writes hold `fs_lock` for the whole
   read-modify-write. Do not call public store methods while holding the lock —
   use the `*_locked` internals.
+- **One markdown parser, two runtimes.** Blocks, tasks, tags and wikilinks are
+  derived from the vendored `lutez` CommonMark/GFM AST — `vendor/lutez` (a git
+  submodule pinned by commit, Zig 0.17.0) built by
+  `node scripts/build-lutez.mjs` into `liblutez.a` (server) and
+  `web/public/lutez.wasm` (editor). The server links it in `build.rs`
+  (`cfg(lutez_ffi)`) and decodes wire format 2 in `src/store/lutez.rs`; the
+  adapters that turn the AST into `ParsedBlock`/`ParsedTask`/tags/links live in
+  `mod lutez_ast` in `src/store/markdown.rs` and, for the browser, in
+  `web/src/lib/lutez/`. Change both adapters together and re-run
+  `pnpm check:parse` (server rows vs browser rows) and
+  `cargo test corpus_parity -- --ignored --nocapture` (the shared parse against
+  the hand-written scanners, note by note, on `data/notebooks`). Without the
+  static library (no Zig, or `OPALNOTE_SKIP_LUTEZ=1`) the build warns and falls
+  back to the legacy scanners in `src/store/markdown.rs`; `OPALNOTE_PARSER=legacy`
+  selects them at runtime, and `GET /meta` reports which one is active.
+- `lutez` is fetched as `/lutez.wasm` and compiled before the first render
+  (`web/src/main.tsx` → `loadLutez`). The asset route serves `.wasm` as
+  `application/wasm` (the only type `instantiateStreaming` accepts) with
+  `no-cache`, and the SPA CSP needs `script-src 'wasm-unsafe-eval'`; a note that
+  the parser cannot load is a console warning, and the legacy client mirrors
+  (`legacyParseBlocks`/`legacyTaskSignature`) keep the editor working.
+- **A note body is parsed once per sync**: `parse_content(&body)` returns blocks,
+  tasks, tags and links from one AST walk, and the store feeds
+  `merge_tag_lists`/`summarize` from it. Do not call the individual
+  `extract_*`/`parse_blocks` helpers in the sync path — they parse the body again.
 - Ordinary note autosaves merge the returned `Note` into local state. Do not
   bump `notesRevisionAtom` for body-only saves: only title/tag/link/backlink
   changes need the notebook-derived lists and graph refreshed.
@@ -373,12 +409,14 @@ web/
   add new lightboxes the same way instead of copying the shell. Editor images
   open the image lightbox on click; Alt/Option-click keeps the caret-in-source
   behaviour so an image-only line stays editable.
-- Blocks are **positional only** (`doc/blocks.md` R1): `src/store/markdown.rs`
-  `parse_blocks` derives them, the sync pass fills the `block` relation, and
+- Blocks are **positional only** (`doc/blocks.md` R1): `parse_content` derives
+  them from the shared AST in `src/store/markdown.rs`, the sync pass fills the
+  `block` relation, and
   nothing is written into the markdown — no ids, no refs. `blockHandles` draws
   the gutter handle, folding, drag, delete and Tab indent; decorations come from
   a `StateField` because CodeMirror rejects block decorations from view plugins.
-  `web/src/lib/blocks.ts` mirrors the parser (parity with the Rust side), and a
+  `web/src/lib/blocks.ts` reads the same AST through `web/src/lib/lutez/` (the
+  hand-written `legacyParseBlocks` is only the pre-load fallback), and a
   block link is `?p=<path>&block=<hash>&at=<seq>`. Rules changes bump the
   `blocks.rules` marker, like `tasks.rules`.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
@@ -644,7 +682,11 @@ web/
   `openExternal`, and `runCommand`; validate and bound UI depth, node count,
   strings, URLs, and payload size on both server and client.
 - Tasks are derived during filesystem sync into the `task` relation from
-  markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
+  markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. The task set
+  itself comes from the shared AST (only `-`/`*`/`+` list items count, ordered
+  items do not) with the marker read from the item's own source line, so the
+  legacy scanner and the AST agree; the client's `taskSignature` uses the same
+  AST through WASM. Keep task
   rows in sync with note insert/update/delete and notebook deletion.
   A body edit can therefore change derived data, so saves that move the task set
   bump **`tasksRevisionAtom`** (`refreshTasksAtom`), never `notesRevisionAtom`:
@@ -664,8 +706,9 @@ web/
   `TASK_RULES_VERSION` in `Store::take_task_rules_backfill` whenever extraction
   starts matching more or fewer lines: the `data/index/tasks.rules` marker then
   forces one full re-read, because unchanged files are skipped by the scan.
-  `BLOCK_RULES_VERSION`/`blocks.rules` does the same for `parse_blocks`, and
-  both markers go through `Store::take_rules_marker`.
+  `BLOCK_RULES_VERSION`/`blocks.rules` does the same for the block grammar
+  (currently **4** and **2**), and both markers go through
+  `Store::take_rules_marker`.
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
   the todo-kind/legacy fallback. Home renders every server plugin result plus

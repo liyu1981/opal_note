@@ -65,10 +65,32 @@ part of any block), plus `kind`, `depth` and `parent`.
   double-blank rule would leave every existing note a single block, and importers
   (Notion, Obsidian, Logseq exports) all use one blank line.
 - **Atomic constructs** — never split inside a fenced code block, table,
-  blockquote or HTML block. A fence may be a list child (`  - ``` `), so the
-  parser uses the same `fence_marker` rule as `extract_tasks` (bullet prefix
-  opens, bare fence closes). 20 corpus notes contain fenced code; 128 contain
+  blockquote or HTML block. 20 corpus notes contain fenced code; 128 contain
   nested bullets.
+- **One grammar, two runtimes (since the shared parser landed).** The block list
+  is derived from the `lutez` CommonMark/GFM AST — the same parse the browser gets
+  from `lutez.wasm` — by the adapters in `src/store/markdown.rs`
+  (`mod lutez_ast`) and `web/src/lib/lutez/parse.ts`. They must be changed
+  together and re-checked with `cargo test corpus_parity -- --ignored
+  --nocapture`. Concretely:
+  - one block per **list item at any depth** (a child item is its own block and
+    does not overlap its parent), plus one per top-level paragraph, heading,
+    fenced/indented code block, blockquote, table, thematic break, HTML block and
+    `$$` math block;
+  - a fence written as a list item's content (`- ```js … ``` `) is that item's
+    `code` block, spanning the item;
+  - a blockquote that starts on the item's marker line (`- > quote`) splits into
+    the item (marker line) plus a `quote` block for the continuation lines;
+  - a fence/quote/table/heading that starts on a **continuation** line under an
+    item is hoisted to its own block, as the editor renders it outside the item;
+  - CommonMark decides the edge cases the old line scanner guessed at: a bare
+    `-` is an empty `list_item` (not a paragraph), 4-space indented text is a
+    `code` block (not prose), and `- 1) x` nests an ordered sub-list;
+  - `parent_seq` is the enclosing item's **`seq`** (the client always meant
+    this; the legacy server wrote the parent's start line);
+  - block `text` and `hash` are still produced from the raw line range with
+    `block_text`, so a block whose range and kind did not move keeps its hash
+    (and its deep links).
 
 ## 2. Index model
 
@@ -88,9 +110,10 @@ safe.
 
 - `seq` is the block's 1-based position in the note; `parent_seq` links outline
   children (0 for top-level blocks).
-- `hash` is a short digest (sha256 prefix) of the block text with whitespace
-  collapsed and markup-insensitive trailing punctuation removed — the identity
-  used by deep links and by drift detection.
+- `hash` is a short digest (32-bit FNV-1a, 8 hex chars) of the block text with
+  whitespace collapsed and markup-insensitive trailing punctuation removed — the
+  identity used by deep links and by drift detection. `web/src/lib/blocks.ts`
+  implements the same function, so a link can be built without a round-trip.
 - Built in `sync_notebook_locked` beside `task`, through the same `run_atomic`
   batch (delete the note's rows, insert the parsed ones). Parsing lives in a new
   `parse_blocks()` in `src/store/markdown.rs`; all CozoScript stays in
@@ -98,7 +121,8 @@ safe.
 - Indexes: `block:by_note {notebook_id, note_path}` and `block:by_hash
   {notebook_id, note_path, hash}`.
 - Rule changes bump a `blocks.rules` marker under `data/index/`, exactly like
-  `tasks.rules`, forcing one full re-read.
+  `tasks.rules`, forcing one full re-read. `BLOCK_RULES_VERSION` is **2** since
+  the AST grammar replaced the line scanner.
 - Scale: 1.7k blocks for 196 notes today; parsing is linear and per-save, the same
   order of work as tasks.
 

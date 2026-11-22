@@ -1,12 +1,14 @@
 /**
  * Client-side block parser.
  *
- * Mirrors `parse_blocks` in `src/store/markdown.rs` so the editor can draw
- * handles, folding and drag targets without a round-trip. The two
- * implementations must stay in step; `blockSignature`-style parity checks run
- * the same fixtures through both.
+ * The block list comes from the shared `lutez` AST (`./lutez`, the same parse the
+ * server indexes), so the editor can draw handles, folding and drag targets
+ * without a round-trip and still agree with `src/store/markdown.rs`. The legacy
+ * line scanner at the bottom is only the fallback for the moment before the WASM
+ * module is ready or if it cannot load at all.
  */
 
+import { lutezContent, lutezReady } from "./lutez";
 import { closesFence, fenceOpener } from "./markdown";
 
 export type BlockKind =
@@ -158,11 +160,43 @@ function blockText(lines: string[], kind: BlockKind): string {
 }
 
 /**
- * Split a note body into blocks. `body` must start at the note's first line
- * (the editor passes the whole document; frontmatter is skipped by the caller
- * or treated as a paragraph).
+ * Split a note body into blocks.
+ *
+ * The block list comes from the shared `lutez` AST when the parser is loaded, so
+ * the editor's handles, folding and drag targets line up with the rows the
+ * server indexes. The hand-written scanner below stays as the fallback for the
+ * moment before the WASM module is ready (and as a safety net if it fails).
+ *
+ * `body` must start at the note's first line (the editor passes the whole
+ * document; frontmatter is skipped by the caller or treated as a paragraph).
  */
 export function parseBlocks(body: string): NoteBlock[] {
+  const shared = lutezReady() ? lutezContent(body) : null;
+  if (shared === null) return legacyParseBlocks(body);
+
+  const lines = body.split("\n");
+  return shared.blocks.map((block, index) => {
+    const { startLine, endLine, kind, depth, parentSeq } = block;
+    // A thematic break carries no text, exactly like the server's rows.
+    const text =
+      kind === "hr"
+        ? ""
+        : blockText(lines.slice(startLine - 1, endLine), kind as BlockKind);
+    return {
+      seq: index + 1,
+      startLine,
+      endLine,
+      kind: kind as BlockKind,
+      depth,
+      parentSeq,
+      text,
+      hash: blockHash(text),
+    };
+  });
+}
+
+/** Legacy line-based scanner (see `legacyParseBlocks` in the header comment). */
+function legacyParseBlocks(body: string): NoteBlock[] {
   const lines = body.split("\n");
   const blocks: NoteBlock[] = [];
   let index = 0;
@@ -331,12 +365,25 @@ export function parseBlocks(body: string): NoteBlock[] {
   return blocks;
 }
 
-/** The block containing (or ending on) a 1-based line. */
+/**
+ * The innermost block containing a 1-based line.
+ *
+ * Block ranges can nest (an item's quote, an ordered sub-list), so the smallest
+ * range wins: clicking a nested line must select the child, not its parent.
+ */
 export function blockAtLine(
   blocks: NoteBlock[],
   line: number,
 ): NoteBlock | null {
-  return (
-    blocks.find((block) => line >= block.startLine && line <= block.endLine) ?? null
-  );
+  let best: NoteBlock | null = null;
+  let bestSpan = Number.POSITIVE_INFINITY;
+  for (const block of blocks) {
+    if (line < block.startLine || line > block.endLine) continue;
+    const span = block.endLine - block.startLine;
+    if (span < bestSpan) {
+      best = block;
+      bestSpan = span;
+    }
+  }
+  return best;
 }

@@ -18,6 +18,7 @@ jobs:
         with:
           fetch-depth: 1
           # web/vendor/reagent is a submodule and is built from source.
+          # vendor/lutez (the shared markdown parser) is a submodule too.
           submodules: recursive
 
       - name: Install pnpm
@@ -37,6 +38,11 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Set up Zig (shared markdown parser)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
@@ -54,6 +60,9 @@ jobs:
 
       - name: Install web dependencies
         run: pnpm --dir web install --frozen-lockfile
+
+      - name: Build the vendored markdown parser
+        run: node scripts/build-lutez.mjs
 
       - name: Build web client
         run: pnpm --dir web build

@@ -2,3 +2,6 @@
 	path = web/vendor/reagent
 	url = https://github.com/liyu1981/reagent
 	branch = main
+[submodule "vendor/lutez"]
+	path = vendor/lutez
+	url = https://github.com/liyu1981/lutez

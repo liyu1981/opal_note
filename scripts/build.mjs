@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   ROOT,
   buildBuiltins,
+  buildLutez,
   buildWeb,
   ensureRootDependencies,
   ensureWebDependencies,
@@ -16,6 +17,7 @@ import {
 ensureRootDependencies();
 ensureWebDependencies();
 buildBuiltins();
+buildLutez();
 buildWeb();
 await syncServerAssets();
 

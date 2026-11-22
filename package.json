@@ -14,6 +14,7 @@
     "build": "node scripts/build.mjs",
     "build:builtins": "node scripts/build-builtins.mjs",
     "build:builtins:check": "node scripts/build-builtins.mjs --check",
+    "check:parse": "node scripts/check-lutez-parity.mjs",
     "build:web": "pnpm --dir web build",
     "build:server": "pnpm build:builtins && cargo build --release --locked",
     "start": "node scripts/start.mjs",

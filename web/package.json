@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@12.4.2",
   "scripts": {
-    "build": "node ../scripts/build-reagent.mjs && tsc --noEmit -p tsconfig.json && if command -v oj >/dev/null 2>&1; then oj build; else vite build; fi",
-    "build:watch": "node ../scripts/build-reagent.mjs && if command -v oj >/dev/null 2>&1; then oj build --watch; else vite build --watch; fi",
+    "build": "node ../scripts/build-reagent.mjs && node ../scripts/build-lutez.mjs && tsc --noEmit -p tsconfig.json && if command -v oj >/dev/null 2>&1; then oj build; else vite build; fi",
+    "build:watch": "node ../scripts/build-reagent.mjs && node ../scripts/build-lutez.mjs && if command -v oj >/dev/null 2>&1; then oj build --watch; else vite build --watch; fi",
     "typecheck": "node ../scripts/build-reagent.mjs && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
