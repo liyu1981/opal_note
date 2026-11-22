@@ -168,8 +168,13 @@ web/
   derived from the vendored `lutez` CommonMark/GFM AST — `vendor/lutez` (a git
   submodule pinned by commit, Zig 0.17.0) built by
   `node scripts/build-lutez.mjs` into `liblutez.a` (server) and
-  `web/public/lutez.wasm` (editor). The server links it in `build.rs`
-  (`cfg(lutez_ffi)`) and decodes wire format 2 in `src/store/lutez.rs`; the
+  `web/public/lutez.wasm` (editor). Keep that script's `-Dcpu=baseline`: Zig's
+  default targets the build machine's CPU, and an archive with AVX-512 or
+  `dotprod`/`i8mm`/`sve` instructions kills the server with `Illegal
+  instruction` on an older machine (a GitHub ARM runner → an ARM VM does
+  exactly that). `OPALNOTE_LUTEZ_CPU=native` is only for a same-machine build.
+  The server links the archive in `build.rs` (`cfg(lutez_ffi)`) and decodes wire
+  format 2 in `src/store/lutez.rs`; the
   adapters that turn the AST into `ParsedBlock`/`ParsedTask`/tags/links live in
   `mod lutez_ast` in `src/store/markdown.rs` and, for the browser, in
   `web/src/lib/lutez/`. Change both adapters together and re-run

@@ -165,8 +165,13 @@ run from anywhere). Pass `--latest` to skip the prompt or `--help` for options.
 6. watches client, server and built-in sources.
 
 The parser step is cached: it only rebuilds when `vendor/lutez` (a git
-submodule) changes, so `git submodule update --init --recursive` is the one
-setup step. Without Zig the build prints a warning and uses the legacy
+submodule) changes or when the target/CPU flags change, so
+`git submodule update --init --recursive` is the one setup step. The archive is
+compiled for **baseline CPU features** (`-Dcpu=baseline`), never the host CPU:
+Zig's default bakes the build machine's instructions (AVX-512, `dotprod`,
+`i8mm`, `sve`, …) into the archive, and a binary built on a CI runner then dies
+with `Illegal instruction (core dumped)` on an older server. Build for the
+running machine only with `OPALNOTE_LUTEZ_CPU=native`. Without Zig the build prints a warning and uses the legacy
 hand-written scanners (`OPALNOTE_SKIP_LUTEZ=1` makes that explicit); the server
 serves `lutez.wasm` from the app root, so the browser falls back the same way.
 
