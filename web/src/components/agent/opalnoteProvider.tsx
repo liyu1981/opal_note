@@ -186,11 +186,15 @@ function sameModels(left: string[], right: string[]): boolean {
 export async function refreshProviderModels(
   info: AgentInfo,
   force: boolean,
+  keyOverride?: string | null,
 ): Promise<AgentInfo> {
   const stored = info.stored;
   if (!stored) return info;
   if (!force && stored.models.length > 0) return info;
-  const key = store.get(agentUnlockAtom).key;
+  // Setup passes the key it derived from the password just typed; every other
+  // caller uses the tab's current unlock key.
+  const key =
+    keyOverride === undefined ? store.get(agentUnlockAtom).key : keyOverride;
   // A locked provider cannot be asked: the key is what unlocks the upstream.
   if (storedEnvelope(info) && !key) return info;
   const models = await listProxyModels(key);

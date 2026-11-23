@@ -948,6 +948,8 @@ derived key (memory only, `sessionStorage`, or `localStorage`) — not by the
 server, which holds no unlock state. A window "locks" rather than disconnects:
 the models stay visible and the next request opens the password prompt. A
 re-saved envelope changes its fingerprint, which invalidates any remembered key.
+The window is chosen in the unlock dialog, which opens when a message is sent —
+settings only configures the provider.
 
 **Model list.** ReAgent's picker only offers models a provider's config
 declares, and the browser is the only side that can fetch them (the listing goes
@@ -963,8 +965,15 @@ the ids stored server-side are reused.
 locked, and locks again if the server rejects the key. `useOpalNoteCallGate`
 (the provider's `beforeAgentCall` hook) additionally stops a call to a locked
 provider *before* ReAgent appends the message, so the prompt stays in the
-composer and the unlock dialog opens instead of a failed turn. `AgentProviderCard.tsx`
-renders the setup card and the unlock dialog inside Settings → Agent → Model.
+composer and the unlock dialog opens instead of a failed turn.
+
+`AgentProviderCard.tsx` is **setup only**: the endpoint/key/password form while
+nothing is configured, and a summary (endpoint, whether a key is stored, model
+count) with "Set up a new configuration", "Recheck" and "Remove" once a setup
+exists. It never locks or unlocks and carries no unlock-window control — that
+belongs to `AgentUnlockDialog`, which the call gate raises at send time and
+which also asks how long to keep the key. Saving a new envelope drops the
+session key, so the next message prompts for the new password.
 Since ReAgent 0.2.1 that page lists every provider with an on/off switch; the
 OpalNote switch hides the card, and switching it back reconnects from
 `GET /api/agent`.

@@ -387,6 +387,15 @@ web/
   state, and locking keeps the provider listed so the next request can prompt.
   There is deliberately **no** config-file, env or CLI way to set the agent key —
   the UI is the only writer.
+- **Settings → Agent only *sets up* the provider; unlocking lives in the chat.**
+  `AgentProviderCard` shows the endpoint/key/password form while nothing is
+  configured, and a one-line summary (endpoint, key stored, model count) plus
+  "Set up a new configuration" / "Recheck" / "Remove" once a setup is in place.
+  It must not unlock, lock, or pick an unlock window: `useOpalNoteCallGate`
+  stops a message from a locked provider and `AgentUnlockDialog` (rendered in
+  the panel, not in settings) collects the password and the "Keep it" window
+  right before the call. Saving a new envelope drops any session key
+  (`lockProvider`), so the next send asks for the new password.
 - The agent's model list is fetched **through the proxy** (`api.agentModels(key)` →
   `GET /api/agent/v1/models`), never from the browser directly: ReAgent's picker
   only shows models the host-provider config declares, so `AgentProviderCard.save`
