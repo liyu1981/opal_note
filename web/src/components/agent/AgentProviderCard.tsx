@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { getDefaultStore, useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
 import type {
   ReAgentCallContext,
-  ReAgentCallDecision,
   ReAgentCallGate,
   ReAgentHostProvider,
 } from "@liyu1981/reagent";
@@ -22,7 +21,6 @@ import {
   agentUnlockAtom,
   dismissAgentUnlock,
   expireUnlockIfNeeded,
-  requestAgentUnlock,
 } from "../../state/agentUnlock";
 import { EndpointPicker } from "./EndpointPicker";
 import {
@@ -31,6 +29,7 @@ import {
   agentInfoAtom,
   disconnectProvider,
   lockProvider,
+  opalnoteCallDecision,
   refreshProvider,
   refreshProviderModels,
   requestUnlockPrompt,
@@ -39,8 +38,6 @@ import {
   syncProvider,
   useUnlockProvider,
 } from "./opalnoteProvider";
-
-const store = getDefaultStore();
 
 const field =
   "h-8 min-w-0 rounded-md border border-border/60 bg-background px-2 font-mono text-xs outline-none focus:border-foreground/40";
@@ -523,22 +520,7 @@ export function AgentUnlockDialog() {
  * ReAgent's own providers never need our password.
  */
 export function useOpalNoteCallGate(): ReAgentCallGate {
-  return useCallback(
-    (context: ReAgentCallContext): ReAgentCallDecision => {
-      if (context.model?.providerId !== OPALNOTE_PROVIDER_ID) return true;
-      expireUnlockIfNeeded();
-      const info = store.get(agentInfoAtom);
-      if (!storedEnvelope(info)) return true; // keyless local endpoint
-      if (store.get(agentUnlockAtom).key) return true;
-      requestAgentUnlock();
-      return {
-        ok: false,
-        message:
-          "The OpalNote provider is locked — enter its password to send this.",
-      };
-    },
-    [],
-  );
+  return useCallback((context: ReAgentCallContext) => opalnoteCallDecision(context), []);
 }
 
 /** ReAgent host-provider descriptor: the card above is the setup flow. */

@@ -84,7 +84,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    if (response.status === 401) markSessionExpired();
     let code = "http_error";
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -96,6 +95,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Non-JSON error bodies keep the status text.
     }
+    // `agent_locked` is a 401 about the *agent provider*, not this browser's
+    // session: sending the user to the "session expired" screen would be wrong.
+    if (response.status === 401 && code !== "agent_locked") markSessionExpired();
     throw new ApiError(response.status, code, message);
   }
 

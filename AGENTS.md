@@ -400,7 +400,14 @@ web/
   password (PBKDF2-SHA256), encrypts the API key with AES-256-GCM, and uploads
   only the envelope; each request carries the derived key in
   `x-opalnote-agent-key` and the server decrypts for that one call (`src/agent.rs`,
-  `src/routes/agent.rs`). Missing/wrong key → `401 agent_locked`. The unlock
+  `src/routes/agent.rs`). Missing/wrong key → `401 agent_locked`. **Only that
+  code is a lock.** The proxy relays upstream statuses verbatim, so an upstream
+  `401` (bad or expired API key, no credit) also reaches the browser as a 401:
+  `buildFetch` parses a clone of the body and locks only on
+  `error.code === "agent_locked"`, because dropping a valid derived key for an
+  upstream rejection re-prompts for the encryption password and the next send is
+  then blocked by the call gate — an unbreakable loop. `api/client.ts` likewise
+  skips `markSessionExpired()` for `agent_locked` (it is not a session 401). The unlock
   window is browser-side (memory/`sessionStorage`/`localStorage`), never server
   state, and locking keeps the provider listed so the next request can prompt.
   There is deliberately **no** config-file, env or CLI way to set the agent key —

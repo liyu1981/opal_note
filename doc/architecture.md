@@ -934,6 +934,9 @@ key never enters the database.
 `x-opalnote-agent-key`; the server decrypts the envelope for that one request,
 puts the plaintext key on the upstream `Authorization` header, and drops it.
 Missing or wrong key → `401 {"code":"agent_locked"}` before any upstream call.
+Upstream statuses are relayed verbatim, so an upstream `401` (wrong or expired
+API key, no credit) arrives as a 401 too: the client treats **only**
+`agent_locked` as a lock and surfaces everything else as the provider's error.
 
 **Routes.** `GET /api/agent` reports the configuration (including the envelope,
 which is useless without the password); `PUT /api/agent/config` stores a base

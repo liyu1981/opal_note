@@ -3,6 +3,8 @@ import { atom, getDefaultStore } from "jotai";
 import {
   rebuildModels,
   setHostProviderConfig,
+  type ReAgentCallContext,
+  type ReAgentCallDecision,
   type ReAgentHostProviderConfig,
 } from "@liyu1981/reagent";
 
@@ -78,6 +80,27 @@ function lockedResponse(message: string): Response {
 }
 
 /**
+ * True when a 401 is *our* lock (`error.code === "agent_locked"`).
+ *
+ * The proxy relays upstream statuses verbatim, so an upstream 401 — a wrong or
+ * expired API key, no credit, a model the account cannot use — looks the same
+ * over the wire. Treating that as a lock would throw away a perfectly good
+ * derived key and ask for the encryption password again, which the next attempt
+ * would then block on: an unbreakable loop. Only our own payload unlocks the
+ * prompt; everything else is surfaced to the agent as the provider's error.
+ */
+async function isAgentLocked(response: Response): Promise<boolean> {
+  try {
+    const payload = (await response.clone().json()) as {
+      error?: { code?: string };
+    };
+    return payload?.error?.code === "agent_locked";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Request hook for every provider call (chat and `/models`): attach the derived
  * key and fail fast with a typed error while locked, so the UI can ask for the
  * password instead of issuing a doomed request.
@@ -99,7 +122,7 @@ function buildFetch(): typeof fetch {
       headers,
       credentials: "same-origin",
     });
-    if (response.status === 401) {
+    if (response.status === 401 && (await isAgentLocked(response))) {
       // The stored envelope no longer matches this key (re-saved or removed
       // elsewhere): forget it and let the UI ask again.
       lockAgentProvider();
@@ -273,6 +296,33 @@ export function useUnlockProvider(onDone: () => void) {
 /** Ask the UI for the password (used when a request finds the provider locked). */
 export function requestUnlockPrompt(): void {
   requestAgentUnlock();
+}
+
+/**
+ * Decide one agent call.
+ *
+ * Only the OpalNote provider is gated — ReAgent's own providers never need our
+ * password. A keyless endpoint and an unlocked provider pass; a stored key with
+ * no live derived key stops the call *before* ReAgent appends the message, so
+ * the prompt stays in the composer and the unlock dialog opens.
+ *
+ * Pure on purpose: the React hook below is a thin wrapper, and the rule can be
+ * exercised without a DOM.
+ */
+export function opalnoteCallDecision(
+  context: ReAgentCallContext,
+): ReAgentCallDecision {
+  if (context.model?.providerId !== OPALNOTE_PROVIDER_ID) return true;
+  expireUnlockIfNeeded();
+  const info = store.get(agentInfoAtom);
+  if (!storedEnvelope(info)) return true; // keyless local endpoint
+  if (store.get(agentUnlockAtom).key) return true;
+  requestAgentUnlock();
+  return {
+    ok: false,
+    message:
+      "The OpalNote provider is locked — enter its password to send this.",
+  };
 }
 
 /** Drop the derived key; the provider stays listed but locked. */
