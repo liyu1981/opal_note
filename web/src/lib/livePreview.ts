@@ -4,7 +4,6 @@ import {
   type EditorState,
   type Extension,
   type Range,
-  type Text,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -60,100 +59,12 @@ export type LivePreviewOptions = {
 
 type OptionsRef = { current: LivePreviewOptions };
 
-const CODE_FENCE_OPEN =
-  /^(\s*)((?:[-*+]|\d+[.)])\s+)?(`{3,}|~{3,})(.*)$/u;
-const CODE_FENCE_CLOSE = /^(\s*)(`{3,}|~{3,})\s*$/u;
-
-type CodeBlockRange = {
-  start: number;
-  end: number;
-  char: string;
-  indent: number;
-};
-
 /**
  * Last rendered height of an image line, keyed by note + source line. Capped so
  * a long session across many notes cannot grow it without bound.
  */
 const imageLineHeights = new Map<string, number>();
 const IMAGE_HEIGHT_CACHE_LIMIT = 500;
-
-/** Locate fenced blocks so focusing any line can reveal the whole block. */
-function findCodeBlocks(doc: Text): CodeBlockRange[] {
-  const blocks: CodeBlockRange[] = [];
-  let open: { start: number; char: string; indent: number } | null = null;
-
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
-    const text = doc.line(lineNumber).text;
-    if (open) {
-      const closing = CODE_FENCE_CLOSE.exec(text);
-      if (closing && closing[2]?.[0] === open.char) {
-        blocks.push({ ...open, end: lineNumber });
-        open = null;
-      }
-      continue;
-    }
-
-    const opening = CODE_FENCE_OPEN.exec(text);
-    if (!opening) continue;
-    const marker = opening[3] ?? "```";
-    open = {
-      start: lineNumber,
-      char: marker[0] ?? "`",
-      indent:
-        leadingIndentColumns(text) +
-        (opening[2] ? columnsOf(opening[2]) : 0),
-    };
-  }
-
-  if (open) blocks.push({ ...open, end: doc.lines });
-  return blocks;
-}
-
-type MathBlockRange = { start: number; end: number; source: string };
-
-const BLOCK_MATH_FENCE = /^\s*\$\$\s*$/u;
-
-/**
- * `$$` fences that sit on their own line, outside fenced code. Anything
- * unclosed stays plain source, so a half-typed block never swallows the note.
- */
-function findMathBlocks(
-  doc: Text,
-  codeBlocks: CodeBlockRange[],
-): MathBlockRange[] {
-  const inCode = new Set<number>();
-  for (const block of codeBlocks) {
-    for (let line = block.start; line <= block.end; line += 1) inCode.add(line);
-  }
-
-  const blocks: MathBlockRange[] = [];
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
-    if (inCode.has(lineNumber)) continue;
-    if (!BLOCK_MATH_FENCE.test(doc.line(lineNumber).text)) continue;
-
-    let close = 0;
-    for (let next = lineNumber + 1; next <= doc.lines; next += 1) {
-      if (inCode.has(next)) break;
-      if (BLOCK_MATH_FENCE.test(doc.line(next).text)) {
-        close = next;
-        break;
-      }
-    }
-    if (!close) continue;
-
-    const lines: string[] = [];
-    for (let inner = lineNumber + 1; inner < close; inner += 1) {
-      lines.push(doc.line(inner).text.trim());
-    }
-    const source = lines.join("\n");
-    if (!source) continue;
-
-    blocks.push({ start: lineNumber, end: close, source });
-    lineNumber = close;
-  }
-  return blocks;
-}
 
 /** Mirrors editor focus into the state; block widgets follow it. */
 const editorFocus = StateEffect.define<boolean>();
@@ -189,8 +100,8 @@ function buildMathBlockDecorations(
 
   const ranges: Range<Decoration>[] = [];
   const ast = state.field(noteAstField, false);
-  const blocks = ast ? astMathBlocks(ast) : findMathBlocks(doc, findCodeBlocks(doc));
-  for (const block of blocks) {
+  if (!ast) return Decoration.none;
+  for (const block of astMathBlocks(ast)) {
     let touched = false;
     for (let line = block.start; line <= block.end; line += 1) {
       if (editing.has(line)) touched = true;
@@ -343,12 +254,10 @@ function buildDecorations(
     }
   }
 
-  // Structure comes from the shared AST when it is available; the line scanners
-  // remain the fallback while the WASM parser is missing.
+  // Structure and inline formatting both come from the shared AST; without it
+  // (the module failed to load) the note renders as plain source.
   const ast = view.state.field(noteAstField, false);
-  const codeBlocks: Array<AstCodeBlock | CodeBlockRange> = ast
-    ? astCodeBlocks(ast)
-    : findCodeBlocks(doc);
+  const codeBlocks: AstCodeBlock[] = ast ? astCodeBlocks(ast) : [];
   const codeTextByStart = new Map<number, string>();
   for (const block of codeBlocks) {
     const lines: string[] = [];
@@ -368,11 +277,16 @@ function buildDecorations(
     }
   }
 
-  const mathBlocks: Array<AstMathBlock | MathBlockRange> = ast
-    ? astMathBlocks(ast)
-    : findMathBlocks(doc, findCodeBlocks(doc));
+  const mathBlocks: AstMathBlock[] = ast ? astMathBlocks(ast) : [];
   const inlineByLine = ast ? astInlineNodes(ast) : null;
-  const mathBlockByLine = new Map<number, MathBlockRange>();
+  // Line → fenced block, so the fence/start/end styling needs no re-scan.
+  const codeBlockAtLine = new Map<number, AstCodeBlock>();
+  for (const block of codeBlocks) {
+    for (let line = block.start; line <= block.end; line += 1) {
+      codeBlockAtLine.set(line, block);
+    }
+  }
+  const mathBlockByLine = new Map<number, AstMathBlock>();
   for (const block of mathBlocks) {
     for (let line = block.start; line <= block.end; line += 1) {
       mathBlockByLine.set(line, block);
@@ -422,7 +336,6 @@ function buildDecorations(
     return slashes % 2 === 1;
   };
 
-  let fence: { char: string; indent: number } | null = null;
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -489,47 +402,34 @@ function buildDecorations(
       }
     };
 
-    if (fence) {
-      const closing = CODE_FENCE_CLOSE.exec(text);
-      if (closing && closing[2]?.[0] === fence.char) {
+    const codeBlock = codeBlockAtLine.get(lineNumber);
+    if (codeBlock) {
+      if (lineNumber === codeBlock.start) {
+        addCodeLine(
+          `cm-live-code-line cm-live-code-fence cm-live-code-start${
+            active ? "" : " cm-live-code-fence-hidden"
+          }`,
+          codeBlock.indent,
+          !active,
+        );
+        if (!active) {
+          ranges.push(
+            Decoration.widget({
+              widget: new CodeCopyWidget(codeTextByStart.get(lineNumber) ?? ""),
+              side: 1,
+            }).range(line.to),
+          );
+        }
+      } else if (lineNumber === codeBlock.end) {
         addCodeLine(
           `cm-live-code-line cm-live-code-fence cm-live-code-end${
             active ? "" : " cm-live-code-fence-hidden"
           }`,
-          fence.indent,
+          codeBlock.indent,
           !active,
         );
-        fence = null;
       } else {
-        addCodeLine("cm-live-code-line", fence.indent, false);
-      }
-      continue;
-    }
-
-    // A Logseq block may open its fence after a bullet or ordered marker:
-    //   - ```javascript
-    // Treat the marker as indentation so the code body aligns with the list
-    // content rather than falling back to plain markdown lines.
-    const opening = CODE_FENCE_OPEN.exec(text);
-    if (opening) {
-      const marker = opening[3] ?? "```";
-      const indent =
-        leadingIndentColumns(text) + (opening[2] ? columnsOf(opening[2]) : 0);
-      fence = { char: marker[0] ?? "`", indent };
-      addCodeLine(
-        `cm-live-code-line cm-live-code-fence cm-live-code-start${
-          active ? "" : " cm-live-code-fence-hidden"
-        }`,
-        indent,
-        !active,
-      );
-      if (!active) {
-        ranges.push(
-          Decoration.widget({
-            widget: new CodeCopyWidget(codeTextByStart.get(lineNumber) ?? ""),
-            side: 1,
-          }).range(line.to),
-        );
+        addCodeLine("cm-live-code-line", codeBlock.indent, false);
       }
       continue;
     }

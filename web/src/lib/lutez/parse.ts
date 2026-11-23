@@ -4,8 +4,7 @@
  * This mirrors `mod lutez_ast` in `src/store/markdown.rs` rule for rule: the
  * editor draws block handles from the same block list the server indexes, so a
  * difference here changes what a note's blocks *are* on one side only. When you
- * change one adapter, change the other and re-run the corpus harness
- * (`cargo test corpus_parity -- --ignored --nocapture`).
+ * change one adapter, change the other and re-run `pnpm check:parse`.
  */
 import type { BlockKind } from "../blockKind";
 import { headingLevel } from "../markdown";

@@ -17,14 +17,14 @@ both runtimes now derive blocks, tasks, tags and wikilinks from its AST:
 | AST → blocks/tasks/tags/links | `mod lutez_ast` in `src/store/markdown.rs` |
 | WASM glue + wire decoder + adapter | `web/src/lib/lutez/` (`glue.ts`, `wire.ts`, `parse.ts`) |
 | Build + delivery | `scripts/build-lutez.mjs`, `build.rs`, `.wasm` asset route + CSP |
-| Parity harness | `pnpm check:parse` (server vs browser) and `cargo test corpus_parity -- --ignored --nocapture` (AST vs the legacy scanners) |
+| Parity harness | `pnpm check:parse` (server vs browser), `cargo test corpus_rows -- --ignored --nocapture` (its server side), `pnpm check:spans` |
 
-**Still open:** P3 (re-target `livePreview.ts` from per-line regexes to AST
-ranges), P4 (delete the `legacy_*` scanners in `src/store/markdown.rs` and the
-client fallbacks — they are the safety net today), `outlinerBlocks` (`key::`,
-`^block-id`) until blocks R2.
-`OPALNOTE_PARSER=legacy` and a missing `liblutez.a` both fall back to the legacy
-scanners; `GET /meta` reports `parser: "lutez" | "legacy"`.
+**Still open:** `outlinerBlocks` (`key::`, `^block-id`) until blocks R2.
+
+P3 and P4 are done: the editor renders from the AST and the legacy scanners —
+Rust and client — are deleted. The parser is no longer switchable
+(`OPALNOTE_PARSER` is gone) and `liblutez.a` is a hard build dependency, so
+there is exactly one grammar on both sides.
 
 Measured parity after the swap (§5 has the method): the two adapters produce
 **identical block, task, tag and link output on all 198 corpus notes**, and the
@@ -71,7 +71,7 @@ Measured on our now-195-note corpus (details in §5):
 | Task line numbers vs. `extract_tasks` | **195/195 identical** (68 tasks in 29 notes) |
 | Corpus shape | 168 notes with inline tags, 157 with frontmatter tags, 30 with wikilinks (77 nodes), 1 with math, 4 frontmatter-only bodies, 0 Logseq keyword lines |
 | Inline tag sets vs. our extracted tags | **194/195 identical** (one `)#hg` case, §5.3) |
-| Block sequence after the adapter | **103/198 notes identical** to the legacy scanner; the rest are the five documented classes (§5.2) |
+| Block sequence after the adapter | **103/198 notes identical** to the old line scanner; the rest are the five documented classes (§5.2) |
 | Rust-side link | `liblutez.a` exports all 21 `lutez_*` symbols, ABI 3; linked from Rust with `cargo:rustc-link-lib=static=lutez` + `c` (Zig's std pulls libc) — verified, `lutez_parse_presets` + wire decode from a release build |
 
 What is still ours to do:
@@ -186,14 +186,14 @@ Math flags: inline `$x$` → 0, same-line `$$y$$` → 1 (`display_math`), fenced
 | Frontmatter split + tags block rewrite | `split_frontmatter`, `render_page` | available (kind 4, payload **without** fences, fires only at document start) | we keep pre-splitting and parse the body (the editor never shows frontmatter), so this preset stays off; `render_page` unchanged |
 | BOM handling | `parse_page` strips `\uFEFF` | **resolved**: `strip_bom` (default on) drops it; verified `\uFEFF- a\n- b\n` → 2-item list, blocks starting at raw 3 | set the option explicitly in the FFI so a NULL opts cannot change behaviour |
 | Empty body | 4 of 195 corpus notes are frontmatter-only | **resolved**: `parse("")` returns a one-node document spanning `[0,0)` with a 1-segment source map | none |
-| GFM task lists | `legacy_extract_tasks` | `NodeTaskListItemMarker` + marker byte; **195/195 notes agree on line numbers** | adapter |
-| Logseq keywords | `legacy_extract_tasks` | **preset exists but partial**: kind 7 for `TODO`/`DOING` only, any paragraph start, no bullet scoping | adapter guard + post-pass for `DONE`/`CANCELED`/`CANCELLED` (§5.4) |
-| Bullet fences (`- ``` `, `  - ``` `) | `legacy_parse_blocks`, live preview | correct CommonMark: `ListItem > CodeBlock` | decide whether to adopt nesting (§5.2) |
-| 4-space indented code | `legacy_parse_blocks` (treats it as prose) | `NodeCodeBlock` (indented), no fence needed | decide whether to adopt (§5.2) |
+| GFM task lists | old line scanner | `NodeTaskListItemMarker` + marker byte; **195/195 notes agree on line numbers** | adapter |
+| Logseq keywords | old line scanner | **preset exists but partial**: kind 7 for `TODO`/`DOING` only, any paragraph start, no bullet scoping | adapter guard + post-pass for `DONE`/`CANCELED`/`CANCELLED` (§5.4) |
+| Bullet fences (`- ``` `, `  - ``` `) | old line scanner, live preview | correct CommonMark: `ListItem > CodeBlock` | decide whether to adopt nesting (§5.2) |
+| 4-space indented code | old line scanner (treats it as prose) | `NodeCodeBlock` (indented), no fence needed | decide whether to adopt (§5.2) |
 | Inline `#tags` | `extract_tags`, tag view, completion | **done**: kind 3, payload without `#`, span includes `#`; rule tightened in `a8a81bb` | enable `LUTEZ_EXT_TAGS`; settle two grammar differences (§6.5) |
 | `$$math$$`, `$x$` | KaTeX in the editor | **done**: kind 1, flags 0/1/3; `$5 and $10` stays prose | enable `LUTEZ_EXT_MATH`; keep KaTeX `trust: false` |
 | `[[wikilinks]]` | links, backlinks, completion | **done**: kind 2, payload raw including `\|` | enable `LUTEZ_EXT_WIKILINKS`; split target/alias in our adapter |
-| Blocks (kind/depth/parent/text/hash) | `legacy_parse_blocks`, handles/fold/drag | structure + spans exist | adapter; ranges come from spans |
+| Blocks (kind/depth/parent/text/hash) | old line scanner, handles/fold/drag | structure + spans exist | adapter; ranges come from spans |
 | Summary / excerpts | `summarize` | text nodes carry the text | small walker |
 | Rendering | CodeMirror decorations | out of scope by design (fine — we render) | P3 re-target of `livePreview` |
 | Incremental parse | per-keystroke decorations | full reparse per call | measure P3; full note is p50 0.14 ms |
@@ -201,7 +201,11 @@ Math flags: inline `$x$` → 0, same-line `$$y$$` → 1 (`display_math`), fenced
 
 ---
 
-## 5. Measurements (this review, lutez `a8a81bb`)
+## 5. Measurements (lutez `a8a81bb`)
+
+The tables below were taken while both parsers still existed, so the "legacy" side
+is the hand-written scanner this migration replaced; it was deleted in P4 and
+the numbers stay as the record of what moved.
 
 Corpus: `data/notebooks/sb-import`, **195 notes / 161,696 bytes** (168 notes with inline
 `#tags`, 157 with explicit frontmatter tags, 30 with wikilinks, 1 with math, 29 with
@@ -223,7 +227,7 @@ keystroke, and trivial from a Worker. Nothing regressed versus 0.3.0.
 
 ### 5.2 Block parity with the implemented adapter
 
-Method: `parse_ast` (the adapter that ships) versus the legacy line scanner, on
+Method: the adapter that ships versus the old line scanner, on
 every note body in `data/notebooks` (frontmatter stripped): compare the
 `(kind, start_line, end_line, depth, parent_seq)` sequence.
 
@@ -235,7 +239,7 @@ every note body in `data/notebooks` (frontmatter stripped): compare the
 | Quote-first item (`- > quote`) splits into item + quote | 2 |
 | `- 1) x` nests an ordered sub-list (3 blocks instead of 1) | 1 |
 | 4-space indented text → `code` instead of `paragraph` | 1 |
-| Task **line numbers** identical (`legacy_extract_tasks` vs. the AST) | **198 / 198** (68 tasks) |
+| Task **line numbers** identical (old line scanner vs. the AST) | **198 / 198** (68 tasks) |
 
 Inside those classes the block **text and hash** stay identical whenever the
 range and kind did not move (the adapter still builds text from the raw lines
@@ -346,7 +350,7 @@ Still open upstream (neither blocks P0–P3):
 - **Adapters, not rewrites.** `src/store/model.rs` and all relations stay as they are. A
   new `parse` module turns the AST into the existing `ParsedPage` / `ParsedTask` /
   `ParsedBlock` structs, so the store, API, deep links and plugin host are untouched.
-  `OPALNOTE_PARSER=lutez|legacy` selects the implementation until the corpus diff is zero.
+  the flag stayed until the corpus diff was zero and was removed in P4.
 - **Preset mask used by both runtimes**: `tags | math | wikilinks | outlinerKeywords`
   (`.md` + WASM must be identical, or the editor and the index disagree).
 - **Two decoders, both small**: Rust and TS read the same 56-byte records, validate
@@ -386,14 +390,14 @@ Still open upstream (neither blocks P0–P3):
 |---|---|---|---|
 | **P0 — accept spans** ✅ | pin lutez `a8a81bb` (no release tag: pin the commit, record the ABI check); `build.rs` FFI — static link (`cargo:rustc-link-lib=static=lutez` + `c`, verified from a scratch crate) with `liblutez.a` cross-compiled or vendored per target; `pnpm build:wasm`; Rust + TS wire-v2 decoders; span acceptance test on the 195-note corpus; parity harness reporting block/task/tag diffs | decoders round-trip the corpus; harness reproduces the §5 tables from our own data; nothing shipped | 2 d |
 | **P1 — model decisions** ✅ | settle the six difference classes (§5.2): adopt CommonMark nesting or model our quirks; adopt their tag grammar (`.`, all digits, trailing `/`); set `strip_bom` explicitly in the FFI; decide ordered-item tasks | decision recorded per class; rules markers planned; adapter contract written | 1–2 d |
-| **P2 — backend swap** ✅ (+ client mirrors) | adapter → `ParsedPage/ParsedTask/ParsedBlock` (spans → lines, list nesting, empty bullets, indented code, extension kinds 1/2/3/7); `OPALNOTE_PARSER` flag; presets `tags|math|wikilinks|outlinerKeywords`; bump `TASK_RULES_VERSION`/`BLOCK_RULES_VERSION`; measure a full sync | corpus diff zero (or every diff explained and accepted); tag sets match §5.3; task rows match §5.2/§5.4; sync time within ±10% | 3–5 d |
-| **P3 — editor on the AST** (span API ✅, block structure ✅, inline ✅) | `web/src/lib/lutez/spans.ts` maps normalized bytes → UTF-16 (`utf16Mapper`, `span16`, `text16`) and `parseDocument`/`lutezDocument` hand the editor `text` + `nodes` + `mapper`, gated by `pnpm check:spans`; `noteAstField` parses once per doc change; `livePreview` takes fenced blocks and `$$` blocks from it and every inline construct (code spans, emphasis/strong/strike with real marker spans, links/images via `LinkText`/`LinkDest`, wikilinks, tags, inline math). Verified on a fixture corpus against the old renderer: byte-identical for fences, math, lists, tasks, quotes, tags, wikilinks, CJK/CRLF notes, with only the intended fixes differing (empty-alt images now render, `\*escapes\*` stay literal, `**bold**` no longer becomes `*bold*`, `)#tag` boundaries follow the shared grammar). Marker widths for headings/quotes/lists/tasks, `==highlight==` and bare-URL trimming stay textual on purpose. Remaining: P4 deletions (the two structural scanners, `legacy_*`, client mirrors) | visual + interaction parity on a screenshot corpus; block handles/fold/drag/deep links intact; typing p95 < 16 ms for a 5 KB note | 1.5–2.5 w |
-| **P4 — retire the mirrors** | delete `parse_blocks`/`extract_*`/`summarize`, `blocks.ts`/`tasks.ts`/fence helpers; docs; third-party notices | one parser, one rule set, docs updated | 2–3 d |
+| **P2 — backend swap** ✅ (+ client mirrors) | adapter → `ParsedPage/ParsedTask/ParsedBlock` (spans → lines, list nesting, empty bullets, indented code, extension kinds 1/2/3/7); presets `tags|math|wikilinks|outlinerKeywords`; bump `TASK_RULES_VERSION`/`BLOCK_RULES_VERSION`; measure a full sync | corpus diff zero (or every diff explained and accepted); tag sets match §5.3; task rows match §5.2/§5.4; sync time within ±10% | 3–5 d |
+| **P3 — editor on the AST** ✅ | `web/src/lib/lutez/spans.ts` maps normalized bytes → UTF-16 (`utf16Mapper`, `span16`, `text16`) and `parseDocument`/`lutezDocument` hand the editor `text` + `nodes` + `mapper`, gated by `pnpm check:spans`; `noteAstField` parses once per doc change; `livePreview` takes fenced blocks and `$$` blocks from it and every inline construct (code spans, emphasis/strong/strike with real marker spans, links/images via `LinkText`/`LinkDest`, wikilinks, tags, inline math). Verified on a fixture corpus against the old renderer: byte-identical for fences, math, lists, tasks, quotes, tags, wikilinks, CJK/CRLF notes, with only the intended fixes differing (empty-alt images now render, `\*escapes\*` stay literal, `**bold**` no longer becomes `*bold*`, `)#tag` boundaries follow the shared grammar). Marker widths for headings/quotes/lists/tasks, `==highlight==` and bare-URL trimming stay textual on purpose. Remaining: P4 deletions (the two structural scanners, `legacy_*`, client mirrors) | visual + interaction parity on a screenshot corpus; block handles/fold/drag/deep links intact; typing p95 < 16 ms for a 5 KB note | 1.5–2.5 w |
+| **P4 — retire the mirrors** ✅ | deleted the Rust `legacy_*` scanners, the parser switch (`OPALNOTE_PARSER`, `cfg(lutez_ffi)`, `OPALNOTE_SKIP_LUTEZ`), the client `legacyParseBlocks`/`legacyTaskSignature` and `livePreview`'s fence/math scanners; the corpus harness now dumps server rows for `check:parse`; docs updated | one parser, one rule set, docs updated | 2–3 d |
 | **P5 — dialect** ✅ | presets `tags`/`math`/`wikilinks`/`outlinerKeywords` arrive with P2; keep the `DONE`/`CANCELED`/`CANCELLED` post-pass; adopt the tag-grammar deltas; only `outlinerBlocks` stays off (blocks R2) | dialect nodes carry spans for all five; corpus matches §5.3/§5.4 | 1–2 d (was 2–3) |
 
-✅ = shipped in this implementation. P0/P1/P2/P5 and the client-side mirrors are in
-`main`; `livePreview.ts` still scans lines (P3), and the legacy scanners / client
-fallbacks are deleted in P4.
+✅ = shipped. One parser, one grammar, one set of rules: the server links
+`liblutez.a`, the browser compiles `lutez.wasm`, and both adapters are gated by
+`pnpm check:parse` + `pnpm check:spans`.
 
 Gates: the corpus diff and the Rust test suite between every phase; no phase ships a
 semantic change it cannot explain line by line.
@@ -410,7 +414,7 @@ semantic change it cannot explain line by line.
 | Adopting the new tag rule silently retags a notebook | tags appear/disappear | measured: one note gains `#hg` in our corpus; verify with the tag-set diff before flipping `TASK_RULES_VERSION`/reindex |
 | Editor rewrite regressions | the editor is the product | keep the widget inventory fixed; screenshot corpus; ship behind `?parser=lutez` for one release |
 | Zig in the build pipeline | second toolchain in `pnpm build`/release | build once per target per release, cache, or vendor static libs (Zig cross-compiles all 7 targets). Measured: `-Doptimize=ReleaseSafe` builds in 20 s; a Rust release binary linking the static archive lands at 1.7 MB unstripped (~1.2 MB stripped C equivalent), so embedding is not a size problem |
-| **Native CPU features baked into the archive** | `zig build` defaults to the host CPU, so a CI runner's newer features (AVX-512 on x86; `dotprod`/`i8mm`/`sve` on ARM) make the binary die with `Illegal instruction (core dumped)` on an older server — observed on an ARM VM from a GitHub `ubuntu-24.04-arm` build | `scripts/build-lutez.mjs` always builds with **`-Dcpu=baseline`** (override `OPALNOTE_LUTEZ_CPU=native` only for a same-machine build) and stamps `zig-out/lib/lutez-build-flags` so a flag change forces a rebuild. `OPALNOTE_PARSER=legacy` is the runtime workaround until a portable binary is installed |
+| **Native CPU features baked into the archive** | `zig build` defaults to the host CPU, so a CI runner's newer features (AVX-512 on x86; `dotprod`/`i8mm`/`sve` on ARM) make the binary die with `Illegal instruction (core dumped)` on an older server — observed on an ARM VM from a GitHub `ubuntu-24.04-arm` build | `scripts/build-lutez.mjs` always builds with **`-Dcpu=baseline`** (override `OPALNOTE_LUTEZ_CPU=native` only for a same-machine build) and stamps `zig-out/lib/lutez-build-flags` so a flag change forces a rebuild. a portable build is installed once (there is no runtime parser switch) |
 | Wire size 6.6× source | worker payload per keystroke | send only the note being edited; do not cache ASTs; measure in P3 |
 | Decoder drift (Rust vs TS) | wrong offsets in one runtime | both decoders version-checked and fuzzed on the same corpus; cross-check in P0 |
 

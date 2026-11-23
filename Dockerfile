@@ -47,7 +47,7 @@ COPY Cargo.toml Cargo.lock build.rs ./
 COPY src ./src
 COPY builtin ./builtin
 COPY --from=web /app/web/dist ./web/dist
-# build.rs links this when it is present (see OPALNOTE_SKIP_LUTEZ otherwise).
+# build.rs links this; without it the server does not build.
 COPY --from=lutez /lutez/zig-out/lib/liblutez.a ./vendor/lutez/zig-out/lib/liblutez.a
 RUN cargo build --release --locked
 

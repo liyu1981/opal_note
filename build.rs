@@ -80,20 +80,13 @@ fn main() {
 /// Link the vendored `lutez` parser (`vendor/lutez`, a git submodule built by
 /// `scripts/build-lutez.mjs`).
 ///
-/// This runs before the debug early return because both profiles index notes
-/// with the same parser. When the static library is absent (a fresh clone
-/// without Zig, or `OPALNOTE_SKIP_LUTEZ=1`) the build succeeds with the legacy
-/// hand-written scanners and a warning, so `cargo test` never depends on the
-/// Zig toolchain.
+/// There is no fallback parser any more: the crate indexes notes with this
+/// library only, so a missing archive is a hard build error rather than a
+/// silently different grammar. `pnpm build` / `pnpm dev` / the Docker image /
+/// CI all build it first; a bare `cargo build` needs one
+/// `node scripts/build-lutez.mjs` (Zig 0.17.0).
 fn emit_lutez_link() {
-    println!("cargo:rustc-check-cfg=cfg(lutez_ffi)");
     println!("cargo:rerun-if-changed=vendor/lutez/zig-out/lib");
-    println!("cargo:rerun-if-env-changed=OPALNOTE_SKIP_LUTEZ");
-
-    if std::env::var("OPALNOTE_SKIP_LUTEZ").as_deref() == Ok("1") {
-        println!("cargo:warning=OPALNOTE_SKIP_LUTEZ=1: building with the legacy markdown parser");
-        return;
-    }
 
     // Zig names the Windows static archive `lutez_static.lib` (the DLL import
     // library takes `lutez.lib`); everywhere else it is `liblutez.a`.
@@ -108,11 +101,12 @@ fn emit_lutez_link() {
         .iter()
         .find(|(file, _)| directory.join(file).exists())
     else {
-        println!(
-            "cargo:warning=vendor/lutez/zig-out/lib has no static library; building with the \
-             legacy markdown parser. Run `node scripts/build-lutez.mjs` (needs Zig 0.17.0)."
+        panic!(
+            "the vendored markdown parser is not built: {} has no static library.\n\
+             Run `node scripts/build-lutez.mjs` (needs Zig 0.17.0), or use `pnpm build` / \
+             `pnpm dev`, which do it for you.",
+            directory.display()
         );
-        return;
     };
     println!("cargo:rustc-link-search=native={}", directory.display());
     println!("cargo:rustc-link-lib=static={link_name}");
@@ -121,7 +115,6 @@ fn emit_lutez_link() {
     if !windows {
         println!("cargo:rustc-link-lib=c");
     }
-    println!("cargo:rustc-cfg=lutez_ffi");
 }
 
 /// Embed the package version and git commit metadata in every build. The

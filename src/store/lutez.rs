@@ -10,8 +10,8 @@
 //! validated node records. The adapter that turns those records into
 //! `ParsedBlock`/`ParsedTask`/tags/links lives in `markdown.rs`.
 //!
-//! When the static library is missing at build time the module is not compiled
-//! (see `build.rs`), and `markdown.rs` keeps using the legacy scanners.
+//! The archive is required: `build.rs` fails without it, because this module is
+//! the only markdown parser the server has.
 //!
 //! Only the node types, extension kinds and preset bits OpalNote reads are
 //! named here; `include/lutez.h` is the full vocabulary and the tests below pin
@@ -97,6 +97,23 @@ extern "C" {
     fn lutez_doc_ast(doc: *const LutezDoc, out_len: *mut usize) -> *const u8;
     fn lutez_doc_free(doc: *mut LutezDoc);
     fn lutez_last_error() -> *const c_char;
+}
+
+/// Verify the linked library speaks the ABI and wire format this module decodes.
+///
+/// Called once at startup: a mismatch means a stale `liblutez.a` was linked, and
+/// nothing downstream could interpret its bytes correctly.
+pub fn check() {
+    assert!(
+        compatible(),
+        "liblutez.a reports ABI {} / wire {}, but this build decodes ABI {} / wire {} — \
+         rebuild it with `node scripts/build-lutez.mjs`",
+        unsafe { lutez_abi_version() },
+        unsafe { lutez_wire_format_version() },
+        ABI_VERSION,
+        WIRE_VERSION
+    );
+    tracing::info!(version = %version(), "markdown parser: lutez (shared AST)");
 }
 
 /// True when the linked library reports the ABI and wire format we decode.

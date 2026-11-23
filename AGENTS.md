@@ -40,9 +40,9 @@ Longer design notes live in `doc/`:
 - `doc/lutez-parser.md` — the `lutez` integration: a CommonMark/GFM parser in Zig
   (submodule `vendor/lutez`, pinned `a8a81bb`, ABI 3, wire 2) that both the Rust
   indexer and the browser call, so a note has one parse. **Implemented** for
-  blocks/tasks/tags/links on both sides; the remaining work is the P3 editor
-  rewrite of `livePreview.ts` and deleting the legacy scanners. Records the
-  re-reviews, the measured corpus parity (§5) and every dialect decision (§6).
+  blocks/tasks/tags/links and for the editor's rendering (P3); the legacy
+  scanners are gone (P4). Records the re-reviews, the measured corpus parity (§5)
+  and every dialect decision (§6).
 - `doc/blocks.md` — block plan: **R1** positional blocks (grammar, derived `block`
   index, handles/fold/drag, hash deep links, no markdown changes) is the committed
   scope; references/`^id` are **R2**, deferred. Nothing outside the doc should
@@ -174,23 +174,21 @@ web/
   `dotprod`/`i8mm`/`sve` instructions kills the server with `Illegal
   instruction` on an older machine (a GitHub ARM runner → an ARM VM does
   exactly that). `OPALNOTE_LUTEZ_CPU=native` is only for a same-machine build.
-  The server links the archive in `build.rs` (`cfg(lutez_ffi)`) and decodes wire
-  format 2 in `src/store/lutez.rs`; the
-  adapters that turn the AST into `ParsedBlock`/`ParsedTask`/tags/links live in
-  `mod lutez_ast` in `src/store/markdown.rs` and, for the browser, in
-  `web/src/lib/lutez/`. Change both adapters together and re-run
-  `pnpm check:parse` (server rows vs browser rows) and
-  `cargo test corpus_parity -- --ignored --nocapture` (the shared parse against
-  the hand-written scanners, note by note, on `data/notebooks`). Without the
-  static library (no Zig, or `OPALNOTE_SKIP_LUTEZ=1`) the build warns and falls
-  back to the legacy scanners in `src/store/markdown.rs`; `OPALNOTE_PARSER=legacy`
-  selects them at runtime, and `GET /meta` reports which one is active.
+  The server links the archive in `build.rs` and decodes wire format 2 in
+  `src/store/lutez.rs` (ABI/wire checked once at startup); the adapters that turn
+  the AST into `ParsedBlock`/`ParsedTask`/tags/links live in `mod lutez_ast` in
+  `src/store/markdown.rs` and, for the browser, in `web/src/lib/lutez/`. **There
+  is no second parser**: a missing `liblutez.a` is a hard build error, so build
+  the archive first (`pnpm build`/`pnpm dev`/Docker/CI do). Change both adapters
+  together and re-run `pnpm check:parse` (server rows vs browser rows over
+  `data/notebooks`).
 - `lutez` is fetched as `/lutez.wasm` and compiled before the first render
   (`web/src/main.tsx` → `loadLutez`). The asset route serves `.wasm` as
   `application/wasm` (the only type `instantiateStreaming` accepts) with
-  `no-cache`, and the SPA CSP needs `script-src 'wasm-unsafe-eval'`; a note that
-  the parser cannot load is a console warning, and the legacy client mirrors
-  (`legacyParseBlocks`/`legacyTaskSignature`) keep the editor working.
+  `no-cache`, and the SPA CSP needs `script-src 'wasm-unsafe-eval'`. There is no
+  client fallback parser either: a module that fails to load is a console
+  warning and the editor renders plain source without block handles/formatting,
+  so `main.tsx` awaits `loadLutez()` before the first render.
 - **Three offset spaces, and each one has one job.** The AST carries raw bytes
   (`rawStart/rawEnd` — line numbers, server rows, block hashes), normalized bytes
   (`normStart/normEnd` — CRLF/CR → LF, what the editor's document is) and the
@@ -302,9 +300,8 @@ web/
   display math, and every inline construct — code spans (any backtick run),
   emphasis/strong/strikethrough with their real marker spans, links/images
   (label and destination from `LinkText`/`LinkDest`, so `![](x.png)` and titles
-  work), wikilinks, tags and inline math — come from nodes, with the legacy
-  scanners kept as the fallback while the WASM parser is missing. Still
-  source-local by design: the per-line marker widths that drive the hanging
+  work), wikilinks, tags and inline math — come from nodes. Still source-local by
+  design: the per-line marker widths that drive the hanging
   indent (headings, quotes, list/task markers), `==highlight==` (not a
   CommonMark/GFM construct, so no node), and bare URLs (GFM text; the editor's
   trailing-punctuation rules are its own).
@@ -462,8 +459,7 @@ web/
   nothing is written into the markdown — no ids, no refs. `blockHandles` draws
   the gutter handle, folding, drag, delete and Tab indent; decorations come from
   a `StateField` because CodeMirror rejects block decorations from view plugins.
-  `web/src/lib/blocks.ts` reads the same AST through `web/src/lib/lutez/` (the
-  hand-written `legacyParseBlocks` is only the pre-load fallback), and a
+  `web/src/lib/blocks.ts` reads the same AST through `web/src/lib/lutez/`, and a
   block link is `?p=<path>&block=<hash>&at=<seq>`. Rules changes bump the
   `blocks.rules` marker, like `tasks.rules`.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
@@ -731,9 +727,8 @@ web/
 - Tasks are derived during filesystem sync into the `task` relation from
   markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. The task set
   itself comes from the shared AST (only `-`/`*`/`+` list items count, ordered
-  items do not) with the marker read from the item's own source line, so the
-  legacy scanner and the AST agree; the client's `taskSignature` uses the same
-  AST through WASM. Keep task
+  items do not) with the marker read from the item's own source line; the
+  client's `taskSignature` uses the same AST through WASM. Keep task
   rows in sync with note insert/update/delete and notebook deletion.
   A body edit can therefore change derived data, so saves that move the task set
   bump **`tasksRevisionAtom`** (`refreshTasksAtom`), never `notesRevisionAtom`:

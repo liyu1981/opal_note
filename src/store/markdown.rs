@@ -1,5 +1,7 @@
-//! Pure helpers for the file-first store: wikilinks, inline tags, frontmatter
-//! tags, summaries. Nothing here touches the filesystem or the database.
+//! Markdown derivation for the file-first store: the adapter from the shared
+//! `lutez` AST to blocks, tasks, tags and links (`mod lutez_ast`), plus the
+//! frontmatter split, tag normalisation, summaries and block hashing. Nothing
+//! here touches the filesystem or the database.
 
 /// Lowercase + collapse whitespace. Used as the join key between a
 /// `[[wikilink]]` and a note title, so renames keep backlinks working.
@@ -91,23 +93,6 @@ fn strip_fenced_code(content: &str) -> String {
     out
 }
 
-fn strip_code(content: &str) -> String {
-    let fenced = strip_fenced_code(content);
-    let mut out = String::with_capacity(fenced.len());
-    let mut in_code = false;
-    for ch in fenced.chars() {
-        if ch == '`' {
-            in_code = !in_code;
-            out.push(' ');
-        } else if in_code {
-            out.push(' ');
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
-
 /// One block of a note body: a line range plus what it is.
 ///
 /// `kind` is one of `paragraph`, `heading`, `list_item`, `task`, `code`, `quote`,
@@ -126,218 +111,6 @@ pub struct ParsedBlock {
 }
 
 const MAX_BLOCK_TEXT_CHARS: usize = 4_000;
-
-/// Parse a note body into blocks.
-///
-/// Doc mode treats one CommonMark leaf-or-container element as a block (a
-/// paragraph, heading, fenced code, table, quote or thematic break), with each
-/// list item a block of its own. Outline mode needs no special case: every
-/// bullet line already becomes a block, and indentation supplies `depth` and
-/// `parent_seq`. A blank line ends the current block; fenced code, tables and
-/// quotes are never split by one.
-pub(crate) fn legacy_parse_blocks(body: &str) -> Vec<ParsedBlock> {
-    let lines: Vec<&str> = body.lines().collect();
-    let mut blocks: Vec<ParsedBlock> = Vec::new();
-    let mut index = 0;
-
-    // List items that can still be a parent: (seq, indent). `parent_seq` is a
-    // block's `seq`, the same value the AST adapter writes.
-    let mut list_stack: Vec<(usize, usize)> = Vec::new();
-
-    while index < lines.len() {
-        let line = lines[index];
-        let trimmed = line.trim_start();
-
-        if trimmed.is_empty() {
-            index += 1;
-            continue;
-        }
-
-        // ---- fenced code -------------------------------------------------
-        if let Some(fence) = fence_marker(trimmed) {
-            let start = index;
-            let mut end = lines.len() - 1;
-            let mut cursor = index + 1;
-            while cursor < lines.len() {
-                if lines[cursor].trim_start().starts_with(fence) {
-                    end = cursor;
-                    break;
-                }
-                cursor += 1;
-            }
-            let text = block_text(&lines[start..=end], "code");
-            blocks.push(block(start, end, "code", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- display math ------------------------------------------------
-        if trimmed.starts_with("$$") && is_display_math_fence(trimmed) {
-            let start = index;
-            let mut end = lines.len() - 1;
-            let mut cursor = index + 1;
-            while cursor < lines.len() {
-                if is_display_math_fence(lines[cursor].trim_start()) {
-                    end = cursor;
-                    break;
-                }
-                cursor += 1;
-            }
-            let text = block_text(&lines[start..=end], "math");
-            blocks.push(block(start, end, "math", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- table -------------------------------------------------------
-        if trimmed.starts_with('|') {
-            let start = index;
-            let mut end = index;
-            while end + 1 < lines.len() && lines[end + 1].trim_start().starts_with('|') {
-                end += 1;
-            }
-            let text = block_text(&lines[start..=end], "table");
-            blocks.push(block(start, end, "table", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- thematic break ---------------------------------------------
-        if is_thematic_break(trimmed) {
-            blocks.push(block(index, index, "hr", 0, 0, String::new()));
-            list_stack.clear();
-            index += 1;
-            continue;
-        }
-
-        // ---- heading -----------------------------------------------------
-        if let Some(level) = heading_level(trimmed) {
-            let start = index;
-            let mut end = index;
-            // A heading may continue over soft-wrapped lines.
-            while end + 1 < lines.len()
-                && !lines[end + 1].trim_start().is_empty()
-                && !starts_new_block(lines[end + 1].trim_start())
-            {
-                end += 1;
-            }
-            let text = block_text(&lines[start..=end], "heading");
-            blocks.push(block(start, end, "heading", level, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- block quote -------------------------------------------------
-        if trimmed.starts_with('>') {
-            let start = index;
-            let mut end = index;
-            while end + 1 < lines.len() {
-                let next = lines[end + 1].trim_start();
-                if next.starts_with('>') {
-                    end += 1;
-                    continue;
-                }
-                // A quote may contain a lazily continued paragraph.
-                if !next.is_empty() && !starts_new_block(next) {
-                    end += 1;
-                    continue;
-                }
-                break;
-            }
-            let text = block_text(&lines[start..=end], "quote");
-            blocks.push(block(start, end, "quote", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- HTML comment ------------------------------------------------
-        if trimmed.starts_with("<!--") {
-            let start = index;
-            let mut end = index;
-            while end + 1 < lines.len() && !lines[end].contains("-->") {
-                end += 1;
-                if lines[end].contains("-->") {
-                    break;
-                }
-            }
-            let text = block_text(&lines[start..=end], "html");
-            blocks.push(block(start, end, "html", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- list item ---------------------------------------------------
-        if let Some(item) = list_marker(trimmed) {
-            let indent = leading_indent_columns(line);
-            let start = index;
-            let mut end = index;
-            // Continuation lines (indented deeper than the marker) belong to
-            // this item; a following item at the same depth starts a new block.
-            while end + 1 < lines.len() {
-                let next = lines[end + 1];
-                let next_trimmed = next.trim_start();
-                if next_trimmed.is_empty() {
-                    break;
-                }
-                if next_trimmed.starts_with('>') || next_trimmed.starts_with('|') {
-                    break;
-                }
-                if list_marker(next_trimmed).is_some() {
-                    break;
-                }
-                if leading_indent_columns(next) <= indent {
-                    break;
-                }
-                if fence_marker(next_trimmed).is_some() {
-                    break;
-                }
-                end += 1;
-            }
-
-            while let Some((_, parent_indent)) = list_stack.last() {
-                if *parent_indent >= indent {
-                    list_stack.pop();
-                } else {
-                    break;
-                }
-            }
-            let parent_seq = list_stack
-                .last()
-                .map(|(parent_seq, _)| *parent_seq)
-                .unwrap_or(0);
-            let kind = if item.is_task { "task" } else { "list_item" };
-            let text = block_text(&lines[start..=end], kind);
-            let seq = blocks.len() + 1;
-            blocks.push(block(start, end, kind, indent / 2, parent_seq, text));
-            list_stack.push((seq, indent));
-            index = end + 1;
-            continue;
-        }
-
-        // ---- paragraph ---------------------------------------------------
-        let start = index;
-        let mut end = index;
-        while end + 1 < lines.len() {
-            let next = lines[end + 1].trim_start();
-            if next.is_empty() || starts_new_block(next) {
-                break;
-            }
-            end += 1;
-        }
-        let text = block_text(&lines[start..=end], "paragraph");
-        blocks.push(block(start, end, "paragraph", 0, 0, text));
-        list_stack.clear();
-        index = end + 1;
-    }
-
-    blocks
-}
 
 fn block(
     start: usize,
@@ -421,25 +194,6 @@ pub fn block_hash(text: &str) -> String {
     format!("{hash:08x}")
 }
 
-fn is_display_math_fence(trimmed: &str) -> bool {
-    trimmed
-        .strip_prefix("$$")
-        .is_some_and(|rest| rest.trim().is_empty())
-}
-
-fn is_thematic_break(trimmed: &str) -> bool {
-    let mut chars = trimmed.chars();
-    let Some(marker) = chars.next() else {
-        return false;
-    };
-    if !matches!(marker, '-' | '*' | '_') {
-        return false;
-    }
-    let rest: String = chars.collect();
-    let compact: String = rest.chars().filter(|ch| !ch.is_whitespace()).collect();
-    compact.len() >= 2 && compact.chars().all(|ch| ch == marker)
-}
-
 fn heading_level(trimmed: &str) -> Option<usize> {
     let hashes = trimmed.chars().take_while(|ch| *ch == '#').count();
     if hashes == 0 || hashes > 6 {
@@ -450,47 +204,6 @@ fn heading_level(trimmed: &str) -> Option<usize> {
         .nth(hashes)
         .is_some_and(char::is_whitespace)
         .then_some(hashes)
-}
-
-fn starts_new_block(trimmed: &str) -> bool {
-    trimmed.starts_with('>')
-        || trimmed.starts_with('|')
-        || trimmed.starts_with("<!--")
-        || is_display_math_fence(trimmed)
-        || is_thematic_break(trimmed)
-        || heading_level(trimmed).is_some()
-        || list_marker(trimmed).is_some()
-        || fence_marker(trimmed).is_some()
-}
-
-fn leading_indent_columns(line: &str) -> usize {
-    let mut columns = 0;
-    for ch in line.chars() {
-        match ch {
-            ' ' => columns += 1,
-            '\t' => columns += 4,
-            _ => break,
-        }
-    }
-    columns
-}
-
-struct ListMarker {
-    is_task: bool,
-}
-
-fn list_marker(trimmed: &str) -> Option<ListMarker> {
-    let rest = strip_list_marker(trimmed)?;
-    let is_task = rest.starts_with("[ ]")
-        || rest.starts_with("[x]")
-        || rest.starts_with("[X]")
-        || rest.starts_with("[-]")
-        || rest.starts_with("TODO ")
-        || rest.starts_with("DOING ")
-        || rest.starts_with("DONE ")
-        || rest.starts_with("CANCELED ")
-        || rest.starts_with("CANCELLED ");
-    Some(ListMarker { is_task })
 }
 
 /// Strip a `-`, `*`, `+` or `1.`/`1)` marker and its trailing whitespace.
@@ -530,66 +243,6 @@ pub struct ParsedTask {
     pub status: String,
 }
 
-/// Extract block tasks from prose, ignoring fenced code. Supports markdown
-/// checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords.
-pub(crate) fn legacy_extract_tasks(content: &str) -> Vec<ParsedTask> {
-    let mut tasks = Vec::new();
-    let mut fence: Option<&str> = None;
-
-    for (index, line) in content.lines().enumerate() {
-        let trimmed = line.trim_start();
-
-        if let Some(marker) = fence {
-            if trimmed.starts_with(marker) {
-                fence = None;
-            }
-            continue;
-        }
-        if let Some(marker) = fence_marker(trimmed) {
-            fence = Some(marker);
-            continue;
-        }
-
-        // Any run of whitespace after the bullet counts: the live editor renders
-        // `-  [ ] x` and `-\t[ ] x` as checkboxes too, so indexing must accept
-        // them or a task shows on the page but never in the todo list.
-        let Some(rest) = strip_bullet(trimmed) else {
-            continue;
-        };
-
-        let (status, text) = if let Some(text) = rest.strip_prefix("[ ]") {
-            ("open", text)
-        } else if let Some(text) = rest
-            .strip_prefix("[x]")
-            .or_else(|| rest.strip_prefix("[X]"))
-        {
-            ("done", text)
-        } else if let Some(text) = rest.strip_prefix("[-]") {
-            ("cancelled", text)
-        } else if let Some(text) = keyword_task(rest, "TODO", "open")
-            .or_else(|| keyword_task(rest, "DOING", "doing"))
-            .or_else(|| keyword_task(rest, "DONE", "done"))
-            .or_else(|| keyword_task(rest, "CANCELED", "cancelled"))
-            .or_else(|| keyword_task(rest, "CANCELLED", "cancelled"))
-        {
-            text
-        } else {
-            continue;
-        };
-
-        let text = text.trim();
-        if !text.is_empty() {
-            tasks.push(ParsedTask {
-                line: index + 1,
-                text: text.to_string(),
-                status: status.to_string(),
-            });
-        }
-    }
-
-    tasks
-}
-
 /// Strip a `-`, `*` or `+` bullet and the whitespace that follows it.
 fn strip_bullet(line: &str) -> Option<&str> {
     let mut chars = line.chars();
@@ -614,34 +267,6 @@ fn keyword_task<'a>(
     } else {
         None
     }
-}
-
-/// Extract `[[target]]` / `[[target|label]]` / `[[target#heading]]` links.
-///
-/// Returns `(normalized_target, label)` pairs, deduplicated by target.
-pub(crate) fn legacy_extract_wikilinks(content: &str) -> Vec<(String, String)> {
-    let stripped = strip_code(content);
-    let mut found: Vec<(String, String)> = Vec::new();
-
-    // A wikilink always closes on the same line. Scanning line-by-line keeps a
-    // stray `[[` in prose (e.g. `[[Label] Markdown](url)`) from swallowing the
-    // rest of the document looking for `]]`.
-    for line in stripped.lines() {
-        let mut rest = line;
-
-        while let Some(start) = rest.find("[[") {
-            let after = &rest[start + 2..];
-            let Some(end) = after.find("]]") else { break };
-            let inner = &after[..end];
-            rest = &after[end + 2..];
-
-            if inner.contains(['[', ']']) {
-                continue;
-            }
-            push_wikilink(&mut found, inner);
-        }
-    }
-    found
 }
 
 /// Turn a raw `[[…]]` payload into a `(normalized target, label)` pair.
@@ -681,44 +306,6 @@ fn push_wikilink(found: &mut Vec<(String, String)>, inner: &str) {
 
 fn is_tag_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.')
-}
-
-/// Extract `#inline-tags` from prose. Heading markers (`# Title`) and
-/// `C#`-style sequences are ignored by requiring whitespace before the `#`
-/// and a tag character after it.
-pub(crate) fn legacy_extract_tags(content: &str) -> Vec<String> {
-    let stripped = strip_code(content);
-    let chars: Vec<char> = stripped.chars().collect();
-    let mut tags: Vec<String> = Vec::new();
-    let mut i = 0;
-
-    while i < chars.len() {
-        let starts_tag = chars[i] == '#'
-            && (i == 0
-                || chars[i - 1].is_whitespace()
-                || matches!(chars[i - 1], '(' | '[' | '{' | ',' | '"' | '\''));
-        if !starts_tag {
-            i += 1;
-            continue;
-        }
-
-        let mut j = i + 1;
-        while j < chars.len() && is_tag_char(chars[j]) {
-            j += 1;
-        }
-
-        if j > i + 1 {
-            let tag: String = chars[i + 1..j].iter().collect();
-            let tag = tag.trim_matches(['.', '/']).to_lowercase();
-            if !tag.is_empty() && tag.chars().count() <= 64 && !tags.contains(&tag) {
-                tags.push(tag);
-            }
-            i = j;
-        } else {
-            i += 1;
-        }
-    }
-    tags
 }
 
 /// Normalize a tag coming from an API request or from `#inline` syntax.
@@ -769,94 +356,18 @@ pub struct ParsedContent {
     pub links: Vec<(String, String)>,
 }
 
-/// Which parser derives the index in this process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParserKind {
-    /// The vendored `lutez` AST (server side of the shared parse).
-    Lutez,
-    /// The hand-written line scanners (`OPALNOTE_PARSER=legacy`).
-    Legacy,
-}
-
-/// The parser selected at startup.
-///
-/// `OPALNOTE_PARSER=legacy` forces the hand-written scanners; `lutez` (the
-/// default when the library is linked) uses the shared AST. Selecting `lutez`
-/// on a build without `liblutez.a` falls back to `Legacy` with a warning.
-pub fn parser_kind() -> ParserKind {
-    static KIND: std::sync::OnceLock<ParserKind> = std::sync::OnceLock::new();
-    *KIND.get_or_init(|| {
-        let requested = std::env::var("OPALNOTE_PARSER").unwrap_or_default();
-        let requested = requested.trim();
-        if requested.eq_ignore_ascii_case("legacy") {
-            tracing::info!("markdown parser: legacy hand-written scanners");
-            return ParserKind::Legacy;
-        }
-        #[cfg(lutez_ffi)]
-        {
-            if crate::store::lutez::compatible() {
-                tracing::info!(
-                    version = %crate::store::lutez::version(),
-                    "markdown parser: lutez (shared AST)"
-                );
-                ParserKind::Lutez
-            } else {
-                tracing::warn!(
-                    "lutez linked but its ABI/wire version differs; using the legacy parser"
-                );
-                ParserKind::Legacy
-            }
-        }
-        #[cfg(not(lutez_ffi))]
-        {
-            if requested.eq_ignore_ascii_case("lutez") {
-                tracing::warn!(
-                    "OPALNOTE_PARSER=lutez requested but liblutez.a was not linked; \
-                     using the legacy parser"
-                );
-            }
-            ParserKind::Legacy
-        }
-    })
-}
-
-/// Parser name for logs and diagnostics.
-pub fn parser_name() -> &'static str {
-    match parser_kind() {
-        ParserKind::Lutez => "lutez",
-        ParserKind::Legacy => "legacy",
-    }
-}
-
 /// Parse a note body once, producing every derived index row.
+///
+/// The parse is the shared `lutez` AST (see `doc/lutez-parser.md`). There is no
+/// second implementation to fall back to: a body the parser refuses is logged
+/// and indexes as empty rather than being read by a different grammar.
 pub fn parse_content(body: &str) -> ParsedContent {
-    if parser_kind() == ParserKind::Lutez {
-        if let Some(content) = lutez_ast_parse(body) {
-            return content;
+    match lutez_ast::parse(body) {
+        Some(content) => content,
+        None => {
+            tracing::error!("lutez could not parse a note body; indexing it as empty");
+            ParsedContent::default()
         }
-    }
-    legacy_content(body)
-}
-
-/// Parse through the lutez AST when the library is linked.
-fn lutez_ast_parse(body: &str) -> Option<ParsedContent> {
-    #[cfg(lutez_ffi)]
-    {
-        lutez_ast::parse(body)
-    }
-    #[cfg(not(lutez_ffi))]
-    {
-        let _ = body;
-        None
-    }
-}
-
-fn legacy_content(body: &str) -> ParsedContent {
-    ParsedContent {
-        blocks: legacy_parse_blocks(body),
-        tasks: legacy_extract_tasks(body),
-        tags: legacy_extract_tags(body),
-        links: legacy_extract_wikilinks(body),
     }
 }
 
@@ -1146,7 +657,6 @@ pub fn render_page(body: &str, tags: &[String], existing_raw: &str) -> String {
     }
 }
 
-#[cfg(lutez_ffi)]
 mod lutez_ast {
     //! Adapter from the shared `lutez` AST to OpalNote's derived rows.
     //!
@@ -1165,7 +675,7 @@ mod lutez_ast {
     use crate::store::lutez::{self, Ast};
 
     /// Parse `body` through lutez. `None` means the library refused the input;
-    /// the caller then falls back to the legacy scanners for that note.
+    /// the caller then indexes the note with no derived rows.
     pub(super) fn parse(body: &str) -> Option<ParsedContent> {
         let document = lutez::Document::parse(body)?;
         let ast = document.ast()?;
@@ -1448,6 +958,8 @@ mod lutez_ast {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     #[test]
@@ -1554,29 +1066,18 @@ mod tests {
         assert_eq!(blocks[1].kind, "paragraph");
     }
 
-    /// Corpus harness: compare the shared AST against the hand-written
-    /// scanners on `data/notebooks`. Ignored by default (it needs the local
-    /// data dir); run it with
-    /// `cargo test corpus_parity -- --ignored --nocapture`.
-    #[cfg(lutez_ffi)]
+    /// Server side of `pnpm check:parse`: print the derived rows for every note
+    /// so the script can diff them against the browser's. Ignored by default
+    /// (it needs the local data dir); the script runs it with
+    /// `OPALNOTE_PARITY_DUMP=1`.
     #[test]
-    #[ignore = "needs data/notebooks; run manually"]
-    fn corpus_parity() {
-        use std::collections::BTreeMap;
-        use std::path::Path;
-
+    #[ignore = "needs data/notebooks; run via `pnpm check:parse`"]
+    fn corpus_rows() {
         let root = Path::new("data/notebooks");
         if !root.is_dir() {
             eprintln!("no data/notebooks; skipping");
             return;
         }
-        let mut notes = 0usize;
-        let mut identical = 0usize;
-        let mut classes: BTreeMap<String, usize> = BTreeMap::new();
-        let mut task_diffs = Vec::new();
-        let mut tag_diffs = Vec::new();
-        let mut link_diffs = Vec::new();
-
         let mut files = Vec::new();
         let mut stack = vec![root.to_path_buf()];
         while let Some(dir) = stack.pop() {
@@ -1587,181 +1088,46 @@ mod tests {
                 let path = entry.path();
                 if path.is_dir() {
                     stack.push(path);
-                } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
                     files.push(path);
                 }
             }
         }
         files.sort();
-
         for path in files {
             let Ok(raw) = std::fs::read_to_string(&path) else {
                 continue;
             };
             let body = parse_page(&raw).body;
-            notes += 1;
-
-            let legacy = (
-                legacy_parse_blocks(&body),
-                legacy_extract_tasks(&body),
-                legacy_extract_tags(&body),
-                legacy_extract_wikilinks(&body),
-            );
-            let shared = lutez_ast::parse(&body).expect("lutez parse");
-            let rows = |blocks: &[ParsedBlock]| -> Vec<(String, usize, usize, usize, usize)> {
-                blocks
-                    .iter()
-                    .map(|b| {
-                        (
-                            b.kind.clone(),
-                            b.start_line,
-                            b.end_line,
-                            b.depth,
-                            b.parent_seq,
-                        )
-                    })
-                    .collect()
-            };
-            let same_text = legacy.0.iter().zip(shared.blocks.iter()).all(|(old, new)| {
-                old.kind != new.kind
-                    || old.start_line != new.start_line
-                    || old.end_line != new.end_line
-                    || old.text == new.text
-            });
-            if !same_text {
-                eprintln!("text differs: {}", path.display());
-                for (old, new) in legacy.0.iter().zip(shared.blocks.iter()) {
-                    if old.kind == new.kind
-                        && old.start_line == new.start_line
-                        && old.end_line == new.end_line
-                        && old.text != new.text
-                    {
-                        eprintln!("  legacy text {:?}", old.text);
-                        eprintln!("  lutez  text {:?}", new.text);
-                    }
-                }
-            }
-            let structure = |blocks: &[ParsedBlock]| -> Vec<(String, usize, usize, usize)> {
-                blocks
-                    .iter()
-                    .map(|b| (b.kind.clone(), b.start_line, b.end_line, b.depth))
-                    .collect()
-            };
-            if std::env::var_os("OPALNOTE_PARITY_DUMP").is_some() {
-                let blocks: Vec<String> = shared
-                    .blocks
-                    .iter()
-                    .map(|b| {
-                        format!(
-                            "{}@{}-{}#{}>{}",
-                            b.kind, b.start_line, b.end_line, b.depth, b.parent_seq
-                        )
-                    })
-                    .collect();
-                let tasks: Vec<String> = shared
-                    .tasks
-                    .iter()
-                    .map(|t| format!("{}:{}:{}", t.line, t.status, t.text))
-                    .collect();
-                let links: Vec<String> = shared
-                    .links
-                    .iter()
-                    .map(|(target, _)| target.clone())
-                    .collect();
-                println!(
-                    "{}\t{}\t{}\t{}\t{}",
-                    path.strip_prefix(root).unwrap_or(&path).display(),
-                    blocks.join(" "),
-                    tasks.join(" "),
-                    shared.tags.join(","),
-                    links.join(",")
-                );
-            }
-            if rows(&legacy.0) == rows(&shared.blocks) {
-                identical += 1;
-            } else if structure(&legacy.0) == structure(&shared.blocks) {
-                // Same blocks and ranges; only `parent_seq` moved (the legacy
-                // scanner resets its list stack at a fence).
-                *classes.entry("parent_seq only".to_string()).or_default() += 1;
-            } else {
-                // Group by the first divergent block's kind pair: that is the
-                // class (`paragraph`→`list_item` is the empty-bullet rule, …).
-                let mut class = String::new();
-                for (old, new) in legacy.0.iter().zip(shared.blocks.iter()) {
-                    if (old.kind.as_str(), old.start_line) != (new.kind.as_str(), new.start_line) {
-                        class = format!("{} → {} @{}", old.kind, new.kind, old.start_line);
-                        break;
-                    }
-                }
-                if class.is_empty() {
-                    class = format!("tail: {} vs {} blocks", legacy.0.len(), shared.blocks.len());
-                }
-                if std::env::var_os("OPALNOTE_PARITY_NOTES").is_some() {
-                    eprintln!("note {class}  {}", path.display());
-                }
-                if std::env::var("OPALNOTE_PARITY_DETAIL")
-                    .is_ok_and(|want| path.display().to_string().contains(&want))
-                {
-                    eprintln!("  legacy: {:?}", rows(&legacy.0));
-                    eprintln!("  lutez:  {:?}", rows(&shared.blocks));
-                }
-                *classes.entry(class).or_default() += 1;
-            }
-            let legacy_tasks: Vec<(usize, String, String)> = legacy
-                .1
+            let content = parse_content(&body);
+            let blocks: Vec<String> = content
+                .blocks
                 .iter()
-                .map(|t| (t.line, t.status.clone(), t.text.clone()))
+                .map(|block| {
+                    format!(
+                        "{}@{}-{}#{}>{}",
+                        block.kind, block.start_line, block.end_line, block.depth, block.parent_seq
+                    )
+                })
                 .collect();
-            let shared_tasks: Vec<(usize, String, String)> = shared
+            let tasks: Vec<String> = content
                 .tasks
                 .iter()
-                .map(|t| (t.line, t.status.clone(), t.text.clone()))
+                .map(|task| format!("{}:{}:{}", task.line, task.status, task.text))
                 .collect();
-            if legacy_tasks != shared_tasks {
-                task_diffs.push(format!(
-                    "{}: {:?} vs {:?}",
-                    path.display(),
-                    legacy_tasks,
-                    shared_tasks
-                ));
-            }
-            if legacy.2 != shared.tags {
-                tag_diffs.push(format!(
-                    "{}: {:?} vs {:?}",
-                    path.display(),
-                    legacy.2,
-                    shared.tags
-                ));
-            }
-            if legacy.3 != shared.links {
-                link_diffs.push(format!(
-                    "{}: {:?} vs {:?}",
-                    path.display(),
-                    legacy.3,
-                    shared.links
-                ));
-            }
-        }
-
-        eprintln!("notes: {notes}");
-        eprintln!("identical block sequences: {identical}/{notes}");
-        eprintln!("block diff classes: {}", classes.len());
-        let mut ordered: Vec<(&String, &usize)> = classes.iter().collect();
-        ordered.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-        for (class, count) in ordered {
-            eprintln!("  {count:>3}  {class}");
-        }
-        eprintln!("task diffs: {}", task_diffs.len());
-        for diff in task_diffs.iter().take(10) {
-            eprintln!("  {diff}");
-        }
-        eprintln!("tag diffs: {}", tag_diffs.len());
-        for diff in tag_diffs.iter().take(10) {
-            eprintln!("  {diff}");
-        }
-        eprintln!("link diffs: {}", link_diffs.len());
-        for diff in link_diffs.iter().take(10) {
-            eprintln!("  {diff}");
+            let links: Vec<String> = content
+                .links
+                .iter()
+                .map(|(target, _)| target.clone())
+                .collect();
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                path.strip_prefix(root).unwrap_or(&path).display(),
+                blocks.join(" "),
+                tasks.join(" "),
+                content.tags.join(","),
+                links.join(",")
+            );
         }
     }
 
@@ -1935,9 +1301,8 @@ mod tests {
         assert_ne!(block_hash("some text"), block_hash("some other text"));
     }
 
-    /// The shared AST decides the edge cases the line scanner guessed at. These
-    /// assertions pin the grammar; `doc/blocks.md` §1 describes it.
-    #[cfg(lutez_ffi)]
+    /// The shared AST decides the edge cases the old line scanner guessed at.
+    /// These assertions pin the grammar; `doc/blocks.md` §1 describes it.
     mod shared_parser {
         use super::*;
 
@@ -2059,10 +1424,10 @@ mod tests {
             assert_eq!(content.tags, Vec::<String>::new());
         }
 
-        /// Both parsers must agree on the task set: the AST says which lines are
-        /// list items, the line says which of them are tasks.
+        /// The AST says which lines are list items, the source line says which of
+        /// them are tasks.
         #[test]
-        fn tasks_match_the_legacy_scanner() {
+        fn extracts_the_expected_tasks() {
             let content = concat!(
                 "- [ ] open\n",
                 "  - [x] done\n",
@@ -2076,21 +1441,33 @@ mod tests {
                 "  - [ ] inside code\n",
                 "  ```\n",
             );
-            let legacy = legacy_extract_tasks(content);
             let shared = lutez_ast::parse(content).expect("lutez parse").tasks;
-            assert_eq!(legacy, shared);
-            // open, done, TODO, DOING, DONE, CANCELED.
-            assert_eq!(shared.len(), 6);
+            let rows: Vec<(&str, &str)> = shared
+                .iter()
+                .map(|task| (task.status.as_str(), task.text.as_str()))
+                .collect();
+            // open, done, TODO, DOING, DONE, CANCELED; the ordered item and the
+            // fenced one are not tasks.
+            assert_eq!(
+                rows,
+                vec![
+                    ("open", "open"),
+                    ("done", "done"),
+                    ("open", "keyword"),
+                    ("doing", "wip"),
+                    ("done", "finished"),
+                    ("cancelled", "nope"),
+                ]
+            );
         }
 
-        /// Tags must agree with the legacy scanner except for the documented tag
-        /// grammar differences (see `doc/lutez-parser.md` §6.5).
+        /// Tags follow the shared grammar and never come from code.
         #[test]
-        fn tags_match_the_legacy_scanner_on_ordinary_text() {
+        fn tags_ignore_code_and_hash_sequences() {
             let content = "A #rust note, #datalog and C#.\n```\n#notatag\n```\n\n#after\n";
             assert_eq!(
                 lutez_ast::parse(content).expect("parse").tags,
-                legacy_extract_tags(content)
+                vec!["rust", "datalog", "after"]
             );
         }
     }

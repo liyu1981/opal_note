@@ -42,8 +42,6 @@ pub struct MetaResponse {
     pub api_version: u32,
     pub auth_required: bool,
     pub engine: &'static str,
-    /// Which markdown parser derives the index (`lutez` or `legacy`).
-    pub parser: &'static str,
 }
 
 pub async fn meta(State(state): State<AppState>) -> Json<MetaResponse> {
@@ -56,7 +54,6 @@ pub async fn meta(State(state): State<AppState>) -> Json<MetaResponse> {
         api_version: 1,
         auth_required: state.token.is_some(),
         engine: "mnesticdb",
-        parser: crate::store::markdown::parser_name(),
     })
 }
 

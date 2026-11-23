@@ -7,10 +7,9 @@
 //                                          editor's block/task parser
 //
 // Zig 0.17.0 is pinned by the submodule (see `vendor/lutez/doc/PLAN.md` §12).
-// Set OPALNOTE_SKIP_LUTEZ=1 to skip the build; the server then compiles with the
-// legacy hand-written parser and the client keeps its legacy mirrors. When the
-// submodule is absent but the artifacts exist (the Docker image copies them from
-// a build stage), the script is a no-op.
+// The server links this library and the browser runs the same parse, so the
+// build is required; when the submodule is absent but the artifacts exist (the
+// Docker image copies them from a build stage), the script is a no-op.
 //
 // The archive is built for **baseline** CPU features, not `native`. Zig's default
 // target is the host machine, so a CI runner's newer CPU (AVX-512 on x86,
@@ -103,11 +102,6 @@ function built() {
 function publishWasm() {
   mkdirSync(path.dirname(WASM_PUBLIC), { recursive: true });
   copyFileSync(WASM_OUT, WASM_PUBLIC);
-}
-
-if (process.env.OPALNOTE_SKIP_LUTEZ === "1") {
-  console.log("  lutez: skipped (OPALNOTE_SKIP_LUTEZ=1)");
-  process.exit(0);
 }
 
 if (!existsSync(path.join(LUTEZ, "build.zig"))) {

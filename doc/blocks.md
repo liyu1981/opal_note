@@ -71,8 +71,7 @@ part of any block), plus `kind`, `depth` and `parent`.
   is derived from the `lutez` CommonMark/GFM AST — the same parse the browser gets
   from `lutez.wasm` — by the adapters in `src/store/markdown.rs`
   (`mod lutez_ast`) and `web/src/lib/lutez/parse.ts`. They must be changed
-  together and re-checked with `cargo test corpus_parity -- --ignored
-  --nocapture`. Concretely:
+  together and re-checked with `pnpm check:parse`. Concretely:
   - one block per **list item at any depth** (a child item is its own block and
     does not overlap its parent), plus one per top-level paragraph, heading,
     fenced/indented code block, blockquote, table, thematic break, HTML block and

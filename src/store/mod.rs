@@ -5,7 +5,6 @@
 //! Writes go to disk first, then the index is refreshed.
 
 pub mod files;
-#[cfg(lutez_ffi)]
 pub mod lutez;
 pub mod markdown;
 pub mod model;

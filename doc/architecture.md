@@ -171,9 +171,9 @@ compiled for **baseline CPU features** (`-Dcpu=baseline`), never the host CPU:
 Zig's default bakes the build machine's instructions (AVX-512, `dotprod`,
 `i8mm`, `sve`, …) into the archive, and a binary built on a CI runner then dies
 with `Illegal instruction (core dumped)` on an older server. Build for the
-running machine only with `OPALNOTE_LUTEZ_CPU=native`. Without Zig the build prints a warning and uses the legacy
-hand-written scanners (`OPALNOTE_SKIP_LUTEZ=1` makes that explicit); the server
-serves `lutez.wasm` from the app root, so the browser falls back the same way.
+running machine only with `OPALNOTE_LUTEZ_CPU=native`. There is no fallback
+parser: `cargo build` fails with an actionable message when the archive is
+missing, and the server serves `lutez.wasm` from the app root.
 
 Debug builds deliberately **do not embed** `web/dist`, `builtin/plugins` or
 `builtin/backgrounds`.
@@ -400,8 +400,8 @@ Build/run switches that are not CLI flags:
 
 | Env | Meaning |
 | --- | --- |
-| `OPALNOTE_PARSER=legacy` | Index a notebook with the hand-written markdown scanners instead of the shared `lutez` AST (debugging and one-release fallback) |
-| `OPALNOTE_SKIP_LUTEZ=1` | Build without linking `liblutez.a`; the server then has only `legacy` |
+| `OPALNOTE_LUTEZ_CPU` | `baseline` (default) or `native` for `scripts/build-lutez.mjs` |
+| `OPALNOTE_ZIG` | Zig executable the parser build should use |
 | `OPALNOTE_SKIP_WEB_BUILD=1` | Compile a release binary without building `web/dist` |
 
 Logging uses `tracing`: `RUST_LOG=opalnote=debug,tower_http=info`.
@@ -459,9 +459,9 @@ Mulan PSL v2). The server links `liblutez.a` and decodes the AST in
 `src/store/lutez.rs`; the browser compiles `/lutez.wasm` before its first render.
 `src/store/markdown.rs` (`mod lutez_ast`) and `web/src/lib/lutez/parse.ts` are the
 two adapters that turn the AST into blocks, tasks, inline tags and wikilinks.
-They are deliberately identical: `cargo test corpus_parity -- --ignored` compares
-them (and the hand-written scanners) note by note on `data/notebooks`, and
-`pnpm check:spans` proves the client's byte→UTF-16 mapping for every AST node.
+They are deliberately identical: `pnpm check:parse` compares the server's rows
+with the browser's for every note in `data/notebooks`, and `pnpm check:spans`
+proves the client's byte→UTF-16 mapping for every AST node.
 Spans come in three spaces: raw bytes (line numbers, index rows, hashes),
 normalized bytes with CRLF/CR folded to LF (the editor's document), and UTF-16
 units (CodeMirror). `web/src/lib/lutez/spans.ts` owns the third conversion.
@@ -470,9 +470,8 @@ The dialect is a set of opt-in presets: inline/display math, `[[wikilinks]]`,
 `#tags`, and Logseq `TODO`/`DOING` keywords (the `DONE`/`CANCELED` forms are a
 small post-pass). Frontmatter is split before parsing — `render_page` rewrites
 just the `tags:` block — and `key::`/`^block-id` stay off until blocks R2.
-`GET /meta` reports the live parser; `OPALNOTE_PARSER=legacy` switches back to the
-hand-written scanners for one start, and a build without `liblutez.a` does the
-same automatically.
+`GET /meta` reports the engine (the parser is no longer switchable: one parser,
+one grammar).
 
 ### Editor
 

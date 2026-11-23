@@ -7,7 +7,7 @@
 //   server: `mod lutez_ast` in `src/store/markdown.rs` (FFI, `liblutez.a`)
 //   client: `web/src/lib/lutez/parse.ts`            (WASM, `lutez.wasm`)
 //
-// This script dumps the server's rows from the ignored `corpus_parity` test,
+// This script dumps the server's rows from the ignored `corpus_rows` test,
 // bundles the client adapter with esbuild, runs it over the same notes, and
 // diffs the two. A non-zero diff means the editor would draw a different block
 // list than the one the index stores.
@@ -38,7 +38,7 @@ if (!existsSync(NOTES)) {
 
 const server = spawnSync(
   "cargo",
-  ["test", "--bin", "opalnote", "corpus_parity", "--", "--ignored", "--nocapture"],
+  ["test", "--bin", "opalnote", "corpus_rows", "--", "--ignored", "--nocapture"],
   {
     cwd: ROOT,
     encoding: "utf8",
