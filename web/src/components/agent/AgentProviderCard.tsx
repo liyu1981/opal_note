@@ -397,6 +397,10 @@ export function AgentUnlockDialog() {
 
   useEffect(() => {
     setPassword("");
+    // Re-read the configuration when the prompt opens: the envelope may have
+    // been re-saved from another tab or device, and the password must be checked
+    // against the one the server will actually decrypt with.
+    if (prompt) void refreshProvider().catch(() => undefined);
   }, [prompt]);
 
   useEffect(() => {

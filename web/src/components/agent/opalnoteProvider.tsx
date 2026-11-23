@@ -124,9 +124,11 @@ function buildFetch(): typeof fetch {
     });
     if (response.status === 401 && (await isAgentLocked(response))) {
       // The stored envelope no longer matches this key (re-saved or removed
-      // elsewhere): forget it and let the UI ask again.
+      // elsewhere): forget it, re-read the configuration so the prompt asks for
+      // the password of the *current* envelope, and let the UI ask again.
       lockAgentProvider();
       onLocked?.();
+      void refreshProvider().catch(() => undefined);
     }
     return response;
   };
@@ -298,30 +300,62 @@ export function requestUnlockPrompt(): void {
   requestAgentUnlock();
 }
 
+/** How long a blocked call waits for the password before giving up. */
+const UNLOCK_WAIT_MS = 5 * 60_000;
+
+/**
+ * Wait for the unlock dialog to answer: `true` once a derived key exists,
+ * `false` when the prompt is dismissed (or the wait times out).
+ */
+function waitForUnlock(timeoutMs = UNLOCK_WAIT_MS): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (unlocked: boolean) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(unlocked);
+    };
+    const unsubscribe = store.sub(agentUnlockAtom, () => {
+      const state = store.get(agentUnlockAtom);
+      if (state.key) finish(true);
+      else if (!state.prompt) finish(false);
+    });
+    timer = setTimeout(() => finish(false), timeoutMs);
+    if (store.get(agentUnlockAtom).key) finish(true);
+  });
+}
+
 /**
  * Decide one agent call.
  *
  * Only the OpalNote provider is gated — ReAgent's own providers never need our
  * password. A keyless endpoint and an unlocked provider pass; a stored key with
- * no live derived key stops the call *before* ReAgent appends the message, so
- * the prompt stays in the composer and the unlock dialog opens.
+ * no live derived key opens the password dialog and **awaits it**, so one Send
+ * both unlocks and sends. Cancelling (or a five-minute wait) lets ReAgent report
+ * that the message was not sent, with the text still in the composer.
  *
  * Pure on purpose: the React hook below is a thin wrapper, and the rule can be
  * exercised without a DOM.
  */
-export function opalnoteCallDecision(
+export async function opalnoteCallDecision(
   context: ReAgentCallContext,
-): ReAgentCallDecision {
+): Promise<ReAgentCallDecision> {
   if (context.model?.providerId !== OPALNOTE_PROVIDER_ID) return true;
   expireUnlockIfNeeded();
   const info = store.get(agentInfoAtom);
   if (!storedEnvelope(info)) return true; // keyless local endpoint
   if (store.get(agentUnlockAtom).key) return true;
+  // Keep the message in the composer and wait for the password: unlocking and
+  // sending is one action for the user, not two.
   requestAgentUnlock();
+  if (await waitForUnlock()) return true;
   return {
     ok: false,
     message:
-      "The OpalNote provider is locked — enter its password to send this.",
+      "The OpalNote provider stays locked — unlock it to send this message.",
   };
 }
 

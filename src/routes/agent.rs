@@ -174,8 +174,19 @@ pub async fn proxy(
     }
     let api_key = match decrypt_for_request(&config, &headers) {
         Ok(key) => key,
-        Err(message) => return Err(AppError::AgentLocked(message)),
+        Err(message) => {
+            // A locked proxy is the one failure a user can fix in the UI, so say
+            // plainly which request needed a key and was turned away.
+            tracing::warn!(path = %path, %message, "agent request rejected");
+            return Err(AppError::AgentLocked(message));
+        }
     };
+    tracing::info!(
+        method = %method,
+        path = %path,
+        keyed = api_key.is_some(),
+        "agent proxy request"
+    );
 
     let payload = if body.is_empty() {
         None
@@ -227,6 +238,8 @@ pub async fn proxy(
     let (status, content_type) = meta_rx
         .await
         .map_err(|_| AppError::Internal(anyhow::anyhow!("agent upstream task ended early")))?;
+    // The matching `agent proxy request` line above carries the path.
+    tracing::info!(status, "agent upstream response");
     let mut response = Response::new(Body::from_stream(ReceiverStream::new(chunk_rx)));
     *response.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
     let headers = response.headers_mut();
