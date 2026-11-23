@@ -8,20 +8,11 @@
  * module is ready or if it cannot load at all.
  */
 
+import type { BlockKind } from "./blockKind";
 import { lutezContent, lutezReady } from "./lutez";
-import { closesFence, fenceOpener } from "./markdown";
+import { closesFence, fenceOpener, headingLevel } from "./markdown";
 
-export type BlockKind =
-  | "paragraph"
-  | "heading"
-  | "list_item"
-  | "task"
-  | "code"
-  | "quote"
-  | "table"
-  | "hr"
-  | "math"
-  | "html";
+export type { BlockKind } from "./blockKind";
 
 /** One-glyph marker for a block kind, used by block rows in search results. */
 export const BLOCK_KIND_GLYPH: Record<BlockKind, string> = {
@@ -85,12 +76,6 @@ function isThematicBreak(line: string): boolean {
   if (!marker || !"-*_".includes(marker)) return false;
   const compact = line.slice(1).replace(/\s+/gu, "");
   return compact.length >= 2 && [...compact].every((ch) => ch === marker);
-}
-
-function headingLevel(line: string): number | null {
-  const hashes = /^#+/u.exec(line)?.[0].length ?? 0;
-  if (hashes === 0 || hashes > 6) return null;
-  return /\s/u.test(line[hashes] ?? "") ? hashes : null;
 }
 
 type ListMarker = { isTask: boolean };
@@ -181,12 +166,12 @@ export function parseBlocks(body: string): NoteBlock[] {
     const text =
       kind === "hr"
         ? ""
-        : blockText(lines.slice(startLine - 1, endLine), kind as BlockKind);
+        : blockText(lines.slice(startLine - 1, endLine), kind);
     return {
       seq: index + 1,
       startLine,
       endLine,
-      kind: kind as BlockKind,
+      kind,
       depth,
       parentSeq,
       text,
@@ -195,7 +180,7 @@ export function parseBlocks(body: string): NoteBlock[] {
   });
 }
 
-/** Legacy line-based scanner (see `legacyParseBlocks` in the header comment). */
+/** Legacy line-based scanner: the fallback until (or unless) the AST loads. */
 function legacyParseBlocks(body: string): NoteBlock[] {
   const lines = body.split("\n");
   const blocks: NoteBlock[] = [];
@@ -368,10 +353,11 @@ function legacyParseBlocks(body: string): NoteBlock[] {
 /**
  * The innermost block containing a 1-based line.
  *
- * Block ranges can nest (an item's quote, an ordered sub-list), so the smallest
- * range wins: clicking a nested line must select the child, not its parent.
+ * Block ranges can nest (a quote inside an item, an ordered sub-list), so the
+ * smallest range wins: a click or drop on a nested line must target the child,
+ * not its parent.
  */
-export function blockAtLine(
+export function innermostBlockAt(
   blocks: NoteBlock[],
   line: number,
 ): NoteBlock | null {

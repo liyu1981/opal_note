@@ -1042,7 +1042,7 @@ from one `lutez` AST per body — the same parser the browser compiles from
 longer swallow what follows it on one side but not the other. The editor and the
 journal cards compare
 `taskSignature(content)` before/after saving
-(`web/src/lib/tasks.ts` mirrors `extract_tasks`, including its tolerance for any
+(`web/src/lib/tasks.ts` reads the same AST, including its tolerance for any
 whitespace run after the bullet — the editor draws `-  [ ] x` and `-\t[ ] x` as
 checkboxes, so the server must index them) and bump `tasksRevisionAtom` when the
 set moved, including from the flush that runs when a card is unmounted. The todo

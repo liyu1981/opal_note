@@ -301,10 +301,6 @@ export const pendingViewFocusAtom = atom<ViewFocusRequest | null>(null);
 /** Bumped after a text asset is saved so live previews re-mount their viewers. */
 export const assetRevisionAtom = atom(0);
 
-export const refreshAssetsAtom = atom(null, (_get, set) => {
-  set(assetRevisionAtom, (revision) => revision + 1);
-});
-
 /** Source pane visibility in the diagram lightbox; persisted per browser. */
 export const diagramEditorOpenAtom = atomWithStorage<boolean>(
   "opalnote.diagram-editor-open",

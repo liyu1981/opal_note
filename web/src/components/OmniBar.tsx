@@ -28,6 +28,7 @@ import {
   omniQueryAtom,
 } from "../state/atoms";
 import { IconCalendar, IconFile, IconSearch, IconTag, IconX } from "./Icons";
+import { escapeRegExp } from "../lib/text";
 
 /** Block rows shown under the note rows; one note cannot flood the list. */
 const BLOCK_RESULT_LIMIT = 20;
@@ -568,9 +569,6 @@ function searchTerms(query: string): string[] {
   ].sort((left, right) => right.length - left.length);
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function Highlight({ text, terms }: { text: string; terms: string[] }) {
   if (terms.length === 0) return <>{text}</>;

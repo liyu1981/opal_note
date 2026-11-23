@@ -22,6 +22,7 @@ use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+#[cfg(debug_assertions)]
 use crate::store::files;
 use crate::store::Store;
 

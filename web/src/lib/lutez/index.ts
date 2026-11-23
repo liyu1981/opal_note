@@ -7,10 +7,7 @@
  * window before the module loads (or if it cannot load at all).
  */
 import { fetchLutezEngine, type LutezEngine } from "./glue";
-import { astTags, astWikilinks, parseAstContent, type AstContent } from "./parse";
-
-export type { AstBlock, AstBlockKind, AstContent, AstTask } from "./parse";
-export { normalizeTag } from "./parse";
+import { parseAstContent, type AstContent } from "./parse";
 
 let engine: LutezEngine | null = null;
 let loadFailed = false;
@@ -47,14 +44,3 @@ export function lutezContent(body: string): AstContent | null {
   return engine.withAst(body, (bytes) => parseAstContent(bytes, body));
 }
 
-/** Inline `#tags` for a note body, or `null` before the parser is ready. */
-export function lutezTags(body: string): string[] | null {
-  if (!engine) return null;
-  return engine.withAst(body, (bytes) => astTags(bytes));
-}
-
-/** Raw `[[wikilink]]` payloads, or `null` before the parser is ready. */
-export function lutezWikilinks(body: string): string[] | null {
-  if (!engine) return null;
-  return engine.withAst(body, (bytes) => astWikilinks(bytes));
-}

@@ -13,9 +13,9 @@
 //! When the static library is missing at build time the module is not compiled
 //! (see `build.rs`), and `markdown.rs` keeps using the legacy scanners.
 //!
-//! The node/kind/flag vocabulary below mirrors `include/lutez.h` and is kept
-//! complete on purpose, so a future preset or block kind is a one-line change.
-#![allow(dead_code)]
+//! Only the node types, extension kinds and preset bits OpalNote reads are
+//! named here; `include/lutez.h` is the full vocabulary and the tests below pin
+//! the values we depend on.
 
 use std::ffi::c_char;
 
@@ -25,11 +25,9 @@ pub const ABI_VERSION: u32 = 3;
 pub const WIRE_VERSION: u32 = 2;
 
 /// `LUTEZ_EXT_*` bits, matching `include/lutez.h`.
-pub const EXT_FRONTMATTER: u32 = 1 << 0;
 pub const EXT_MATH: u32 = 1 << 1;
 pub const EXT_WIKILINKS: u32 = 1 << 2;
 pub const EXT_TAGS: u32 = 1 << 3;
-pub const EXT_OUTLINER_BLOCKS: u32 = 1 << 4;
 pub const EXT_OUTLINER_KEYWORDS: u32 = 1 << 5;
 
 /// The presets OpalNote parses with.
@@ -49,9 +47,7 @@ pub const LIST: u16 = 7;
 pub const LIST_ITEM: u16 = 8;
 pub const HTML_BLOCK: u16 = 9;
 pub const CODE_BLOCK: u16 = 11;
-pub const CODE_BLOCK_FENCE_OPEN_MARKER: u16 = 12;
 pub const LINK_REF_DEF_BLOCK: u16 = 45;
-pub const TASK_LIST_ITEM_MARKER: u16 = 100;
 pub const TABLE: u16 = 106;
 pub const BLOCK_EXTENSION: u16 = 500;
 pub const INLINE_EXTENSION: u16 = 501;
@@ -60,13 +56,11 @@ pub const INLINE_EXTENSION: u16 = 501;
 pub const EXT_KIND_MATH: u32 = 1;
 pub const EXT_KIND_WIKILINK: u32 = 2;
 pub const EXT_KIND_TAG: u32 = 3;
-pub const EXT_KIND_FRONTMATTER: u32 = 4;
-pub const EXT_KIND_LOGSEQ_PROPERTY: u32 = 5;
-pub const EXT_KIND_OBSIDIAN_BLOCK_ID: u32 = 6;
+/// `TODO`/`DOING` (kind 7). The adapter reads a task's marker from its source
+/// line (it needs `DONE`/`CANCELED`, which the preset does not emit); the value
+/// is pinned here so an upstream reshuffle fails a test instead of drifting.
+#[allow(dead_code)]
 pub const EXT_KIND_KEYWORD: u32 = 7;
-
-/// Math ext flags: bit 0 display (`$$…$$`), bit 1 fenced block.
-pub const EXT_FLAG_DISPLAY_MATH: u16 = 1 << 0;
 
 pub const NULL_NODE: u32 = 0xffff_ffff;
 
@@ -208,7 +202,6 @@ pub struct Node {
     pub kind: u16,
     /// Flags: bit 0 = token lives in the pool, bit 8 = span derived.
     pub flags: u16,
-    pub parent: u32,
     pub first_child: u32,
     pub next: u32,
     tok_ref: u32,
@@ -218,14 +211,6 @@ pub struct Node {
     pub raw_end: u32,
     /// Extension kind for types 500/501, else -1.
     pub ext_kind: i32,
-    pub ext_flags: u16,
-}
-
-impl Node {
-    /// False when the node was synthesized (zero-width, no source bytes).
-    pub fn is_derived(&self) -> bool {
-        self.flags & (1 << 8) != 0
-    }
 }
 
 /// A borrowed, validated view of one AST buffer.
@@ -273,10 +258,6 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn node_count(&self) -> usize {
-        self.node_count
-    }
-
     /// The node record at `index`, or `None` when the index is out of range.
     pub fn node(&self, index: u32) -> Option<Node> {
         let index = index as usize;
@@ -290,18 +271,17 @@ impl<'a> Ast<'a> {
         let tok_len = u32_at(self.bytes, base + 28)?;
         let ext_ref = u32_at(self.bytes, base + 48)?;
         let ext_len = u32_at(self.bytes, base + 52)?;
-        let (ext_kind, ext_flags) = if ext_ref == NULL_NODE || ext_len == 0 {
-            (-1, 0)
+        let ext_kind = if ext_ref == NULL_NODE || ext_len == 0 {
+            -1
         } else {
             let offset = self.extras_off + ext_ref as usize;
-            let kind = u32_at(self.bytes, offset).map(|k| k as i32).unwrap_or(-1);
-            let flags = u16_at(self.bytes, offset + 4).unwrap_or(0);
-            (kind, flags)
+            u32_at(self.bytes, offset)
+                .map(|kind| kind as i32)
+                .unwrap_or(-1)
         };
         Some(Node {
             kind,
             flags,
-            parent: u32_at(self.bytes, base + 4)?,
             first_child: u32_at(self.bytes, base + 8)?,
             next: u32_at(self.bytes, base + 20)?,
             tok_ref,
@@ -309,7 +289,6 @@ impl<'a> Ast<'a> {
             raw_start: u32_at(self.bytes, base + 40)?,
             raw_end: u32_at(self.bytes, base + 44)?,
             ext_kind,
-            ext_flags,
         })
     }
 
@@ -344,5 +323,71 @@ impl<'a> Ast<'a> {
             }
         }
         rec(self, 0, &mut visit);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn links_the_abi_and_presets_we_decode() {
+        assert!(
+            compatible(),
+            "liblutez.a must speak ABI {ABI_VERSION} and wire {WIRE_VERSION}"
+        );
+        // Frontmatter and outliner blocks stay off (see `doc/lutez-parser.md`).
+        assert_eq!(
+            PRESETS,
+            EXT_MATH | EXT_WIKILINKS | EXT_TAGS | EXT_OUTLINER_KEYWORDS
+        );
+    }
+
+    #[test]
+    fn reads_spans_and_extension_nodes() {
+        // A Logseq-shaped line exercising every preset that is on.
+        let body = "- TODO buy #tag [[Page|alias]] $x$\n";
+        let document = Document::parse(body).expect("lutez parse");
+        let ast = document.ast().expect("wire ast");
+
+        let root = ast.node(0).expect("document node");
+        assert_eq!(root.kind, DOCUMENT);
+        assert_eq!((root.raw_start, root.raw_end), (0, body.len() as u32));
+
+        let mut extensions = Vec::new();
+        let mut list_items = 0;
+        ast.walk(|node| match node.kind {
+            LIST_ITEM => list_items += 1,
+            INLINE_EXTENSION => {
+                extensions.push((node.ext_kind, ast.token(node).to_string()));
+                // The span covers the marker: `#tag` starts at its `#`.
+                if node.ext_kind == EXT_KIND_TAG as i32 {
+                    assert_eq!(
+                        &body[node.raw_start as usize..node.raw_end as usize],
+                        "#tag"
+                    );
+                }
+            }
+            _ => {}
+        });
+        assert_eq!(list_items, 1);
+        assert_eq!(
+            extensions,
+            vec![
+                (EXT_KIND_KEYWORD as i32, "TODO".to_string()),
+                (EXT_KIND_TAG as i32, "tag".to_string()),
+                (EXT_KIND_WIKILINK as i32, "Page|alias".to_string()),
+                (EXT_KIND_MATH as i32, "x".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_body_is_one_zero_width_node() {
+        let document = Document::parse("").expect("lutez parse");
+        let ast = document.ast().expect("wire ast");
+        let root = ast.node(0).expect("document node");
+        assert!(ast.node(1).is_none(), "an empty body is a single node");
+        assert_eq!((root.kind, root.raw_start, root.raw_end), (DOCUMENT, 0, 0));
     }
 }

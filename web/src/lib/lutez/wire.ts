@@ -13,7 +13,8 @@
 
 const HEADER_LEN = 40;
 const NODE_STRIDE_MIN = 56;
-const NULL_NODE = 0xffffffff;
+/** Wire sentinel for an absent parent/child/sibling/token/ext blob. */
+export const NULL_NODE = 0xffffffff;
 
 /** Node types (`include/lutez.h` / `doc/AST_SCHEMA.md`). */
 export const NODE = {
@@ -56,16 +57,11 @@ export type WireNode = {
   rawEnd: number;
   /** Extension kind for `*Extension` nodes, else -1. */
   extKind: number;
-  extFlags: number;
-  /** Source payload for an extension node (without its delimiters). */
+  /**
+   * Payload of an extension node with its delimiters stripped (`TODO`, `tag`,
+   * `Page|alias`, `x`). Empty for every other node: text tokens are never read.
+   */
   token: string;
-};
-
-export type WireAst = {
-  bytes: Uint8Array;
-  nodes: WireNode[];
-  /** Children of `index`, in document order. */
-  children(index: number): WireNode[];
 };
 
 function align8(value: number): number {
@@ -89,7 +85,7 @@ function readU32(bytes: Uint8Array, offset: number): number {
 const MAGIC = [76, 85, 84, 69, 65, 83, 84, 49]; // "LUTEAST1"
 
 /** Decode a wire-format-2 AST. `null` means the bytes are not an AST v2. */
-export function decodeAst(bytes: Uint8Array): WireAst | null {
+export function decodeAst(bytes: Uint8Array): WireNode[] | null {
   if (bytes.length < HEADER_LEN) return null;
   for (let index = 0; index < MAGIC.length; index += 1) {
     if (bytes[index] !== MAGIC[index]) return null;
@@ -119,20 +115,19 @@ export function decodeAst(bytes: Uint8Array): WireAst | null {
     const tokLen = readU32(bytes, base + 28);
     const extRef = readU32(bytes, base + 48);
     const extLenHere = readU32(bytes, base + 52);
+    let extKind = -1;
+    if (extRef !== NULL_NODE && extLenHere > 0) {
+      const offset = extrasOff + extRef;
+      if (offset + 4 <= bytes.length) extKind = readU32(bytes, offset) | 0;
+    }
+    // Wire v2 keeps every token in the pool (flags bit 0 set). Only extension
+    // payloads are read; decoding every text node would allocate per keystroke.
     let token = "";
-    // Wire v2 keeps every token in the pool (flags bit 0 set).
-    if (tokRef !== NULL_NODE && tokLen > 0 && (flags & 1) !== 0) {
+    if (extKind >= 0 && tokRef !== NULL_NODE && tokLen > 0 && (flags & 1) !== 0) {
       const start = poolOff + tokRef;
       if (start + tokLen <= bytes.length) {
         token = decoder.decode(bytes.subarray(start, start + tokLen));
       }
-    }
-    let extKind = -1;
-    let extFlags = 0;
-    if (extRef !== NULL_NODE && extLenHere > 0) {
-      const offset = extrasOff + extRef;
-      if (offset + 4 <= bytes.length) extKind = readU32(bytes, offset) | 0;
-      if (offset + 6 <= bytes.length) extFlags = readU16(bytes, offset + 4);
     }
     nodes[index] = {
       kind: readU16(bytes, base),
@@ -143,45 +138,28 @@ export function decodeAst(bytes: Uint8Array): WireAst | null {
       rawStart: readU32(bytes, base + 40),
       rawEnd: readU32(bytes, base + 44),
       extKind,
-      extFlags,
       token,
     };
   }
 
-  return {
-    bytes,
-    nodes,
-    children(index: number): WireNode[] {
-      const parent = nodes[index];
-      if (!parent) return [];
-      const out: WireNode[] = [];
-      let child = parent.firstChild;
-      let guard = 0;
-      while (child !== NULL_NODE && child < nodes.length && guard < nodes.length) {
-        out.push(nodes[child]!);
-        child = nodes[child]!.next;
-        guard += 1;
-      }
-      return out;
-    },
-  };
+  return nodes;
 }
 
 /** Depth-first walk in document order. */
 export function walkAst(
-  ast: WireAst,
-  visit: (node: WireNode, index: number) => void,
+  nodes: WireNode[],
+  visit: (node: WireNode) => void,
 ): void {
-  const guardLimit = ast.nodes.length + 1;
+  const guardLimit = nodes.length + 1;
   const rec = (index: number) => {
-    const node = ast.nodes[index];
+    const node = nodes[index];
     if (!node) return;
-    visit(node, index);
+    visit(node);
     let child = node.firstChild;
     let guard = 0;
-    while (child !== NULL_NODE && child < ast.nodes.length && guard < guardLimit) {
+    while (child !== NULL_NODE && child < nodes.length && guard < guardLimit) {
       rec(child);
-      child = ast.nodes[child]?.next ?? NULL_NODE;
+      child = nodes[child]?.next ?? NULL_NODE;
       guard += 1;
     }
   };

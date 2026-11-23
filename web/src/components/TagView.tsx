@@ -26,6 +26,7 @@ import {
 import { IconCalendar, IconFile } from "./Icons";
 import { JournalCard, type JournalCardHandle } from "./JournalCard";
 import { ListFilter } from "./ListFilter";
+import { escapeRegExp } from "../lib/text";
 
 type TagPage = {
   page: PageOverview;
@@ -407,9 +408,6 @@ function toJournalPage(item: TagPage, content: string): JournalPage {
   };
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function findTaggedBlock(content: string, tag: string): TagBlock | null {
   const lines = content.split("\n");

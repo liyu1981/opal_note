@@ -20,8 +20,9 @@ both runtimes now derive blocks, tasks, tags and wikilinks from its AST:
 | Parity harness | `pnpm check:parse` (server vs browser) and `cargo test corpus_parity -- --ignored --nocapture` (AST vs the legacy scanners) |
 
 **Still open:** P3 (re-target `livePreview.ts` from per-line regexes to AST
-ranges), P4 (delete `parse_blocks`/`extract_*` and the client mirrors — they are
-the fallback today), `outlinerBlocks` (`key::`, `^block-id`) until blocks R2.
+ranges), P4 (delete the `legacy_*` scanners in `src/store/markdown.rs` and the
+client fallbacks — they are the safety net today), `outlinerBlocks` (`key::`,
+`^block-id`) until blocks R2.
 `OPALNOTE_PARSER=legacy` and a missing `liblutez.a` both fall back to the legacy
 scanners; `GET /meta` reports `parser: "lutez" | "legacy"`.
 
@@ -78,7 +79,7 @@ What is still ours to do:
 - **`TODO`/`DOING` only.** The preset does not recognise `DONE`, `CANCELED`,
   `CANCELLED`, and it fires on *any* paragraph that starts with the keyword (a plain
   top-level paragraph, an ordered item, a quote item, a non-first paragraph of an
-  item), not just the first paragraph of a `-`/`*`/`+` bullet. Our `extract_tasks`
+  item), not just the first paragraph of a `-`/`*`/`+` bullet. `task_row`
   requires a bullet and maps five keywords. Adapter-side scoping plus a tiny post-pass
   closes the gap; asking upstream to widen the keyword set is the alternative (§6.8).
 - **Tag grammar** now matches our `)` boundary (the one corpus diff, and it goes in
@@ -185,14 +186,14 @@ Math flags: inline `$x$` → 0, same-line `$$y$$` → 1 (`display_math`), fenced
 | Frontmatter split + tags block rewrite | `split_frontmatter`, `render_page` | available (kind 4, payload **without** fences, fires only at document start) | we keep pre-splitting and parse the body (the editor never shows frontmatter), so this preset stays off; `render_page` unchanged |
 | BOM handling | `parse_page` strips `\uFEFF` | **resolved**: `strip_bom` (default on) drops it; verified `\uFEFF- a\n- b\n` → 2-item list, blocks starting at raw 3 | set the option explicitly in the FFI so a NULL opts cannot change behaviour |
 | Empty body | 4 of 195 corpus notes are frontmatter-only | **resolved**: `parse("")` returns a one-node document spanning `[0,0)` with a 1-segment source map | none |
-| GFM task lists | `extract_tasks` | `NodeTaskListItemMarker` + marker byte; **195/195 notes agree on line numbers** | adapter |
-| Logseq keywords | `extract_tasks` | **preset exists but partial**: kind 7 for `TODO`/`DOING` only, any paragraph start, no bullet scoping | adapter guard + post-pass for `DONE`/`CANCELED`/`CANCELLED` (§5.4) |
-| Bullet fences (`- ``` `, `  - ``` `) | `parse_blocks`, live preview | correct CommonMark: `ListItem > CodeBlock` | decide whether to adopt nesting (§5.2) |
-| 4-space indented code | `parse_blocks` (treats it as prose) | `NodeCodeBlock` (indented), no fence needed | decide whether to adopt (§5.2) |
+| GFM task lists | `legacy_extract_tasks` | `NodeTaskListItemMarker` + marker byte; **195/195 notes agree on line numbers** | adapter |
+| Logseq keywords | `legacy_extract_tasks` | **preset exists but partial**: kind 7 for `TODO`/`DOING` only, any paragraph start, no bullet scoping | adapter guard + post-pass for `DONE`/`CANCELED`/`CANCELLED` (§5.4) |
+| Bullet fences (`- ``` `, `  - ``` `) | `legacy_parse_blocks`, live preview | correct CommonMark: `ListItem > CodeBlock` | decide whether to adopt nesting (§5.2) |
+| 4-space indented code | `legacy_parse_blocks` (treats it as prose) | `NodeCodeBlock` (indented), no fence needed | decide whether to adopt (§5.2) |
 | Inline `#tags` | `extract_tags`, tag view, completion | **done**: kind 3, payload without `#`, span includes `#`; rule tightened in `a8a81bb` | enable `LUTEZ_EXT_TAGS`; settle two grammar differences (§6.5) |
 | `$$math$$`, `$x$` | KaTeX in the editor | **done**: kind 1, flags 0/1/3; `$5 and $10` stays prose | enable `LUTEZ_EXT_MATH`; keep KaTeX `trust: false` |
 | `[[wikilinks]]` | links, backlinks, completion | **done**: kind 2, payload raw including `\|` | enable `LUTEZ_EXT_WIKILINKS`; split target/alias in our adapter |
-| Blocks (kind/depth/parent/text/hash) | `parse_blocks`, handles/fold/drag | structure + spans exist | adapter; ranges come from spans |
+| Blocks (kind/depth/parent/text/hash) | `legacy_parse_blocks`, handles/fold/drag | structure + spans exist | adapter; ranges come from spans |
 | Summary / excerpts | `summarize` | text nodes carry the text | small walker |
 | Rendering | CodeMirror decorations | out of scope by design (fine — we render) | P3 re-target of `livePreview` |
 | Incremental parse | per-keystroke decorations | full reparse per call | measure P3; full note is p50 0.14 ms |
@@ -234,7 +235,7 @@ every note body in `data/notebooks` (frontmatter stripped): compare the
 | Quote-first item (`- > quote`) splits into item + quote | 2 |
 | `- 1) x` nests an ordered sub-list (3 blocks instead of 1) | 1 |
 | 4-space indented text → `code` instead of `paragraph` | 1 |
-| Task **line numbers** identical (`extract_tasks` vs. the AST) | **198 / 198** (68 tasks) |
+| Task **line numbers** identical (`legacy_extract_tasks` vs. the AST) | **198 / 198** (68 tasks) |
 
 Inside those classes the block **text and hash** stay identical whenever the
 range and kind did not move (the adapter still builds text from the raw lines
@@ -280,7 +281,7 @@ Measured on synthetic documents (HEAD):
 | `- DOING thing` | kind 7 `DOING` |
 | `- DONE finished` / `- CANCELED nope` / `- CANCELLED nope` | **no node** — plain text |
 | `TODO plain paragraph` (no bullet) | **kind 7 fires** — their own test asserts this; scoping is the host's job |
-| `1. TODO ordered` | kind 7 fires (ordered item) — our `extract_tasks` only accepts `-`/`*`/`+` |
+| `1. TODO ordered` | kind 7 fires (ordered item) — `task_row` only accepts `-`/`*`/`+` |
 | `- first\n\n  TODO second` | kind 7 fires in the item's **second** paragraph (docs say "first paragraph") |
 | `> - TODO quoted` | kind 7 fires inside a blockquote list item |
 | `- TODO` (no text) | kind 7 fires, nothing after it — our extractor requires non-empty task text |

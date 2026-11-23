@@ -24,7 +24,7 @@ use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, ScriptRunOptions}
 use sha2::{Digest, Sha256};
 
 use self::markdown::{
-    merge_tag_lists, note_link_keys, parse_content, parse_page, render_page, summarize,
+    merge_tag_lists, merge_tags, note_link_keys, parse_content, parse_page, render_page, summarize,
     ParsedBlock, ParsedTask,
 };
 use self::model::{
@@ -1665,7 +1665,7 @@ impl Store {
         let created_at = self
             .note_created_locked(notebook_id, path)?
             .unwrap_or(created_fallback);
-        let tags = merge_tag_lists(&parse_content(&parsed.body).tags, &parsed.tags);
+        let tags = merge_tags(&parsed.body, &parsed.tags);
 
         Ok(Some(Note {
             id: path.to_string(),

@@ -7,26 +7,16 @@
  * change one adapter, change the other and re-run the corpus harness
  * (`cargo test corpus_parity -- --ignored --nocapture`).
  */
-import { decodeAst, EXT_KIND, NODE, walkAst, type WireAst, type WireNode } from "./wire";
+import type { BlockKind } from "../blockKind";
+import { headingLevel } from "../markdown";
+import { decodeAst, EXT_KIND, NODE, NULL_NODE, walkAst, type WireNode } from "./wire";
 
-/** Block kinds the editor and the index share. */
-export type AstBlockKind =
-  | "paragraph"
-  | "heading"
-  | "list_item"
-  | "task"
-  | "code"
-  | "quote"
-  | "table"
-  | "hr"
-  | "math"
-  | "html";
 
 /** One block, in 1-based source lines; `text` is filled by `blocks.ts`. */
 export type AstBlock = {
   startLine: number;
   endLine: number;
-  kind: AstBlockKind;
+  kind: BlockKind;
   /** Outline nesting for list items; heading level for headings. */
   depth: number;
   /** 1-based `seq` of the enclosing list item, or 0. */
@@ -42,8 +32,6 @@ export type AstTask = {
 
 export type AstContent = { blocks: AstBlock[]; tasks: AstTask[] };
 
-const NULL_NODE = 0xffffffff;
-
 /**
  * First byte offset of each line, so a raw byte offset from the AST maps to a
  * 1-based line without going through UTF-16. The AST speaks bytes; block text
@@ -58,15 +46,11 @@ function byteLineStarts(bytes: Uint8Array): number[] {
 }
 
 class Reader {
-  readonly ast: WireAst;
-  readonly body: string;
   readonly lines: string[];
   /** First byte offset of each line. */
   private readonly lineStarts: number[];
 
-  constructor(ast: WireAst, body: string) {
-    this.ast = ast;
-    this.body = body;
+  constructor(body: string) {
     this.lines = body.split("\n");
     this.lineStarts = byteLineStarts(new TextEncoder().encode(body));
   }
@@ -103,16 +87,16 @@ class Reader {
 
 /** Derive blocks and tasks from a note body. `null` when the body has no AST. */
 export function parseAstContent(astBytes: Uint8Array, body: string): AstContent | null {
-  const ast = decodeAst(astBytes);
-  if (!ast) return null;
-  const reader = new Reader(ast, body);
+  const nodes = decodeAst(astBytes);
+  if (!nodes) return null;
+  const reader = new Reader(body);
   const blocks: AstBlock[] = [];
   const tasks: AstTask[] = [];
 
   const pushBlock = (
     start: number,
     end: number,
-    kind: AstBlockKind,
+    kind: BlockKind,
     depth: number,
     parentSeq: number,
   ): number => {
@@ -132,7 +116,9 @@ export function parseAstContent(astBytes: Uint8Array, body: string): AstContent 
         pushBlock(start, end, "paragraph", 0, 0);
         return;
       case NODE.heading:
-        pushBlock(start, end, "heading", headingLevel(reader.lineText(start)), 0);
+        // The AST already decided this line is a heading; the level is the
+        // number of `#` marks.
+        pushBlock(start, end, "heading", headingLevel(reader.lineText(start)) ?? 1, 0);
         return;
       case NODE.codeBlock:
         pushBlock(start, end, "code", 0, 0);
@@ -185,7 +171,7 @@ export function parseAstContent(astBytes: Uint8Array, body: string): AstContent 
 
   const pushItem = (node: WireNode, depth: number, parentSeq: number): number => {
     const start = reader.lineOf(node.rawStart);
-    const first = ast.nodes[node.firstChild];
+    const first = nodes[node.firstChild];
     const firstKind = first?.kind;
 
     // A fence written as the item's content (`- ```js`) is a code block covering
@@ -211,14 +197,14 @@ export function parseAstContent(astBytes: Uint8Array, body: string): AstContent 
   };
 
   const walk = (index: number, depth: number, parentSeq: number) => {
-    const node = ast.nodes[index];
+    const node = nodes[index];
     if (!node) return;
     if (node.kind === NODE.document || node.kind === NODE.list) {
       let child = node.firstChild;
       let guard = 0;
-      while (child !== NULL_NODE && child < ast.nodes.length && guard < ast.nodes.length) {
+      while (child !== NULL_NODE && child < nodes.length && guard < nodes.length) {
         walk(child, depth, parentSeq);
-        child = ast.nodes[child]?.next ?? NULL_NODE;
+        child = nodes[child]?.next ?? NULL_NODE;
         guard += 1;
       }
       return;
@@ -228,8 +214,8 @@ export function parseAstContent(astBytes: Uint8Array, body: string): AstContent 
       const seq = pushItem(node, depth, parentSeq);
       let child = node.firstChild;
       let guard = 0;
-      while (child !== NULL_NODE && child < ast.nodes.length && guard < ast.nodes.length) {
-        const nested = ast.nodes[child]!;
+      while (child !== NULL_NODE && child < nodes.length && guard < nodes.length) {
+        const nested = nodes[child]!;
         if (nested.kind === NODE.list) walk(child, depth + 1, seq);
         else hoistChild(nested, itemLine);
         child = nested.next;
@@ -246,12 +232,6 @@ export function parseAstContent(astBytes: Uint8Array, body: string): AstContent 
   return { blocks, tasks };
 }
 
-/** Heading level from the raw line (`## x` → 2). */
-function headingLevel(line: string): number {
-  const hashes = /^#+/u.exec(line.trimStart())?.[0].length ?? 0;
-  return hashes >= 1 && hashes <= 6 ? hashes : 1;
-}
-
 const BULLET = /^[-*+]\s+(.*)$/u;
 
 /**
@@ -259,7 +239,7 @@ const BULLET = /^[-*+]\s+(.*)$/u;
  * `extract_tasks`/`task_row`. The AST says which lines are list items; the line
  * says which of them the editor renders as a task.
  */
-export function taskRow(
+function taskRow(
   line: string,
 ): { status: AstTask["status"]; text: string } | null {
   const trimmed = line.trimStart();
@@ -306,10 +286,10 @@ export function taskRow(
  * regex the server does not share.
  */
 export function astTags(astBytes: Uint8Array): string[] {
-  const ast = decodeAst(astBytes);
-  if (!ast) return [];
+  const nodes = decodeAst(astBytes);
+  if (!nodes) return [];
   const tags: string[] = [];
-  walkAst(ast, (node) => {
+  walkAst(nodes, (node) => {
     if (node.kind !== NODE.inlineExtension || node.extKind !== EXT_KIND.tag) return;
     const tag = normalizeTag(node.token);
     if (tag && !tags.includes(tag)) tags.push(tag);
@@ -319,10 +299,10 @@ export function astTags(astBytes: Uint8Array): string[] {
 
 /** Raw `[[wikilink]]` payloads in document order (`Target|Alias`, `Page#H`). */
 export function astWikilinks(astBytes: Uint8Array): string[] {
-  const ast = decodeAst(astBytes);
-  if (!ast) return [];
+  const nodes = decodeAst(astBytes);
+  if (!nodes) return [];
   const links: string[] = [];
-  walkAst(ast, (node) => {
+  walkAst(nodes, (node) => {
     if (node.kind !== NODE.inlineExtension || node.extKind !== EXT_KIND.wikilink) return;
     if (node.token.includes("[") || node.token.includes("]")) return;
     if (!links.includes(node.token)) links.push(node.token);
@@ -331,7 +311,7 @@ export function astWikilinks(astBytes: Uint8Array): string[] {
 }
 
 /** Normalize a tag the same way `normalize_tag` does on the server. */
-export function normalizeTag(raw: string): string | null {
+function normalizeTag(raw: string): string | null {
   const tag = raw
     .trim()
     .replace(/^#+/u, "")

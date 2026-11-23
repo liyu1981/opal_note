@@ -737,12 +737,6 @@ pub fn normalize_tag(tag: &str) -> Option<String> {
     }
 }
 
-/// Merge explicit (frontmatter) tags with inline `#tags`.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn merge_tags(content: &str, explicit: &[String]) -> Vec<String> {
-    merge_tag_lists(&extract_tags(content), explicit)
-}
-
 /// Merge an already-extracted inline tag list with explicit frontmatter tags.
 pub fn merge_tag_lists(inline: &[String], explicit: &[String]) -> Vec<String> {
     let mut tags = Vec::new();
@@ -793,8 +787,8 @@ pub fn parser_kind() -> ParserKind {
     static KIND: std::sync::OnceLock<ParserKind> = std::sync::OnceLock::new();
     *KIND.get_or_init(|| {
         let requested = std::env::var("OPALNOTE_PARSER").unwrap_or_default();
-        let forced_legacy = matches!(requested.trim().to_ascii_lowercase().as_str(), "legacy");
-        if forced_legacy {
+        let requested = requested.trim();
+        if requested.eq_ignore_ascii_case("legacy") {
             tracing::info!("markdown parser: legacy hand-written scanners");
             return ParserKind::Legacy;
         }
@@ -805,16 +799,17 @@ pub fn parser_kind() -> ParserKind {
                     version = %crate::store::lutez::version(),
                     "markdown parser: lutez (shared AST)"
                 );
-                return ParserKind::Lutez;
+                ParserKind::Lutez
+            } else {
+                tracing::warn!(
+                    "lutez linked but its ABI/wire version differs; using the legacy parser"
+                );
+                ParserKind::Legacy
             }
-            tracing::warn!(
-                "lutez linked but its ABI/wire version differs; using the legacy parser"
-            );
-            return ParserKind::Legacy;
         }
         #[cfg(not(lutez_ffi))]
         {
-            if requested.trim().eq_ignore_ascii_case("lutez") {
+            if requested.eq_ignore_ascii_case("lutez") {
                 tracing::warn!(
                     "OPALNOTE_PARSER=lutez requested but liblutez.a was not linked; \
                      using the legacy parser"
@@ -847,7 +842,7 @@ pub fn parse_content(body: &str) -> ParsedContent {
 fn lutez_ast_parse(body: &str) -> Option<ParsedContent> {
     #[cfg(lutez_ffi)]
     {
-        return lutez_ast::parse(body);
+        lutez_ast::parse(body)
     }
     #[cfg(not(lutez_ffi))]
     {
@@ -865,28 +860,34 @@ fn legacy_content(body: &str) -> ParsedContent {
     }
 }
 
-/// Blocks for a body (`parse_content` field).
-#[cfg_attr(not(test), allow(dead_code))]
+/// Blocks for a body. Tests and the parity harness read the fields of a single
+/// [`parse_content`] pass; the store itself only calls `parse_content`.
+#[cfg(test)]
 pub fn parse_blocks(body: &str) -> Vec<ParsedBlock> {
     parse_content(body).blocks
 }
 
-/// Tasks for a body (`parse_content` field).
-#[cfg_attr(not(test), allow(dead_code))]
+/// Tasks for a body, as [`parse_blocks`].
+#[cfg(test)]
 pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
     parse_content(content).tasks
 }
 
-/// Inline `#tags` for a body (`parse_content` field).
-#[cfg_attr(not(test), allow(dead_code))]
+/// Inline `#tags` for a body, as [`parse_blocks`].
+#[cfg(test)]
 pub fn extract_tags(content: &str) -> Vec<String> {
     parse_content(content).tags
 }
 
-/// `[[wikilinks]]` for a body (`parse_content` field).
-#[cfg_attr(not(test), allow(dead_code))]
+/// `[[wikilinks]]` for a body, as [`parse_blocks`].
+#[cfg(test)]
 pub fn extract_wikilinks(content: &str) -> Vec<(String, String)> {
     parse_content(content).links
+}
+
+/// Merge explicit (frontmatter) tags with the body's inline `#tags`.
+pub fn merge_tags(body: &str, explicit: &[String]) -> Vec<String> {
+    merge_tag_lists(&parse_content(body).tags, explicit)
 }
 
 /// Build a compact plain-text summary for list and search results.
@@ -1355,10 +1356,12 @@ mod lutez_ast {
                 | lutez::HEADING
                 | lutez::HTML_BLOCK
                 | lutez::THEMATIC_BREAK
-                | lutez::BLOCK_EXTENSION => {
-                    if start > item_line {
-                        self.push_leaf(node);
-                    }
+                | lutez::BLOCK_EXTENSION
+                    if start > item_line =>
+                {
+                    // `push_leaf` drops extension kinds we do not index (only
+                    // `$$` math becomes a block).
+                    self.push_leaf(node)
                 }
                 _ => {}
             }

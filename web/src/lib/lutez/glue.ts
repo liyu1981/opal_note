@@ -16,8 +16,11 @@ export const LUTEZ_WIRE = 2;
 const OPTS_SIZE = 16;
 const NULL_HANDLE = 0xffffffff;
 
-/** Preset bits, matching `include/lutez.h`. */
-export const PRESET = {
+/**
+ * Preset bits, matching `include/lutez.h`: frontmatter 1, math 2, wikilinks 4,
+ * tags 8, outliner blocks 16, outliner keywords 32.
+ */
+const PRESET = {
   frontmatter: 1 << 0,
   math: 1 << 1,
   wikilinks: 1 << 2,
@@ -64,7 +67,9 @@ function createEngine(exports: Exports): LutezEngine {
     return decoder.decode(memory().slice(ptr, ptr + len));
   };
 
-  const writeOptions = () => {
+  // `lutez_opts` is constant for every parse, so it is written once and kept
+  // for the module's lifetime instead of being allocated and freed per call.
+  const optsPtr = (() => {
     const ptr = exports.lutez_alloc(OPTS_SIZE);
     if (ptr === 0) throw new Error("lutez: out of memory");
     const view = new DataView(exports.memory.buffer, ptr, OPTS_SIZE);
@@ -75,39 +80,39 @@ function createEngine(exports: Exports): LutezEngine {
     // flags the server sets in `src/store/lutez.rs`.
     for (let index = 0; index < 12; index += 1) view.setUint8(4 + index, 1);
     return ptr;
-  };
+  })();
 
   return {
     withAst(markdown, read) {
       const input = new TextEncoder().encode(markdown);
-      const inputPtr = input.length === 0 ? 0 : exports.lutez_alloc(input.length);
-      if (input.length > 0 && inputPtr === 0) throw new Error("lutez: out of memory");
-      if (input.length > 0) memory().set(input, inputPtr);
-      const optsPtr = writeOptions();
-      let handle = NULL_HANDLE;
+      let inputPtr = 0;
       try {
-        handle = exports.lutez_parse_presets(
+        if (input.length > 0) {
+          inputPtr = exports.lutez_alloc(input.length);
+          if (inputPtr === 0) throw new Error("lutez: out of memory");
+          memory().set(input, inputPtr);
+        }
+        const handle = exports.lutez_parse_presets(
           inputPtr,
           input.length,
           optsPtr,
           NOTE_PRESETS,
         ) >>> 0;
+        if (handle === NULL_HANDLE) {
+          console.warn("lutez: parse failed:", lastError());
+          return null;
+        }
+        try {
+          const packed = exports.lutez_doc_ast(handle);
+          const ptr = Number(packed >> 32n);
+          const len = Number(packed & 0xffffffffn);
+          if (!ptr || len < 40) return null;
+          return read(memory().slice(ptr, ptr + len));
+        } finally {
+          exports.lutez_doc_free(handle);
+        }
       } finally {
         if (inputPtr) exports.lutez_free(inputPtr, input.length);
-        if (optsPtr) exports.lutez_free(optsPtr, OPTS_SIZE);
-      }
-      if (handle === NULL_HANDLE) {
-        console.warn("lutez: parse failed:", lastError());
-        return null;
-      }
-      try {
-        const packed = exports.lutez_doc_ast(handle);
-        const ptr = Number(packed >> 32n);
-        const len = Number(packed & 0xffffffffn);
-        if (!ptr || len < 40) return null;
-        return read(memory().slice(ptr, ptr + len));
-      } finally {
-        exports.lutez_doc_free(handle);
       }
     },
   };

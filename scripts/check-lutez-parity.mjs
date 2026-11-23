@@ -14,7 +14,7 @@
 //
 // Usage: node scripts/check-lutez-parity.mjs   (needs `node scripts/build-lutez.mjs` once)
 import { spawnSync } from "node:child_process";
-import { readdirSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +29,7 @@ function fail(message) {
   process.exit(1);
 }
 
-if (!readdirSync(ROOT).includes("data")) {
+if (!existsSync(NOTES)) {
   console.log("no data/notebooks; nothing to compare");
   process.exit(0);
 }
@@ -135,8 +135,12 @@ try {
   fail(`esbuild failed: ${error?.message ?? error}`);
 }
 
-const client = spawnSync(process.execPath, [bundlePath], { cwd: ROOT, encoding: "utf8" });
-rmSync(bundlePath, { force: true });
+let client;
+try {
+  client = spawnSync(process.execPath, [bundlePath], { cwd: ROOT, encoding: "utf8" });
+} finally {
+  rmSync(bundlePath, { force: true });
+}
 if (client.status !== 0) fail(`the client harness failed: ${client.stderr}`);
 const clientRows = client.stdout.split("\n").filter((line) => line.length > 0);
 

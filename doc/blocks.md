@@ -115,9 +115,10 @@ safe.
   identity used by deep links and by drift detection. `web/src/lib/blocks.ts`
   implements the same function, so a link can be built without a round-trip.
 - Built in `sync_notebook_locked` beside `task`, through the same `run_atomic`
-  batch (delete the note's rows, insert the parsed ones). Parsing lives in a new
-  `parse_blocks()` in `src/store/markdown.rs`; all CozoScript stays in
-  `src/store/queries.rs`.
+  batch (delete the note's rows, insert the parsed ones). One `parse_content()`
+  pass in `src/store/markdown.rs` supplies blocks, tasks, tags and links
+  (`parse_blocks()` is the test-facing view of its `blocks` field); all CozoScript
+  stays in `src/store/queries.rs`.
 - Indexes: `block:by_note {notebook_id, note_path}` and `block:by_hash
   {notebook_id, note_path, hash}`.
 - Rule changes bump a `blocks.rules` marker under `data/index/`, exactly like

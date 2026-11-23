@@ -191,9 +191,10 @@ web/
   the parser cannot load is a console warning, and the legacy client mirrors
   (`legacyParseBlocks`/`legacyTaskSignature`) keep the editor working.
 - **A note body is parsed once per sync**: `parse_content(&body)` returns blocks,
-  tasks, tags and links from one AST walk, and the store feeds
-  `merge_tag_lists`/`summarize` from it. Do not call the individual
-  `extract_*`/`parse_blocks` helpers in the sync path — they parse the body again.
+  tasks, tags and links from one AST walk, and the store feeds `merge_tag_lists`
+  (sync) / `merge_tags` (note reads) and `summarize` from it. The individual
+  `parse_blocks`/`extract_*` helpers are `#[cfg(test)]` views of that struct —
+  never call them from a request path.
 - Ordinary note autosaves merge the returned `Note` into local state. Do not
   bump `notesRevisionAtom` for body-only saves: only title/tag/link/backlink
   changes need the notebook-derived lists and graph refreshed.
@@ -700,14 +701,13 @@ web/
   whole-page flash). `EditorPane` compares `taskSignature(previous.content)` with
   the saved content, and `JournalCard` does the same after a save **and** after
   its unmount flush (the next view, e.g. Todos, may already be mounted and must be
-  told). `web/src/lib/tasks.ts`
-  `taskSignature` mirrors `extract_tasks`: keep the two in step — fenced code is
-  skipped — note a fence may be a list child (`- ``` … ``` `), so opening
-  detection allows a bullet prefix while closing stays a bare fence, or the
-  closing fence opens a block and swallows every later task/tag/link) — with
-  `-`/`*`/`+` bullets **with any whitespace run after the bullet**
-  (the editor renders `-  [ ] x` and `-\t[ ] x` as checkboxes, so the server must
-  index them), `[ ]`/`[x]`/`[-]` plus the Logseq keywords. Bump
+  told). The task set comes from the shared AST on both sides: `task_row` in
+  `src/store/markdown.rs` (`mod lutez_ast`) and `taskRow` in
+  `web/src/lib/lutez/parse.ts` must agree — only `-`/`*`/`+` list items count
+  (ordered ones do not), any whitespace run after the bullet is accepted (the
+  editor renders `-  [ ] x` and `-\t[ ] x` as checkboxes), `[ ]`/`[x]`/`[-]` and
+  the Logseq keywords, and fenced code never yields a task because the AST has no
+  items inside a fence. `pnpm check:parse` compares the two on the corpus. Bump
   `TASK_RULES_VERSION` in `Store::take_task_rules_backfill` whenever extraction
   starts matching more or fewer lines: the `data/index/tasks.rules` marker then
   forces one full re-read, because unchanged files are skipped by the scan.

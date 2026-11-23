@@ -61,7 +61,6 @@ const libraryArgs = [
   "zig-out",
 ];
 
-
 function fail(message) {
   console.error(`\n\u2716 ${message}`);
   process.exit(1);
@@ -86,7 +85,14 @@ function built() {
   if (!existsSync(STAMP) || readFileSync(STAMP, "utf8").trim() !== buildFlags) {
     return false;
   }
-  const source = Math.max(newestMtime(path.join(LUTEZ, "src")), newestMtime(path.join(LUTEZ, "include")));
+  // Watch the sources *and* the build graph: a changed flag or module layout
+  // must rebuild even when no `.zig` file moved.
+  const source = Math.max(
+    newestMtime(path.join(LUTEZ, "src")),
+    newestMtime(path.join(LUTEZ, "include")),
+    statSync(path.join(LUTEZ, "build.zig")).mtimeMs,
+    statSync(path.join(LUTEZ, "build.zig.zon")).mtimeMs,
+  );
   return (
     statSync(STATIC_LIB).mtimeMs >= source &&
     statSync(WASM_OUT).mtimeMs >= source &&
