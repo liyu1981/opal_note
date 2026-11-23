@@ -21,11 +21,14 @@ import { mountViewer, type ViewerMount } from "../plugins/viewerMount";
 import { MAX_MATH_CHARS, renderMath } from "./latex";
 import {
   astCodeBlocks,
+  astInlineNodes,
   astMathBlocks,
   noteAstField,
   type AstCodeBlock,
   type AstMathBlock,
 } from "./lutez/editor";
+import { span16 } from "./lutez/spans";
+import { EXT_KIND, NODE, NULL_NODE, type WireNode } from "./lutez/wire";
 import { normalizeLinkTarget, splitWikilink } from "./markdown";
 
 export type LinkTarget = { title: string; path: string };
@@ -368,6 +371,7 @@ function buildDecorations(
   const mathBlocks: Array<AstMathBlock | MathBlockRange> = ast
     ? astMathBlocks(ast)
     : findMathBlocks(doc, findCodeBlocks(doc));
+  const inlineByLine = ast ? astInlineNodes(ast) : null;
   const mathBlockByLine = new Map<number, MathBlockRange>();
   for (const block of mathBlocks) {
     for (let line = block.start; line <= block.end; line += 1) {
@@ -679,6 +683,215 @@ function buildDecorations(
       }
     };
 
+    if (ast) {
+      // Formatting comes from the AST: exact spans, correct nesting, escapes
+      // and code spans with any number of backticks. `==highlight==` has no AST
+      // node (an OpalNote extension) and bare URLs are recognised textually, so
+      // both keep a source scan — after the AST nodes, which claim their ranges.
+      const directChildSpan = (node: WireNode, kind: number): [number, number] | null => {
+        let child = node.firstChild;
+        while (child !== NULL_NODE && child < ast.nodes.length) {
+          const candidate = ast.nodes[child]!;
+          if (candidate.kind === kind) return span16(candidate, ast.mapper);
+          child = candidate.next;
+        }
+        return null;
+      };
+
+      const renderInline = (node: WireNode) => {
+        const [from, to] = span16(node, ast.mapper);
+        if (to <= from) return;
+
+        if (
+          node.kind === NODE.codeSpan ||
+          node.kind === NODE.emphasis ||
+          node.kind === NODE.strong ||
+          node.kind === NODE.strikethrough
+        ) {
+          if (overlaps(from, to)) return;
+          const open = ast.nodes[node.firstChild];
+          if (!open) return;
+          let last = open;
+          while (last.next !== NULL_NODE && last.next < ast.nodes.length) {
+            last = ast.nodes[last.next]!;
+          }
+          const [, openTo] = span16(open, ast.mapper);
+          const [closeFrom] = span16(last, ast.mapper);
+          if (!active) {
+            hide(from, openTo);
+            hide(closeFrom, to);
+          }
+          const className =
+            node.kind === NODE.codeSpan
+              ? "cm-live-inline-code"
+              : node.kind === NODE.strong
+                ? "cm-live-bold"
+                : node.kind === NODE.strikethrough
+                  ? "cm-live-strike"
+                  : "cm-live-italic";
+          addMark(openTo, closeFrom, className);
+          if (node.kind === NODE.codeSpan) claimed.push([from, to]);
+          return;
+        }
+
+        if (node.kind === NODE.inlineExtension) {
+          if (overlaps(from, to) || insideClaimed(from, to)) return;
+          if (node.extKind === EXT_KIND.tag) {
+            addMark(from, to, "cm-live-tag");
+            return;
+          }
+          if (node.extKind === EXT_KIND.wikilink) {
+            // `![[…]]` is an embed, not a link.
+            if (from > 0 && ast.text.slice(from - 1, from) === "!") return;
+            const { target, label } = splitWikilink(node.token);
+            if (!target) return;
+            const resolved = options.linkKeys.has(normalizeLinkTarget(target));
+            replace(
+              from,
+              to,
+              new WikiLinkWidget(target, label, resolved, options.onWikiLink),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+          if (node.extKind === EXT_KIND.math) {
+            if (node.token.length > MAX_MATH_CHARS) return;
+            const display = ast.text.slice(from, from + 2) === "$$";
+            replace(from, to, new MathWidget(node.token, display));
+            claimed.push([from, to]);
+          }
+          return;
+        }
+
+        if (node.kind === NODE.link || node.kind === NODE.image) {
+          const isImage = node.kind === NODE.image;
+          // GFM autolinks carry no brackets; the bare-URL scan renders those.
+          if (!ast.text.startsWith(isImage ? "![" : "[", from)) return;
+          if (overlaps(from, to) || insideClaimed(from, to)) return;
+          const labelSpan = directChildSpan(node, NODE.linkText);
+          const destSpan = directChildSpan(node, NODE.linkDest);
+          const label = labelSpan
+            ? ast.text.slice(labelSpan[0], labelSpan[1])
+            : "";
+          const url = destSpan ? ast.text.slice(destSpan[0], destSpan[1]) : "";
+          const assetPath = resolveAssetPath(options.notePath, url);
+          const assetKind = assetPath ? assetKindFromPath(assetPath) : null;
+          const viewer = assetPath
+            ? options.viewerFor(extensionOfPath(assetPath))
+            : null;
+
+          if (isImage && assetPath && viewer) {
+            replace(
+              from,
+              to,
+              new ViewerWidget(
+                assetPath,
+                extensionOfPath(assetPath),
+                viewer,
+                options.loadAsset,
+                options.onOpenViewer,
+                options.assetRevision,
+              ),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+
+          if (
+            assetPath &&
+            (!isImage || assetKind === "document" || assetKind === "other")
+          ) {
+            replace(
+              from,
+              to,
+              new AssetFileWidget(
+                assetPath,
+                label || assetPath.split("/").pop() || assetPath,
+                assetKind ?? "other",
+                options.onOpenAsset,
+              ),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+
+          if (isImage) {
+            const media = assetPath
+              ? mediaWidget(assetPath, assetKind, label, options, view, line)
+              : null;
+            replace(
+              from,
+              to,
+              media ??
+                new ImageWidget(
+                  url,
+                  label,
+                  assetPath,
+                  options.loadAsset,
+                  view,
+                  options.notePath,
+                  line.from,
+                  line.to,
+                  options.onOpenImage,
+                ),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+
+          replace(
+            from,
+            to,
+            new ExternalLinkWidget(label, url, options.onOpenLink),
+          );
+          claimed.push([from, to]);
+        }
+      };
+
+      for (const node of inlineByLine?.get(lineNumber) ?? []) renderInline(node);
+
+      const highlight = /==([^=\n]+)==/gu;
+      process(highlight, (match) => {
+        const start = line.from + match.index;
+        const end = start + match[0].length;
+        if (insideClaimed(start, end) || overlaps(start, end)) return;
+        if (!active) {
+          hide(start, start + 2);
+          hide(end - 2, end);
+        }
+        addMark(start + 2, end - 2, "cm-live-highlight");
+      });
+
+      // Bare URLs stay textual: `https://…` and `www.…` are GFM text, and the
+      // trailing-punctuation rules are the editor's own.
+      if (!active) {
+        const bareUrl = /(?:https?:\/\/|www\.)[^\s<>"'`\]]+/giu;
+        process(bareUrl, (match) => {
+          const start = line.from + match.index;
+          const end = start + match[0].length;
+          if (insideClaimed(start, end) || overlaps(start, end)) return;
+          const display = trimUrlTrailing(match[0]);
+          if (!display) return;
+          const trimmedEnd = start + display.length;
+          const url = /^www\./iu.test(display) ? `https://${display}` : display;
+          replace(
+            start,
+            trimmedEnd,
+            new ExternalLinkWidget(display, url, options.onOpenLink),
+          );
+          claimed.push([start, trimmedEnd]);
+        });
+      }
+    } else {
+    const process = (regex: RegExp, handler: (match: RegExpExecArray) => void) => {
+      regex.lastIndex = 0;
+      let match = regex.exec(text);
+      while (match) {
+        if (!isEscaped(text, match.index)) handler(match);
+        match = regex.exec(text);
+      }
+    };
+
     // Inline code first: links/markup inside a code span must stay literal.
     const code = /`([^`\n]+)`/gu;
     process(code, (match) => {
@@ -927,6 +1140,7 @@ function buildDecorations(
       if (insideClaimed(start, end) || overlaps(start, end)) return;
       addMark(start, end, "cm-live-tag");
     });
+    }
   }
 
   return Decoration.set(ranges, true);

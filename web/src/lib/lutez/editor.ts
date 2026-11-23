@@ -14,7 +14,7 @@ import { StateField } from "@codemirror/state";
 import { lutezDocument, lutezReady } from "./index";
 import type { AstDocument } from "./parse";
 import { span16 } from "./spans";
-import { EXT_KIND, NODE } from "./wire";
+import { EXT_KIND, NODE, type WireNode } from "./wire";
 
 /** Wide enough for any sensible indentation, matching `columnsOf` in the editor. */
 const MAX_COLUMNS = 40;
@@ -99,6 +99,34 @@ export function astCodeBlocks(document: AstDocument): AstCodeBlock[] {
     });
   }
   return blocks;
+}
+
+/** Inline nodes that fit on one line, bucketed by their 1-based line. */
+export function astInlineNodes(document: AstDocument): Map<number, WireNode[]> {
+  const { lineAt } = lineMap(document.text);
+  const byLine = new Map<number, WireNode[]>();
+  const inline = new Set<number>([
+    NODE.emphasis,
+    NODE.strong,
+    NODE.strikethrough,
+    NODE.codeSpan,
+    NODE.link,
+    NODE.image,
+    NODE.inlineExtension,
+  ]);
+  for (const node of document.nodes) {
+    if (!inline.has(node.kind)) continue;
+    const [from, to] = span16(node, document.mapper);
+    if (to <= from) continue;
+    const start = lineAt(from);
+    // A construct that wraps a line break renders as source, exactly like the
+    // per-line scanners it replaces.
+    if (lineAt(to - 1) !== start) continue;
+    const bucket = byLine.get(start);
+    if (bucket === undefined) byLine.set(start, [node]);
+    else bucket.push(node);
+  }
+  return byLine;
 }
 
 /** Every `$$` display block, in document order, with its payload. */

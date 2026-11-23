@@ -296,14 +296,18 @@ web/
   transparent so the layer shows. The Dot Grid renderer is adapted from React
   Bits (`components/backgrounds/DotGrid.tsx`); colours come from
   `--color-line-strong` / `--color-accent-strong`, never hard-coded.
-- `livePreview` reads its **block structure** from the shared AST (`noteAstField`
-  in `web/src/lib/lutez/editor.ts`, one parse per doc-changing transaction):
-  fenced blocks come from `NodeCodeBlock` (indented code stays prose, as it
-  always looked) and display math from block-extension nodes, with the legacy
-  line scanners kept as the fallback while the WASM parser is missing. The
-  per-line classification (headings, quotes, lists, tasks) and the inline layer
-  (code spans, links, images, emphasis, tags, wikilinks, math) still scan source
-  lines; moving them onto the AST is the rest of P3 (`doc/lutez-parser.md`).
+- `livePreview` renders from the shared AST (`noteAstField` in
+  `web/src/lib/lutez/editor.ts`, one parse per doc-changing transaction):
+  fenced blocks (`NodeCodeBlock`, indented code stays prose as it always looked),
+  display math, and every inline construct — code spans (any backtick run),
+  emphasis/strong/strikethrough with their real marker spans, links/images
+  (label and destination from `LinkText`/`LinkDest`, so `![](x.png)` and titles
+  work), wikilinks, tags and inline math — come from nodes, with the legacy
+  scanners kept as the fallback while the WASM parser is missing. Still
+  source-local by design: the per-line marker widths that drive the hanging
+  indent (headings, quotes, list/task markers), `==highlight==` (not a
+  CommonMark/GFM construct, so no node), and bare URLs (GFM text; the editor's
+  trailing-punctuation rules are its own).
 - The note body is a **live block editor**, not a split preview. Keep source
   marks visible while the cursor is on a block and render them elsewhere.
   Editor internals live in `src/lib/livePreview.ts`,
