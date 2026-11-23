@@ -449,9 +449,15 @@ web/
   watches `web/vendor/reagent/src`. Bumping it means updating the submodule
   pointer (`git -C web/vendor/reagent fetch && git -C web/vendor/reagent
   checkout main`) and committing the new submodule SHA. Provider registration
-  is a **prop** (`providerFilter` on `<ReAgent>`; omitted = every provider), not
-  a settings switch — we do not set it, so the OpalNote host provider is simply
-  absent until it is configured. Docker and the release
+  is a **prop** (`providerFilter` on `<ReAgent>`), not a settings switch. The
+  panel registers **only** the OpalNote provider
+  (`providerFilter={{ enabled: [OPALNOTE_PROVIDER_ID] }}`): every model call is
+  proxied by the server, and the SPA's `connect-src 'self'` blocks browser-direct
+  traffic to any other host, so ReAgent's cloud/localhost providers would be dead
+  ends whose connection probes only fill the console with CSP errors. A local
+  server still works — put its URL in the OpalNote card and the proxy calls it.
+  The settings subtitle is overridden (`messages` prop) to say the key is stored
+  encrypted on the server rather than "in this browser". Docker and the release
   workflows check out submodules recursively. To patch ReAgent locally, edit the
   submodule and commit the change there first, then the pointer here.
 - Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`
