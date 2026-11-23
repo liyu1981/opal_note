@@ -19,6 +19,13 @@ import { assetKindFromPath } from "./assets";
 import { extensionOfPath, viewerTheme } from "../plugins/viewers";
 import { mountViewer, type ViewerMount } from "../plugins/viewerMount";
 import { MAX_MATH_CHARS, renderMath } from "./latex";
+import {
+  astCodeBlocks,
+  astMathBlocks,
+  noteAstField,
+  type AstCodeBlock,
+  type AstMathBlock,
+} from "./lutez/editor";
 import { normalizeLinkTarget, splitWikilink } from "./markdown";
 
 export type LinkTarget = { title: string; path: string };
@@ -178,7 +185,9 @@ function buildMathBlockDecorations(
   }
 
   const ranges: Range<Decoration>[] = [];
-  for (const block of findMathBlocks(doc, findCodeBlocks(doc))) {
+  const ast = state.field(noteAstField, false);
+  const blocks = ast ? astMathBlocks(ast) : findMathBlocks(doc, findCodeBlocks(doc));
+  for (const block of blocks) {
     let touched = false;
     for (let line = block.start; line <= block.end; line += 1) {
       if (editing.has(line)) touched = true;
@@ -247,6 +256,8 @@ export function livePreview(optionsRef: OptionsRef): Extension {
 
   return [
     editorFocusField,
+    // Parsed first so the fields below see this transaction's AST.
+    noteAstField,
     mathBlockField,
     ViewPlugin.fromClass(LivePreviewPlugin, {
       decorations: (plugin) => plugin.decorations,
@@ -329,7 +340,12 @@ function buildDecorations(
     }
   }
 
-  const codeBlocks = findCodeBlocks(doc);
+  // Structure comes from the shared AST when it is available; the line scanners
+  // remain the fallback while the WASM parser is missing.
+  const ast = view.state.field(noteAstField, false);
+  const codeBlocks: Array<AstCodeBlock | CodeBlockRange> = ast
+    ? astCodeBlocks(ast)
+    : findCodeBlocks(doc);
   const codeTextByStart = new Map<number, string>();
   for (const block of codeBlocks) {
     const lines: string[] = [];
@@ -349,7 +365,9 @@ function buildDecorations(
     }
   }
 
-  const mathBlocks = findMathBlocks(doc, codeBlocks);
+  const mathBlocks: Array<AstMathBlock | MathBlockRange> = ast
+    ? astMathBlocks(ast)
+    : findMathBlocks(doc, findCodeBlocks(doc));
   const mathBlockByLine = new Map<number, MathBlockRange>();
   for (const block of mathBlocks) {
     for (let line = block.start; line <= block.end; line += 1) {
