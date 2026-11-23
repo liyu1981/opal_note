@@ -26,6 +26,7 @@ import {
   expireUnlockIfNeeded,
   requestAgentUnlock,
 } from "../../state/agentUnlock";
+import { EndpointPicker } from "./EndpointPicker";
 import {
   OPALNOTE_PROVIDER_ID,
   OPALNOTE_PROVIDER_NAME,
@@ -214,14 +215,29 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
       </div>
 
       <div className="grid gap-1.5">
-        <input
-          className={field}
-          value={baseUrl}
-          onChange={(event) => setBaseUrl(event.target.value)}
-          placeholder="https://openrouter.ai/api/v1"
-          spellCheck={false}
-          aria-label="Agent base URL"
-        />
+        {/* The picker fills the well-known OpenAI-compatible base URLs; the
+            field stays free-form for self-hosted servers. */}
+        <div className="flex gap-1.5">
+          <input
+            className={`${field} flex-1`}
+            value={baseUrl}
+            onChange={(event) => {
+              setBaseUrl(event.target.value);
+              setError(null);
+            }}
+            placeholder="https://openrouter.ai/api/v1"
+            spellCheck={false}
+            aria-label="Agent base URL"
+          />
+          <EndpointPicker
+            value={baseUrl}
+            onPick={(url) => {
+              setBaseUrl(url);
+              setError(null);
+              setMessage(null);
+            }}
+          />
+        </div>
         <input
           className={field}
           value={apiKey}
