@@ -417,13 +417,16 @@ web/
   stops a call to a *locked* provider before the message is appended — the
   prompt stays in the composer and our unlock dialog opens.
 - ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
-  `main` (currently `14afb13`), linked as a pnpm workspace package
+  `main` (currently `4f9df91`), linked as a pnpm workspace package
   (`workspace:*`), because its published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
   it (`tsc` in the submodule, skipped when `dist/` is newer than `src/`) and runs
   from `pnpm build`, `pnpm typecheck` and `pnpm build:watch`; `pnpm dev` also
   watches `web/vendor/reagent/src`. Bumping it means updating the submodule
   pointer (`git -C web/vendor/reagent fetch && git -C web/vendor/reagent
-  checkout main`) and committing the new submodule SHA. Docker and the release
+  checkout main`) and committing the new submodule SHA. Provider registration
+  is a **prop** (`providerFilter` on `<ReAgent>`; omitted = every provider), not
+  a settings switch — we do not set it, so the OpalNote host provider is simply
+  absent until it is configured. Docker and the release
   workflows check out submodules recursively. To patch ReAgent locally, edit the
   submodule and commit the change there first, then the pointer here.
 - Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`

@@ -974,9 +974,12 @@ exists. It never locks or unlocks and carries no unlock-window control — that
 belongs to `AgentUnlockDialog`, which the call gate raises at send time and
 which also asks how long to keep the key. Saving a new envelope drops the
 session key, so the next message prompts for the new password.
-Since ReAgent 0.2.1 that page lists every provider with an on/off switch; the
-OpalNote switch hides the card, and switching it back reconnects from
-`GET /api/agent`.
+The settings page groups providers in collapsible sections (the OpalNote card
+is its own section, open by default, kept mounted while collapsed so a
+half-typed key survives). Which providers a host registers is the
+`providerFilter` prop on `<ReAgent>` — omitted means every available provider —
+not a UI switch: the OpalNote provider simply does not exist until a
+configuration is stored (`GET /api/agent` reconnects it on load).
 
 **Vendored ReAgent.** `web/vendor/reagent` is a git submodule tracking upstream
 `main`, linked as a workspace package and built from source by
