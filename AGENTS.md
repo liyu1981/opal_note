@@ -68,6 +68,7 @@ pnpm build             # built-ins + web build → asset sync → release binary
 pnpm build:builtins    # regenerate builtin/plugins and builtin/backgrounds
 node scripts/build-lutez.mjs  # rebuild liblutez.a + web/public/lutez.wasm (Zig 0.17.0)
 pnpm check:parse       # server vs browser parse parity over data/notebooks
+pnpm check:spans       # byte→UTF-16 span mapping (fixtures + every AST node in data/notebooks)
 pnpm start             # run opalnote serve
 pnpm test              # cargo test + web typecheck
 pnpm check             # cargo check + web typecheck
@@ -190,6 +191,14 @@ web/
   `no-cache`, and the SPA CSP needs `script-src 'wasm-unsafe-eval'`; a note that
   the parser cannot load is a console warning, and the legacy client mirrors
   (`legacyParseBlocks`/`legacyTaskSignature`) keep the editor working.
+- **Three offset spaces, and each one has one job.** The AST carries raw bytes
+  (`rawStart/rawEnd` — line numbers, server rows, block hashes), normalized bytes
+  (`normStart/normEnd` — CRLF/CR → LF, what the editor's document is) and the
+  token payload. CodeMirror indexes UTF-16 units, so a decoration is
+  `utf16Mapper(normalizeText(body))` + `span16(node, mapper)` from
+  `web/src/lib/lutez/spans.ts`; feeding it `rawStart` shifts every line after the
+  first CRLF and every character after a multi-byte one. `pnpm check:spans`
+  proves the mapping for every node in the corpus.
 - **A note body is parsed once per sync**: `parse_content(&body)` returns blocks,
   tasks, tags and links from one AST walk, and the store feeds `merge_tag_lists`
   (sync) / `merge_tags` (note reads) and `summarize` from it. The individual

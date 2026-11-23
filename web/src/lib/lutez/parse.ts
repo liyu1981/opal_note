@@ -9,8 +9,8 @@
  */
 import type { BlockKind } from "../blockKind";
 import { headingLevel } from "../markdown";
+import { normalizeText, utf16Mapper, type UnitMapper } from "./spans";
 import { decodeAst, EXT_KIND, NODE, NULL_NODE, walkAst, type WireNode } from "./wire";
-
 
 /** One block, in 1-based source lines; `text` is filled by `blocks.ts`. */
 export type AstBlock = {
@@ -31,6 +31,39 @@ export type AstTask = {
 };
 
 export type AstContent = { blocks: AstBlock[]; tasks: AstTask[] };
+
+/**
+ * One parse of a note body, in the shape the editor needs.
+ *
+ * `text` is in lutez's normalized space (CRLF/CR → LF) and is what `mapper`
+ * addresses; `nodes` keeps both span spaces so a caller can pick lines
+ * (`rawStart`) or editor offsets (`normStart` + `mapper`).
+ */
+export type AstDocument = AstContent & {
+  text: string;
+  nodes: WireNode[];
+  mapper: UnitMapper;
+};
+
+/** Parse a body into editor-ready nodes, spans, and the derived rows. */
+export function parseDocument(astBytes: Uint8Array, body: string): AstDocument | null {
+  const nodes = decodeAst(astBytes);
+  if (!nodes) return null;
+  const text = normalizeText(body);
+  return {
+    text,
+    nodes,
+    mapper: utf16Mapper(text),
+    ...buildContent(nodes, body),
+  };
+}
+
+/** Derive blocks and tasks from a note body. `null` when the body has no AST. */
+export function parseAstContent(astBytes: Uint8Array, body: string): AstContent | null {
+  const nodes = decodeAst(astBytes);
+  if (!nodes) return null;
+  return buildContent(nodes, body);
+}
 
 /**
  * First byte offset of each line, so a raw byte offset from the AST maps to a
@@ -85,10 +118,8 @@ class Reader {
   }
 }
 
-/** Derive blocks and tasks from a note body. `null` when the body has no AST. */
-export function parseAstContent(astBytes: Uint8Array, body: string): AstContent | null {
-  const nodes = decodeAst(astBytes);
-  if (!nodes) return null;
+/** Blocks and tasks from a decoded AST; `body` supplies the raw line map. */
+function buildContent(nodes: WireNode[], body: string): AstContent {
   const reader = new Reader(body);
   const blocks: AstBlock[] = [];
   const tasks: AstTask[] = [];

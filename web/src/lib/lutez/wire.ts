@@ -52,9 +52,20 @@ export type WireNode = {
   parent: number;
   firstChild: number;
   next: number;
-  /** Half-open raw byte offsets into the parsed markdown. */
+  /**
+   * Half-open **raw** byte offsets into the parsed markdown, line breaks as
+   * written. Line numbers and every server row are derived from these.
+   */
   rawStart: number;
   rawEnd: number;
+  /**
+   * Half-open byte offsets into the **normalized** input (CRLF/CR → LF,
+   * NUL → U+FFFD, see `spans.ts`). This is the editor's space: CodeMirror
+   * stores no `\r`, so an editor offset is a normalized byte offset mapped to
+   * UTF-16 units.
+   */
+  normStart: number;
+  normEnd: number;
   /** Extension kind for `*Extension` nodes, else -1. */
   extKind: number;
   /**
@@ -137,6 +148,8 @@ export function decodeAst(bytes: Uint8Array): WireNode[] | null {
       next: readU32(bytes, base + 20),
       rawStart: readU32(bytes, base + 40),
       rawEnd: readU32(bytes, base + 44),
+      normStart: readU32(bytes, base + 32),
+      normEnd: readU32(bytes, base + 36),
       extKind,
       token,
     };

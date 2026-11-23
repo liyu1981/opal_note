@@ -460,7 +460,11 @@ Mulan PSL v2). The server links `liblutez.a` and decodes the AST in
 `src/store/markdown.rs` (`mod lutez_ast`) and `web/src/lib/lutez/parse.ts` are the
 two adapters that turn the AST into blocks, tasks, inline tags and wikilinks.
 They are deliberately identical: `cargo test corpus_parity -- --ignored` compares
-them (and the hand-written scanners) note by note on `data/notebooks`.
+them (and the hand-written scanners) note by note on `data/notebooks`, and
+`pnpm check:spans` proves the client's byte→UTF-16 mapping for every AST node.
+Spans come in three spaces: raw bytes (line numbers, index rows, hashes),
+normalized bytes with CRLF/CR folded to LF (the editor's document), and UTF-16
+units (CodeMirror). `web/src/lib/lutez/spans.ts` owns the third conversion.
 
 The dialect is a set of opt-in presets: inline/display math, `[[wikilinks]]`,
 `#tags`, and Logseq `TODO`/`DOING` keywords (the `DONE`/`CANCELED` forms are a
