@@ -23,7 +23,11 @@ import {
   type Text,
 } from "@codemirror/state";
 
-import { parseBlocks, type NoteBlock } from "../../lib/blocks";
+import {
+  innermostBlockAt,
+  parseBlocks,
+  type NoteBlock,
+} from "../../lib/blocks";
 
 export type BlockHandlesOptions = {
   readOnly: boolean;
@@ -236,10 +240,9 @@ function dropTarget(
   if (pos === null) return null;
   const line = view.state.doc.lineAt(pos).number;
   if (line >= source.startLine && line <= source.endLine) return null;
-  const blocks = blocksOf(view.state.doc);
-  const target = blocks.find(
-    (block) => line >= block.startLine && line <= block.endLine,
-  );
+  // Ranges can nest (an ordered sub-list inside an item), so the innermost
+  // block under the pointer is the one being dropped next to.
+  const target = innermostBlockAt(blocksOf(view.state.doc), line);
   if (!target) return null;
   const after = line > (target.startLine + target.endLine) / 2;
   return { line: after ? target.endLine : target.startLine, after };

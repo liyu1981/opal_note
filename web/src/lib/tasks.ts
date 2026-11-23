@@ -1,6 +1,6 @@
 import type { TaskStatus } from "../api/types";
 
-import { closesFence, fenceOpener } from "./markdown";
+import { lutezContent } from "./lutez";
 
 /** Status order used by filters, sorting and the status badges. */
 export const TASK_STATUSES: TaskStatus[] = [
@@ -48,58 +48,16 @@ export function cleanTaskText(text: string): string {
 /**
  * Every task the server would derive from `content`, as `status|text` lines.
  *
- * Mirrors `extract_tasks` in `src/store/markdown.rs` (fenced code skipped, any
- * whitespace run after a `-`/`*`/`+` bullet, `[ ]`/`[x]`/`[-]` checkboxes and
- * the Logseq `TODO`/`DOING`/`DONE`/`CANCELED` keywords). Two versions of a note with the
- * same signature produce the same rows, so an editor can tell a body edit that
- * touched tasks from one that did not.
+ * Derived from the shared `lutez` AST: only `-`/`*`/`+` list items count, with
+ * `[ ]`/`[x]`/`[-]` checkboxes and the Logseq `TODO`/`DOING`/`DONE`/`CANCELED`
+ * keywords read from the item's own line — the same rows `extract_tasks` writes
+ * on the server. Two versions of a note with the same signature produce the same
+ * rows, so an editor can tell a body edit that touched tasks from one that did
+ * not. Before the parser is ready there is nothing to compare: an empty
+ * signature keeps saves quiet until it loads.
  */
 export function taskSignature(content: string): string {
-  const rows: string[] = [];
-  let fence: "```" | "~~~" | null = null;
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trimStart();
-    if (fence) {
-      if (closesFence(line, fence)) fence = null;
-      continue;
-    }
-    // A fence may be written as a list child (`- ``` … ``` `), which the editor
-    // renders as code; missing that made the closing fence open a block here.
-    const fenceLine = fenceOpener(trimmed);
-    if (fenceLine !== null) {
-      fence = fenceLine;
-      continue;
-    }
-
-    // Any whitespace run after the bullet counts, like the editor's rendering.
-    const rest = /^[-*+]\s+(.*)$/u.exec(trimmed)?.[1];
-    if (rest === undefined) continue;
-
-    const keyword = (name: string, status: string): string | null => {
-      if (!rest.startsWith(name)) return null;
-      const after = rest.slice(name.length);
-      if (after !== "" && !/^\s/u.test(after)) return null;
-      return `${status}|${after.trim()}`;
-    };
-
-    let row: string | null = null;
-    if (rest.startsWith("[ ]")) row = `open|${rest.slice(3).trim()}`;
-    else if (rest.startsWith("[x]") || rest.startsWith("[X]")) {
-      row = `done|${rest.slice(3).trim()}`;
-    } else if (rest.startsWith("[-]")) row = `cancelled|${rest.slice(3).trim()}`;
-    else {
-      row =
-        keyword("TODO", "open") ??
-        keyword("DOING", "doing") ??
-        keyword("DONE", "done") ??
-        keyword("CANCELED", "cancelled") ??
-        keyword("CANCELLED", "cancelled");
-    }
-    if (row === null) continue;
-    const [, text] = row.split("|", 2);
-    if ((text ?? "").trim() !== "") rows.push(row);
-  }
-
-  return rows.join("\n");
+  const shared = lutezContent(content);
+  if (shared === null) return "";
+  return shared.tasks.map((task) => `${task.status}|${task.text}`).join("\n");
 }

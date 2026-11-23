@@ -100,6 +100,10 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // A stale static library would decode the wrong AST shape; fail at startup
+    // rather than mis-index notes.
+    crate::store::lutez::check();
+
     tracing::debug!(data_dir = %store.data_dir().display(), "store ready");
     let state = AppState::new(AppStateInit {
         store,

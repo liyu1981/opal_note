@@ -5,6 +5,7 @@
 //! Writes go to disk first, then the index is refreshed.
 
 pub mod files;
+pub mod lutez;
 pub mod markdown;
 pub mod model;
 pub(crate) mod queries;
@@ -22,8 +23,8 @@ use cozo::{DataValue, DbInstance, NamedRows, ScriptMutability, ScriptRunOptions}
 use sha2::{Digest, Sha256};
 
 use self::markdown::{
-    extract_tasks, extract_wikilinks, merge_tags, note_link_keys, parse_blocks, parse_page,
-    render_page, summarize, ParsedBlock, ParsedTask,
+    merge_tag_lists, merge_tags, note_link_keys, parse_content, parse_page, render_page, summarize,
+    ParsedBlock, ParsedTask,
 };
 use self::model::{
     AssetEntry, AssetInfo, AssetList, AssetReference, BacklinkRef, BlockOverview, BlockTarget,
@@ -493,7 +494,7 @@ impl Store {
 
     /// Marker for the block derivation rules; see [`Self::take_task_rules_backfill`].
     fn take_block_rules_backfill(&self) -> bool {
-        const BLOCK_RULES_VERSION: u32 = 1;
+        const BLOCK_RULES_VERSION: u32 = 2;
         self.take_rules_marker("blocks.rules", BLOCK_RULES_VERSION, "block derivation")
     }
 
@@ -686,11 +687,14 @@ impl Store {
 
             let parsed = parse_page(&raw);
             let title = files::title_from_path(Path::new(&file.rel));
+            // One shared parse supplies every derived row (see
+            // `doc/lutez-parser.md`): the AST also feeds the editor through WASM.
+            let content = parse_content(&parsed.body);
             changed.push(PageRecord {
-                tags: merge_tags(&parsed.body, &parsed.tags),
-                links: extract_wikilinks(&parsed.body),
-                tasks: extract_tasks(&parsed.body),
-                blocks: parse_blocks(&parsed.body),
+                tags: merge_tag_lists(&content.tags, &parsed.tags),
+                links: content.links,
+                tasks: content.tasks,
+                blocks: content.blocks,
                 summary: summarize(&parsed.body, SUMMARY_CHARS),
                 path: file.rel.clone(),
                 title,
@@ -3396,11 +3400,12 @@ mod tests {
         assert!(marker.is_file());
         assert!(!store.take_block_rules_backfill());
 
-        // A fence-rule change re-derives every block exactly once.
+        // A block-grammar change (R1 on the shared AST) re-derives every block
+        // exactly once.
         fs::remove_file(&marker).unwrap();
         assert!(store.take_block_rules_backfill());
         assert!(!store.take_block_rules_backfill());
-        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "1");
+        assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "2");
     }
 
     #[test]
@@ -3435,7 +3440,7 @@ mod tests {
                 ("heading", 1, 1, 0),
                 ("paragraph", 3, 3, 0),
                 ("list_item", 5, 5, 0),
-                ("list_item", 6, 6, 5),
+                ("list_item", 6, 6, 3),
                 ("task", 7, 7, 0),
                 ("quote", 9, 9, 0),
                 ("code", 11, 13, 0),

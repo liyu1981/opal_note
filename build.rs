@@ -23,6 +23,7 @@ const PLACEHOLDER: &str = r#"<!doctype html>
 
 fn main() {
     emit_build_info();
+    emit_lutez_link();
 
     // Debug builds serve web/dist, builtin/plugins and builtin/backgrounds
     // from disk at runtime. They do not embed any of them, so frontend or
@@ -74,6 +75,46 @@ fn main() {
          Run `pnpm --dir web install && pnpm --dir web build` manually, then rebuild.\n\
          To build the Rust side without web assets, set OPALNOTE_SKIP_WEB_BUILD=1."
     );
+}
+
+/// Link the vendored `lutez` parser (`vendor/lutez`, a git submodule built by
+/// `scripts/build-lutez.mjs`).
+///
+/// There is no fallback parser any more: the crate indexes notes with this
+/// library only, so a missing archive is a hard build error rather than a
+/// silently different grammar. `pnpm build` / `pnpm dev` / the Docker image /
+/// CI all build it first; a bare `cargo build` needs one
+/// `node scripts/build-lutez.mjs` (Zig 0.17.0).
+fn emit_lutez_link() {
+    println!("cargo:rerun-if-changed=vendor/lutez/zig-out/lib");
+
+    // Zig names the Windows static archive `lutez_static.lib` (the DLL import
+    // library takes `lutez.lib`); everywhere else it is `liblutez.a`.
+    let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
+    let candidates: &[(&str, &str)] = if windows {
+        &[("lutez_static.lib", "lutez_static"), ("lutez.lib", "lutez")]
+    } else {
+        &[("liblutez.a", "lutez")]
+    };
+    let directory = PathBuf::from("vendor/lutez/zig-out/lib");
+    let Some((_, link_name)) = candidates
+        .iter()
+        .find(|(file, _)| directory.join(file).exists())
+    else {
+        panic!(
+            "the vendored markdown parser is not built: {} has no static library.\n\
+             Run `node scripts/build-lutez.mjs` (needs Zig 0.17.0), or use `pnpm build` / \
+             `pnpm dev`, which do it for you.",
+            directory.display()
+        );
+    };
+    println!("cargo:rustc-link-search=native={}", directory.display());
+    println!("cargo:rustc-link-lib=static={link_name}");
+    // Zig's standard library needs libc; the server already links it on Unix,
+    // but be explicit so a static target does not lose the dependency silently.
+    if !windows {
+        println!("cargo:rustc-link-lib=c");
+    }
 }
 
 /// Embed the package version and git commit metadata in every build. The

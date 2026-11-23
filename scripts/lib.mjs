@@ -133,6 +133,11 @@ export function buildBuiltins() {
   run("node", ["scripts/build-builtins.mjs"]);
 }
 
+export function buildLutez() {
+  step("Building the vendored markdown parser (lutez)");
+  run("node", ["scripts/build-lutez.mjs"]);
+}
+
 export function buildWeb() {
   step("Building the web client");
   run("pnpm", ["--dir", "web", "build"]);

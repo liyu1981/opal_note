@@ -66,6 +66,18 @@ export function safeExternalUrl(raw: string): string | null {
   }
 }
 
+/** ATX heading level (1-6) when the line is a heading, else null.
+ *
+ * Mirrors `heading_level` in `src/store/markdown.rs`; the AST adapter and the
+ * legacy scanners both use it so a `#` line is classified the same way.
+ */
+export function headingLevel(line: string): number | null {
+  const trimmed = line.trimStart();
+  const hashes = /^#+/u.exec(trimmed)?.[0].length ?? 0;
+  if (hashes === 0 || hashes > 6) return null;
+  return /\s/u.test(trimmed[hashes] ?? "") ? hashes : null;
+}
+
 /* ---------------------------------------------------------------- fences -- */
 
 export type Fence = "```" | "~~~";

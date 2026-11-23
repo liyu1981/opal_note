@@ -37,6 +37,12 @@ Longer design notes live in `doc/`:
 - `doc/plugin-ui-expansion.md` — plugin UI expansion phases
 - `doc/rich-content.md` — planned asset-backed diagrams: Mermaid (Pele) and
   Excalidraw as two sandboxed iframe `viewer` plugins (a new plugin type)
+- `doc/lutez-parser.md` — the `lutez` integration: a CommonMark/GFM parser in Zig
+  (submodule `vendor/lutez`, pinned `a8a81bb`, ABI 3, wire 2) that both the Rust
+  indexer and the browser call, so a note has one parse. **Implemented** for
+  blocks/tasks/tags/links and for the editor's rendering (P3); the legacy
+  scanners are gone (P4). Records the re-reviews, the measured corpus parity (§5)
+  and every dialect decision (§6).
 - `doc/blocks.md` — block plan: **R1** positional blocks (grammar, derived `block`
   index, handles/fold/drag, hash deep links, no markdown changes) is the committed
   scope; references/`^id` are **R2**, deferred. Nothing outside the doc should
@@ -49,6 +55,9 @@ Longer design notes live in `doc/`:
   target is still imported as `cozo`. SQLite backend (bundled SQLite).
 - Client: React 19, TanStack Router, CodeMirror 6, TypeScript 7 (`tsc`
   native), Vite 8, Tailwind CSS 4, Jotai 3
+- Markdown: `lutez` (CommonMark/GFM in Zig 0.17.0), a git submodule at
+  `vendor/lutez`, compiled once into `liblutez.a` (server FFI) and
+  `lutez.wasm` (editor)
 - Package manager: pnpm
 
 ## Commands
@@ -57,6 +66,9 @@ Longer design notes live in `doc/`:
 pnpm dev               # build, then watch web/src, builtin/src and src
 pnpm build             # built-ins + web build → asset sync → release binary
 pnpm build:builtins    # regenerate builtin/plugins and builtin/backgrounds
+node scripts/build-lutez.mjs  # rebuild liblutez.a + web/public/lutez.wasm (Zig 0.17.0)
+pnpm check:parse       # server vs browser parse parity over data/notebooks
+pnpm check:spans       # byte→UTF-16 span mapping (fixtures + every AST node in data/notebooks)
 pnpm start             # run opalnote serve
 pnpm test              # cargo test + web typecheck
 pnpm check             # cargo check + web typecheck
@@ -153,6 +165,43 @@ web/
 - Reads call `Store::ensure_synced`; writes hold `fs_lock` for the whole
   read-modify-write. Do not call public store methods while holding the lock —
   use the `*_locked` internals.
+- **One markdown parser, two runtimes.** Blocks, tasks, tags and wikilinks are
+  derived from the vendored `lutez` CommonMark/GFM AST — `vendor/lutez` (a git
+  submodule pinned by commit, Zig 0.17.0) built by
+  `node scripts/build-lutez.mjs` into `liblutez.a` (server) and
+  `web/public/lutez.wasm` (editor). Keep that script's `-Dcpu=baseline`: Zig's
+  default targets the build machine's CPU, and an archive with AVX-512 or
+  `dotprod`/`i8mm`/`sve` instructions kills the server with `Illegal
+  instruction` on an older machine (a GitHub ARM runner → an ARM VM does
+  exactly that). `OPALNOTE_LUTEZ_CPU=native` is only for a same-machine build.
+  The server links the archive in `build.rs` and decodes wire format 2 in
+  `src/store/lutez.rs` (ABI/wire checked once at startup); the adapters that turn
+  the AST into `ParsedBlock`/`ParsedTask`/tags/links live in `mod lutez_ast` in
+  `src/store/markdown.rs` and, for the browser, in `web/src/lib/lutez/`. **There
+  is no second parser**: a missing `liblutez.a` is a hard build error, so build
+  the archive first (`pnpm build`/`pnpm dev`/Docker/CI do). Change both adapters
+  together and re-run `pnpm check:parse` (server rows vs browser rows over
+  `data/notebooks`).
+- `lutez` is fetched as `/lutez.wasm` and compiled before the first render
+  (`web/src/main.tsx` → `loadLutez`). The asset route serves `.wasm` as
+  `application/wasm` (the only type `instantiateStreaming` accepts) with
+  `no-cache`, and the SPA CSP needs `script-src 'wasm-unsafe-eval'`. There is no
+  client fallback parser either: a module that fails to load is a console
+  warning and the editor renders plain source without block handles/formatting,
+  so `main.tsx` awaits `loadLutez()` before the first render.
+- **Three offset spaces, and each one has one job.** The AST carries raw bytes
+  (`rawStart/rawEnd` — line numbers, server rows, block hashes), normalized bytes
+  (`normStart/normEnd` — CRLF/CR → LF, what the editor's document is) and the
+  token payload. CodeMirror indexes UTF-16 units, so a decoration is
+  `utf16Mapper(normalizeText(body))` + `span16(node, mapper)` from
+  `web/src/lib/lutez/spans.ts`; feeding it `rawStart` shifts every line after the
+  first CRLF and every character after a multi-byte one. `pnpm check:spans`
+  proves the mapping for every node in the corpus.
+- **A note body is parsed once per sync**: `parse_content(&body)` returns blocks,
+  tasks, tags and links from one AST walk, and the store feeds `merge_tag_lists`
+  (sync) / `merge_tags` (note reads) and `summarize` from it. The individual
+  `parse_blocks`/`extract_*` helpers are `#[cfg(test)]` views of that struct —
+  never call them from a request path.
 - Ordinary note autosaves merge the returned `Note` into local state. Do not
   bump `notesRevisionAtom` for body-only saves: only title/tag/link/backlink
   changes need the notebook-derived lists and graph refreshed.
@@ -245,6 +294,17 @@ web/
   transparent so the layer shows. The Dot Grid renderer is adapted from React
   Bits (`components/backgrounds/DotGrid.tsx`); colours come from
   `--color-line-strong` / `--color-accent-strong`, never hard-coded.
+- `livePreview` renders from the shared AST (`noteAstField` in
+  `web/src/lib/lutez/editor.ts`, one parse per doc-changing transaction):
+  fenced blocks (`NodeCodeBlock`, indented code stays prose as it always looked),
+  display math, and every inline construct — code spans (any backtick run),
+  emphasis/strong/strikethrough with their real marker spans, links/images
+  (label and destination from `LinkText`/`LinkDest`, so `![](x.png)` and titles
+  work), wikilinks, tags and inline math — come from nodes. Still source-local by
+  design: the per-line marker widths that drive the hanging
+  indent (headings, quotes, list/task markers), `==highlight==` (not a
+  CommonMark/GFM construct, so no node), and bare URLs (GFM text; the editor's
+  trailing-punctuation rules are its own).
 - The note body is a **live block editor**, not a split preview. Keep source
   marks visible while the cursor is on a block and render them elsewhere.
   Editor internals live in `src/lib/livePreview.ts`,
@@ -345,6 +405,23 @@ web/
   state, and locking keeps the provider listed so the next request can prompt.
   There is deliberately **no** config-file, env or CLI way to set the agent key —
   the UI is the only writer.
+- **Settings → Agent only *sets up* the provider; unlocking lives in the chat.**
+  `AgentProviderCard` shows the endpoint/key/password form while nothing is
+  configured, and a one-line summary (endpoint, key stored, model count) plus
+  "Set up a new configuration" / "Recheck" / "Remove" once a setup is in place.
+  It must not unlock, lock, or pick an unlock window: `useOpalNoteCallGate`
+  stops a message from a locked provider and `AgentUnlockDialog` (rendered in
+  the panel, not in settings) collects the password and the "Keep it" window
+  right before the call. Saving a new envelope drops any session key
+  (`lockProvider`), so the next send asks for the new password.
+- The agent's model list is fetched **through the proxy** (`api.agentModels(key)` →
+  `GET /api/agent/v1/models`), never from the browser directly: ReAgent's picker
+  only shows models the host-provider config declares, so `AgentProviderCard.save`
+  stores the connection first and then `refreshProviderModels` saves the ids it
+  gets back. That helper also repairs a stored row with an empty list (on load,
+  unlock and `Recheck`) and refreshes the ids when the base URL changes. Do not
+  fetch models *before* the config exists (the proxy 404s) and do not call the
+  listing while locked (it 401s): the stored ids are reused instead.
 - The agent's OpalNote provider is a **server proxy**, not a browser credential:
   `GET /api/agent` reports `{configured, models}` and
   `GET|POST /api/agent/v1/{path}` forwards only `models`, `chat/completions`,
@@ -358,13 +435,16 @@ web/
   stops a call to a *locked* provider before the message is appended — the
   prompt stays in the composer and our unlock dialog opens.
 - ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
-  `main` (currently `14afb13`), linked as a pnpm workspace package
+  `main` (currently `4f9df91`), linked as a pnpm workspace package
   (`workspace:*`), because its published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
   it (`tsc` in the submodule, skipped when `dist/` is newer than `src/`) and runs
   from `pnpm build`, `pnpm typecheck` and `pnpm build:watch`; `pnpm dev` also
   watches `web/vendor/reagent/src`. Bumping it means updating the submodule
   pointer (`git -C web/vendor/reagent fetch && git -C web/vendor/reagent
-  checkout main`) and committing the new submodule SHA. Docker and the release
+  checkout main`) and committing the new submodule SHA. Provider registration
+  is a **prop** (`providerFilter` on `<ReAgent>`; omitted = every provider), not
+  a settings switch — we do not set it, so the OpalNote host provider is simply
+  absent until it is configured. Docker and the release
   workflows check out submodules recursively. To patch ReAgent locally, edit the
   submodule and commit the change there first, then the pointer here.
 - Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`
@@ -373,12 +453,13 @@ web/
   add new lightboxes the same way instead of copying the shell. Editor images
   open the image lightbox on click; Alt/Option-click keeps the caret-in-source
   behaviour so an image-only line stays editable.
-- Blocks are **positional only** (`doc/blocks.md` R1): `src/store/markdown.rs`
-  `parse_blocks` derives them, the sync pass fills the `block` relation, and
+- Blocks are **positional only** (`doc/blocks.md` R1): `parse_content` derives
+  them from the shared AST in `src/store/markdown.rs`, the sync pass fills the
+  `block` relation, and
   nothing is written into the markdown — no ids, no refs. `blockHandles` draws
   the gutter handle, folding, drag, delete and Tab indent; decorations come from
   a `StateField` because CodeMirror rejects block decorations from view plugins.
-  `web/src/lib/blocks.ts` mirrors the parser (parity with the Rust side), and a
+  `web/src/lib/blocks.ts` reads the same AST through `web/src/lib/lutez/`, and a
   block link is `?p=<path>&block=<hash>&at=<seq>`. Rules changes bump the
   `blocks.rules` marker, like `tasks.rules`.
 - Slash commands live in `src/lib/slashCommands.ts` and are a second
@@ -644,7 +725,10 @@ web/
   `openExternal`, and `runCommand`; validate and bound UI depth, node count,
   strings, URLs, and payload size on both server and client.
 - Tasks are derived during filesystem sync into the `task` relation from
-  markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. Keep task
+  markdown checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords. The task set
+  itself comes from the shared AST (only `-`/`*`/`+` list items count, ordered
+  items do not) with the marker read from the item's own source line; the
+  client's `taskSignature` uses the same AST through WASM. Keep task
   rows in sync with note insert/update/delete and notebook deletion.
   A body edit can therefore change derived data, so saves that move the task set
   bump **`tasksRevisionAtom`** (`refreshTasksAtom`), never `notesRevisionAtom`:
@@ -653,19 +737,19 @@ web/
   whole-page flash). `EditorPane` compares `taskSignature(previous.content)` with
   the saved content, and `JournalCard` does the same after a save **and** after
   its unmount flush (the next view, e.g. Todos, may already be mounted and must be
-  told). `web/src/lib/tasks.ts`
-  `taskSignature` mirrors `extract_tasks`: keep the two in step — fenced code is
-  skipped — note a fence may be a list child (`- ``` … ``` `), so opening
-  detection allows a bullet prefix while closing stays a bare fence, or the
-  closing fence opens a block and swallows every later task/tag/link) — with
-  `-`/`*`/`+` bullets **with any whitespace run after the bullet**
-  (the editor renders `-  [ ] x` and `-\t[ ] x` as checkboxes, so the server must
-  index them), `[ ]`/`[x]`/`[-]` plus the Logseq keywords. Bump
+  told). The task set comes from the shared AST on both sides: `task_row` in
+  `src/store/markdown.rs` (`mod lutez_ast`) and `taskRow` in
+  `web/src/lib/lutez/parse.ts` must agree — only `-`/`*`/`+` list items count
+  (ordered ones do not), any whitespace run after the bullet is accepted (the
+  editor renders `-  [ ] x` and `-\t[ ] x` as checkboxes), `[ ]`/`[x]`/`[-]` and
+  the Logseq keywords, and fenced code never yields a task because the AST has no
+  items inside a fence. `pnpm check:parse` compares the two on the corpus. Bump
   `TASK_RULES_VERSION` in `Store::take_task_rules_backfill` whenever extraction
   starts matching more or fewer lines: the `data/index/tasks.rules` marker then
   forces one full re-read, because unchanged files are skipped by the scan.
-  `BLOCK_RULES_VERSION`/`blocks.rules` does the same for `parse_blocks`, and
-  both markers go through `Store::take_rules_marker`.
+  `BLOCK_RULES_VERSION`/`blocks.rules` does the same for the block grammar
+  (currently **4** and **2**), and both markers go through
+  `Store::take_rules_marker`.
 - `PluginHost` dispatches plugin results to a safe renderer kind, the
   declarative schema renderer, or the legacy item card. `PluginCard` remains
   the todo-kind/legacy fallback. Home renders every server plugin result plus

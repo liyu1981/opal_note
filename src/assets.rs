@@ -14,6 +14,11 @@ fn asset_mime(path: &str) -> String {
     if path.ends_with(".webmanifest") {
         return "application/manifest+json".to_string();
     }
+    // `WebAssembly.instantiateStreaming` refuses anything but this type. The
+    // shared markdown parser is fetched from the app root (`/lutez.wasm`).
+    if path.ends_with(".wasm") {
+        return "application/wasm".to_string();
+    }
     mime_guess::from_path(path)
         .first_or_octet_stream()
         .essence_str()
@@ -100,7 +105,7 @@ fn dev_asset(path: &str) -> Option<Vec<u8>> {
 /// attributes. Google Fonts are explicitly allow-listed for the Settings font
 /// picker, and authenticated image/audio/video blobs come from self or blob:.
 const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
-script-src 'self'; \
+script-src 'self' 'wasm-unsafe-eval'; \
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
 font-src 'self' data: https://fonts.gstatic.com; \
 img-src 'self' data: blob: https:; \
@@ -119,6 +124,7 @@ fn must_revalidate(path: &str) -> bool {
     matches!(
         path,
         "index.html"
+            | "lutez.wasm"
             | "sw.js"
             | "manifest.webmanifest"
             | "offline.html"
@@ -159,6 +165,7 @@ mod tests {
     fn pwa_files_are_revalidated_and_typed() {
         for path in [
             "index.html",
+            "lutez.wasm",
             "sw.js",
             "manifest.webmanifest",
             "offline.html",
@@ -180,6 +187,8 @@ mod tests {
         );
         assert_eq!(asset_mime("sw.js"), "text/javascript");
         assert_eq!(asset_mime("offline.html"), "text/html");
+        // `WebAssembly.instantiateStreaming` requires exactly this type.
+        assert_eq!(asset_mime("lutez.wasm"), "application/wasm");
         assert_eq!(asset_mime("icons/icon-192.png"), "image/png");
     }
 }

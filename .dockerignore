@@ -6,3 +6,7 @@ web/dist
 web/.vite
 *.log
 .DS_Store
+# The parser artifacts are built inside the image (per architecture).
+vendor/lutez/zig-out
+vendor/lutez/.zig-cache
+web/public/lutez.wasm

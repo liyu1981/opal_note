@@ -105,7 +105,7 @@ export async function endSession(): Promise<void> {
   clearLegacyToken();
 }
 
-export function resetSession(): void {
+function resetSession(): void {
   csrfToken = null;
   bootstrap = null;
 }

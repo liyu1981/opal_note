@@ -4,7 +4,6 @@ import {
   type EditorState,
   type Extension,
   type Range,
-  type Text,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -19,6 +18,16 @@ import { assetKindFromPath } from "./assets";
 import { extensionOfPath, viewerTheme } from "../plugins/viewers";
 import { mountViewer, type ViewerMount } from "../plugins/viewerMount";
 import { MAX_MATH_CHARS, renderMath } from "./latex";
+import {
+  astCodeBlocks,
+  astInlineNodes,
+  astMathBlocks,
+  noteAstField,
+  type AstCodeBlock,
+  type AstMathBlock,
+} from "./lutez/editor";
+import { span16 } from "./lutez/spans";
+import { EXT_KIND, NODE, NULL_NODE, type WireNode } from "./lutez/wire";
 import { normalizeLinkTarget, splitWikilink } from "./markdown";
 
 export type LinkTarget = { title: string; path: string };
@@ -50,100 +59,12 @@ export type LivePreviewOptions = {
 
 type OptionsRef = { current: LivePreviewOptions };
 
-const CODE_FENCE_OPEN =
-  /^(\s*)((?:[-*+]|\d+[.)])\s+)?(`{3,}|~{3,})(.*)$/u;
-const CODE_FENCE_CLOSE = /^(\s*)(`{3,}|~{3,})\s*$/u;
-
-type CodeBlockRange = {
-  start: number;
-  end: number;
-  char: string;
-  indent: number;
-};
-
 /**
  * Last rendered height of an image line, keyed by note + source line. Capped so
  * a long session across many notes cannot grow it without bound.
  */
 const imageLineHeights = new Map<string, number>();
 const IMAGE_HEIGHT_CACHE_LIMIT = 500;
-
-/** Locate fenced blocks so focusing any line can reveal the whole block. */
-function findCodeBlocks(doc: Text): CodeBlockRange[] {
-  const blocks: CodeBlockRange[] = [];
-  let open: { start: number; char: string; indent: number } | null = null;
-
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
-    const text = doc.line(lineNumber).text;
-    if (open) {
-      const closing = CODE_FENCE_CLOSE.exec(text);
-      if (closing && closing[2]?.[0] === open.char) {
-        blocks.push({ ...open, end: lineNumber });
-        open = null;
-      }
-      continue;
-    }
-
-    const opening = CODE_FENCE_OPEN.exec(text);
-    if (!opening) continue;
-    const marker = opening[3] ?? "```";
-    open = {
-      start: lineNumber,
-      char: marker[0] ?? "`",
-      indent:
-        leadingIndentColumns(text) +
-        (opening[2] ? columnsOf(opening[2]) : 0),
-    };
-  }
-
-  if (open) blocks.push({ ...open, end: doc.lines });
-  return blocks;
-}
-
-type MathBlockRange = { start: number; end: number; source: string };
-
-const BLOCK_MATH_FENCE = /^\s*\$\$\s*$/u;
-
-/**
- * `$$` fences that sit on their own line, outside fenced code. Anything
- * unclosed stays plain source, so a half-typed block never swallows the note.
- */
-function findMathBlocks(
-  doc: Text,
-  codeBlocks: CodeBlockRange[],
-): MathBlockRange[] {
-  const inCode = new Set<number>();
-  for (const block of codeBlocks) {
-    for (let line = block.start; line <= block.end; line += 1) inCode.add(line);
-  }
-
-  const blocks: MathBlockRange[] = [];
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
-    if (inCode.has(lineNumber)) continue;
-    if (!BLOCK_MATH_FENCE.test(doc.line(lineNumber).text)) continue;
-
-    let close = 0;
-    for (let next = lineNumber + 1; next <= doc.lines; next += 1) {
-      if (inCode.has(next)) break;
-      if (BLOCK_MATH_FENCE.test(doc.line(next).text)) {
-        close = next;
-        break;
-      }
-    }
-    if (!close) continue;
-
-    const lines: string[] = [];
-    for (let inner = lineNumber + 1; inner < close; inner += 1) {
-      lines.push(doc.line(inner).text.trim());
-    }
-    const source = lines.join("\n");
-    if (!source) continue;
-
-    blocks.push({ start: lineNumber, end: close, source });
-    lineNumber = close;
-  }
-  return blocks;
-}
 
 /** Mirrors editor focus into the state; block widgets follow it. */
 const editorFocus = StateEffect.define<boolean>();
@@ -178,7 +99,9 @@ function buildMathBlockDecorations(
   }
 
   const ranges: Range<Decoration>[] = [];
-  for (const block of findMathBlocks(doc, findCodeBlocks(doc))) {
+  const ast = state.field(noteAstField, false);
+  if (!ast) return Decoration.none;
+  for (const block of astMathBlocks(ast)) {
     let touched = false;
     for (let line = block.start; line <= block.end; line += 1) {
       if (editing.has(line)) touched = true;
@@ -247,6 +170,8 @@ export function livePreview(optionsRef: OptionsRef): Extension {
 
   return [
     editorFocusField,
+    // Parsed first so the fields below see this transaction's AST.
+    noteAstField,
     mathBlockField,
     ViewPlugin.fromClass(LivePreviewPlugin, {
       decorations: (plugin) => plugin.decorations,
@@ -329,7 +254,10 @@ function buildDecorations(
     }
   }
 
-  const codeBlocks = findCodeBlocks(doc);
+  // Structure and inline formatting both come from the shared AST; without it
+  // (the module failed to load) the note renders as plain source.
+  const ast = view.state.field(noteAstField, false);
+  const codeBlocks: AstCodeBlock[] = ast ? astCodeBlocks(ast) : [];
   const codeTextByStart = new Map<number, string>();
   for (const block of codeBlocks) {
     const lines: string[] = [];
@@ -349,8 +277,16 @@ function buildDecorations(
     }
   }
 
-  const mathBlocks = findMathBlocks(doc, codeBlocks);
-  const mathBlockByLine = new Map<number, MathBlockRange>();
+  const mathBlocks: AstMathBlock[] = ast ? astMathBlocks(ast) : [];
+  const inlineByLine = ast ? astInlineNodes(ast) : null;
+  // Line → fenced block, so the fence/start/end styling needs no re-scan.
+  const codeBlockAtLine = new Map<number, AstCodeBlock>();
+  for (const block of codeBlocks) {
+    for (let line = block.start; line <= block.end; line += 1) {
+      codeBlockAtLine.set(line, block);
+    }
+  }
+  const mathBlockByLine = new Map<number, AstMathBlock>();
   for (const block of mathBlocks) {
     for (let line = block.start; line <= block.end; line += 1) {
       mathBlockByLine.set(line, block);
@@ -400,7 +336,6 @@ function buildDecorations(
     return slashes % 2 === 1;
   };
 
-  let fence: { char: string; indent: number } | null = null;
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -467,47 +402,34 @@ function buildDecorations(
       }
     };
 
-    if (fence) {
-      const closing = CODE_FENCE_CLOSE.exec(text);
-      if (closing && closing[2]?.[0] === fence.char) {
+    const codeBlock = codeBlockAtLine.get(lineNumber);
+    if (codeBlock) {
+      if (lineNumber === codeBlock.start) {
+        addCodeLine(
+          `cm-live-code-line cm-live-code-fence cm-live-code-start${
+            active ? "" : " cm-live-code-fence-hidden"
+          }`,
+          codeBlock.indent,
+          !active,
+        );
+        if (!active) {
+          ranges.push(
+            Decoration.widget({
+              widget: new CodeCopyWidget(codeTextByStart.get(lineNumber) ?? ""),
+              side: 1,
+            }).range(line.to),
+          );
+        }
+      } else if (lineNumber === codeBlock.end) {
         addCodeLine(
           `cm-live-code-line cm-live-code-fence cm-live-code-end${
             active ? "" : " cm-live-code-fence-hidden"
           }`,
-          fence.indent,
+          codeBlock.indent,
           !active,
         );
-        fence = null;
       } else {
-        addCodeLine("cm-live-code-line", fence.indent, false);
-      }
-      continue;
-    }
-
-    // A Logseq block may open its fence after a bullet or ordered marker:
-    //   - ```javascript
-    // Treat the marker as indentation so the code body aligns with the list
-    // content rather than falling back to plain markdown lines.
-    const opening = CODE_FENCE_OPEN.exec(text);
-    if (opening) {
-      const marker = opening[3] ?? "```";
-      const indent =
-        leadingIndentColumns(text) + (opening[2] ? columnsOf(opening[2]) : 0);
-      fence = { char: marker[0] ?? "`", indent };
-      addCodeLine(
-        `cm-live-code-line cm-live-code-fence cm-live-code-start${
-          active ? "" : " cm-live-code-fence-hidden"
-        }`,
-        indent,
-        !active,
-      );
-      if (!active) {
-        ranges.push(
-          Decoration.widget({
-            widget: new CodeCopyWidget(codeTextByStart.get(lineNumber) ?? ""),
-            side: 1,
-          }).range(line.to),
-        );
+        addCodeLine("cm-live-code-line", codeBlock.indent, false);
       }
       continue;
     }
@@ -652,6 +574,215 @@ function buildDecorations(
     }
 
     // ---- inline content --------------------------------------------------
+    const process = (regex: RegExp, handler: (match: RegExpExecArray) => void) => {
+      regex.lastIndex = 0;
+      let match = regex.exec(text);
+      while (match) {
+        if (!isEscaped(text, match.index)) handler(match);
+        match = regex.exec(text);
+      }
+    };
+
+    if (ast) {
+      // Formatting comes from the AST: exact spans, correct nesting, escapes
+      // and code spans with any number of backticks. `==highlight==` has no AST
+      // node (an OpalNote extension) and bare URLs are recognised textually, so
+      // both keep a source scan — after the AST nodes, which claim their ranges.
+      const directChildSpan = (node: WireNode, kind: number): [number, number] | null => {
+        let child = node.firstChild;
+        while (child !== NULL_NODE && child < ast.nodes.length) {
+          const candidate = ast.nodes[child]!;
+          if (candidate.kind === kind) return span16(candidate, ast.mapper);
+          child = candidate.next;
+        }
+        return null;
+      };
+
+      const renderInline = (node: WireNode) => {
+        const [from, to] = span16(node, ast.mapper);
+        if (to <= from) return;
+
+        if (
+          node.kind === NODE.codeSpan ||
+          node.kind === NODE.emphasis ||
+          node.kind === NODE.strong ||
+          node.kind === NODE.strikethrough
+        ) {
+          if (overlaps(from, to)) return;
+          const open = ast.nodes[node.firstChild];
+          if (!open) return;
+          let last = open;
+          while (last.next !== NULL_NODE && last.next < ast.nodes.length) {
+            last = ast.nodes[last.next]!;
+          }
+          const [, openTo] = span16(open, ast.mapper);
+          const [closeFrom] = span16(last, ast.mapper);
+          if (!active) {
+            hide(from, openTo);
+            hide(closeFrom, to);
+          }
+          const className =
+            node.kind === NODE.codeSpan
+              ? "cm-live-inline-code"
+              : node.kind === NODE.strong
+                ? "cm-live-bold"
+                : node.kind === NODE.strikethrough
+                  ? "cm-live-strike"
+                  : "cm-live-italic";
+          addMark(openTo, closeFrom, className);
+          if (node.kind === NODE.codeSpan) claimed.push([from, to]);
+          return;
+        }
+
+        if (node.kind === NODE.inlineExtension) {
+          if (overlaps(from, to) || insideClaimed(from, to)) return;
+          if (node.extKind === EXT_KIND.tag) {
+            addMark(from, to, "cm-live-tag");
+            return;
+          }
+          if (node.extKind === EXT_KIND.wikilink) {
+            // `![[…]]` is an embed, not a link.
+            if (from > 0 && ast.text.slice(from - 1, from) === "!") return;
+            const { target, label } = splitWikilink(node.token);
+            if (!target) return;
+            const resolved = options.linkKeys.has(normalizeLinkTarget(target));
+            replace(
+              from,
+              to,
+              new WikiLinkWidget(target, label, resolved, options.onWikiLink),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+          if (node.extKind === EXT_KIND.math) {
+            if (node.token.length > MAX_MATH_CHARS) return;
+            const display = ast.text.slice(from, from + 2) === "$$";
+            replace(from, to, new MathWidget(node.token, display));
+            claimed.push([from, to]);
+          }
+          return;
+        }
+
+        if (node.kind === NODE.link || node.kind === NODE.image) {
+          const isImage = node.kind === NODE.image;
+          // GFM autolinks carry no brackets; the bare-URL scan renders those.
+          if (!ast.text.startsWith(isImage ? "![" : "[", from)) return;
+          if (overlaps(from, to) || insideClaimed(from, to)) return;
+          const labelSpan = directChildSpan(node, NODE.linkText);
+          const destSpan = directChildSpan(node, NODE.linkDest);
+          const label = labelSpan
+            ? ast.text.slice(labelSpan[0], labelSpan[1])
+            : "";
+          const url = destSpan ? ast.text.slice(destSpan[0], destSpan[1]) : "";
+          const assetPath = resolveAssetPath(options.notePath, url);
+          const assetKind = assetPath ? assetKindFromPath(assetPath) : null;
+          const viewer = assetPath
+            ? options.viewerFor(extensionOfPath(assetPath))
+            : null;
+
+          if (isImage && assetPath && viewer) {
+            replace(
+              from,
+              to,
+              new ViewerWidget(
+                assetPath,
+                extensionOfPath(assetPath),
+                viewer,
+                options.loadAsset,
+                options.onOpenViewer,
+                options.assetRevision,
+              ),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+
+          if (
+            assetPath &&
+            (!isImage || assetKind === "document" || assetKind === "other")
+          ) {
+            replace(
+              from,
+              to,
+              new AssetFileWidget(
+                assetPath,
+                label || assetPath.split("/").pop() || assetPath,
+                assetKind ?? "other",
+                options.onOpenAsset,
+              ),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+
+          if (isImage) {
+            const media = assetPath
+              ? mediaWidget(assetPath, assetKind, label, options, view, line)
+              : null;
+            replace(
+              from,
+              to,
+              media ??
+                new ImageWidget(
+                  url,
+                  label,
+                  assetPath,
+                  options.loadAsset,
+                  view,
+                  options.notePath,
+                  line.from,
+                  line.to,
+                  options.onOpenImage,
+                ),
+            );
+            claimed.push([from, to]);
+            return;
+          }
+
+          replace(
+            from,
+            to,
+            new ExternalLinkWidget(label, url, options.onOpenLink),
+          );
+          claimed.push([from, to]);
+        }
+      };
+
+      for (const node of inlineByLine?.get(lineNumber) ?? []) renderInline(node);
+
+      const highlight = /==([^=\n]+)==/gu;
+      process(highlight, (match) => {
+        const start = line.from + match.index;
+        const end = start + match[0].length;
+        if (insideClaimed(start, end) || overlaps(start, end)) return;
+        if (!active) {
+          hide(start, start + 2);
+          hide(end - 2, end);
+        }
+        addMark(start + 2, end - 2, "cm-live-highlight");
+      });
+
+      // Bare URLs stay textual: `https://…` and `www.…` are GFM text, and the
+      // trailing-punctuation rules are the editor's own.
+      if (!active) {
+        const bareUrl = /(?:https?:\/\/|www\.)[^\s<>"'`\]]+/giu;
+        process(bareUrl, (match) => {
+          const start = line.from + match.index;
+          const end = start + match[0].length;
+          if (insideClaimed(start, end) || overlaps(start, end)) return;
+          const display = trimUrlTrailing(match[0]);
+          if (!display) return;
+          const trimmedEnd = start + display.length;
+          const url = /^www\./iu.test(display) ? `https://${display}` : display;
+          replace(
+            start,
+            trimmedEnd,
+            new ExternalLinkWidget(display, url, options.onOpenLink),
+          );
+          claimed.push([start, trimmedEnd]);
+        });
+      }
+    } else {
     const process = (regex: RegExp, handler: (match: RegExpExecArray) => void) => {
       regex.lastIndex = 0;
       let match = regex.exec(text);
@@ -909,6 +1040,7 @@ function buildDecorations(
       if (insideClaimed(start, end) || overlaps(start, end)) return;
       addMark(start, end, "cm-live-tag");
     });
+    }
   }
 
   return Decoration.set(ranges, true);

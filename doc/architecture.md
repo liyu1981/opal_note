@@ -158,9 +158,22 @@ run from anywhere). Pass `--latest` to skip the prompt or `--help` for options.
 
 1. installs the root and web dependencies on first run;
 2. builds the generated built-in plugins and backgrounds;
-3. builds the client bundle;
-4. starts the debug server;
-5. watches client, server and built-in sources.
+3. builds the vendored markdown parser (`scripts/build-lutez.mjs` → `liblutez.a`
+   for the server, `web/public/lutez.wasm` for the browser; needs Zig 0.17.0);
+4. builds the client bundle;
+5. starts the debug server;
+6. watches client, server and built-in sources.
+
+The parser step is cached: it only rebuilds when `vendor/lutez` (a git
+submodule) changes or when the target/CPU flags change, so
+`git submodule update --init --recursive` is the one setup step. The archive is
+compiled for **baseline CPU features** (`-Dcpu=baseline`), never the host CPU:
+Zig's default bakes the build machine's instructions (AVX-512, `dotprod`,
+`i8mm`, `sve`, …) into the archive, and a binary built on a CI runner then dies
+with `Illegal instruction (core dumped)` on an older server. Build for the
+running machine only with `OPALNOTE_LUTEZ_CPU=native`. There is no fallback
+parser: `cargo build` fails with an actionable message when the archive is
+missing, and the server serves `lutez.wasm` from the app root.
 
 Debug builds deliberately **do not embed** `web/dist`, `builtin/plugins` or
 `builtin/backgrounds`.
@@ -198,8 +211,8 @@ plain HTTP.
 
 ### Release builds
 
-`pnpm build` builds the generated built-ins, then the web client and asset
-sync, then `cargo build --release --locked`. Release builds embed `web/dist`,
+`pnpm build` builds the generated built-ins, the vendored markdown parser, then
+the web client and asset sync, then `cargo build --release --locked`. Release builds embed `web/dist`,
 `builtin/plugins` and `builtin/backgrounds`; `build.rs` builds `web/dist` on
 demand for a plain release build. Debug builds skip that embed step and read
 all three directories at runtime.
@@ -383,6 +396,14 @@ or `--force` to customize it; the command prints the enable commands.
 | `--dev-cors`               | `OPALNOTE_DEV_CORS`           | `false`           | Permissive CORS for API calls from another origin        |
 | `--csp-host`               | `OPALNOTE_CSP_HOSTS`          | none              | Extra `host[:port]` trusted by the viewer-plugin CSP     |
 
+Build/run switches that are not CLI flags:
+
+| Env | Meaning |
+| --- | --- |
+| `OPALNOTE_LUTEZ_CPU` | `baseline` (default) or `native` for `scripts/build-lutez.mjs` |
+| `OPALNOTE_ZIG` | Zig executable the parser build should use |
+| `OPALNOTE_SKIP_WEB_BUILD=1` | Compile a release binary without building `web/dist` |
+
 Logging uses `tracing`: `RUST_LOG=opalnote=debug,tower_http=info`.
 
 `pnpm dev` sets `--bind 0.0.0.0:7827` so the app is reachable from a LAN or
@@ -429,6 +450,28 @@ date: "2026-11-12"
 The tag field edits the explicit list; inline `#tags` remain part of the body
 and are indexed too. Other frontmatter keys are preserved when saving. The
 editor shows the body without frontmatter.
+
+### Markdown parsing
+
+One parser serves both runtimes: **lutez**, a CommonMark 0.31.2 + GFM parser in
+Zig (git submodule `vendor/lutez`, pinned by commit, C ABI 3, wire-format 2 AST,
+Mulan PSL v2). The server links `liblutez.a` and decodes the AST in
+`src/store/lutez.rs`; the browser compiles `/lutez.wasm` before its first render.
+`src/store/markdown.rs` (`mod lutez_ast`) and `web/src/lib/lutez/parse.ts` are the
+two adapters that turn the AST into blocks, tasks, inline tags and wikilinks.
+They are deliberately identical: `pnpm check:parse` compares the server's rows
+with the browser's for every note in `data/notebooks`, and `pnpm check:spans`
+proves the client's byte→UTF-16 mapping for every AST node.
+Spans come in three spaces: raw bytes (line numbers, index rows, hashes),
+normalized bytes with CRLF/CR folded to LF (the editor's document), and UTF-16
+units (CodeMirror). `web/src/lib/lutez/spans.ts` owns the third conversion.
+
+The dialect is a set of opt-in presets: inline/display math, `[[wikilinks]]`,
+`#tags`, and Logseq `TODO`/`DOING` keywords (the `DONE`/`CANCELED` forms are a
+small post-pass). Frontmatter is split before parsing — `render_page` rewrites
+just the `tags:` block — and `key::`/`^block-id` stay off until blocks R2.
+`GET /meta` reports the engine (the parser is no longer switchable: one parser,
+one grammar).
 
 ### Editor
 
@@ -482,8 +525,10 @@ The note surface is a block-oriented live preview built on CodeMirror 6:
   `1. /`, `- [ ] /`, `> /`, `## /`). Pasting or dropping files uploads them and
   inserts `assetMarkdown` at the caret or drop point; the `maxUploadMb` cap
   applies and read-only notes ignore it.
-- **Blocks**: every block gets a hover handle in the gutter (`web/src/lib/blocks.ts`
-  parses, `components/editor/blockHandles.ts` decorates). The handle menu offers
+- **Blocks**: every block gets a hover handle in the gutter. The block list comes
+  from the shared parse — `web/src/lib/lutez/` (WASM) feeds
+  `web/src/lib/blocks.ts`, the same AST the server indexes — and
+  `components/editor/blockHandles.ts` decorates it. The handle menu offers
   copy link, fold/unfold, move up/down and delete; dragging the handle reorders
   the block as one transaction; Tab/Shift-Tab indents list items. Folding and
   handles are block decorations, so they come from a `StateField`. A block link
@@ -906,17 +951,38 @@ derived key (memory only, `sessionStorage`, or `localStorage`) — not by the
 server, which holds no unlock state. A window "locks" rather than disconnects:
 the models stay visible and the next request opens the password prompt. A
 re-saved envelope changes its fingerprint, which invalidates any remembered key.
+The window is chosen in the unlock dialog, which opens when a message is sent —
+settings only configures the provider.
+
+**Model list.** ReAgent's picker only offers models a provider's config
+declares, and the browser is the only side that can fetch them (the listing goes
+through the proxy, which needs the derived key). `save` therefore stores the
+connection first, then `refreshProviderModels` lists `/models` through the proxy
+and saves the ids; the same helper repairs a stored row with an empty list on
+load, unlock and `Recheck`, and refreshes it when the base URL changes so stale
+ids are never sent upstream. While the provider is locked nothing is fetched —
+the ids stored server-side are reused.
 
 **Client.** `opalnoteProvider.tsx` registers a ReAgent **host provider** whose
 `fetch` hook attaches the derived key, fails fast with `agent_locked` when
 locked, and locks again if the server rejects the key. `useOpalNoteCallGate`
 (the provider's `beforeAgentCall` hook) additionally stops a call to a locked
 provider *before* ReAgent appends the message, so the prompt stays in the
-composer and the unlock dialog opens instead of a failed turn. `AgentProviderCard.tsx`
-renders the setup card and the unlock dialog inside Settings → Agent → Model.
-Since ReAgent 0.2.1 that page lists every provider with an on/off switch; the
-OpalNote switch hides the card, and switching it back reconnects from
-`GET /api/agent`.
+composer and the unlock dialog opens instead of a failed turn.
+
+`AgentProviderCard.tsx` is **setup only**: the endpoint/key/password form while
+nothing is configured, and a summary (endpoint, whether a key is stored, model
+count) with "Set up a new configuration", "Recheck" and "Remove" once a setup
+exists. It never locks or unlocks and carries no unlock-window control — that
+belongs to `AgentUnlockDialog`, which the call gate raises at send time and
+which also asks how long to keep the key. Saving a new envelope drops the
+session key, so the next message prompts for the new password.
+The settings page groups providers in collapsible sections (the OpalNote card
+is its own section, open by default, kept mounted while collapsed so a
+half-typed key survives). Which providers a host registers is the
+`providerFilter` prop on `<ReAgent>` — omitted means every available provider —
+not a UI switch: the OpalNote provider simply does not exist until a
+configuration is stored (`GET /api/agent` reconnects it on load).
 
 **Vendored ReAgent.** `web/vendor/reagent` is a git submodule tracking upstream
 `main`, linked as a workspace package and built from source by
@@ -992,13 +1058,15 @@ markdown; **R2** (deferred, needs its own review) would add persistent
 references, embeds and block backlinks, which is where the identity-token design
 lives.
 
-Tasks are derived from markdown checkboxes and Logseq task keywords during sync,
-so a body save that adds, completes or rewrites one changes derived data — and a
-fenced block written as a list child (`- ``` … ``` `) must not swallow what
-follows it: opening detection tolerates the bullet prefix, closing requires the
-bare fence. The editor and the journal cards compare
+Tasks are derived from markdown checkboxes and Logseq task keywords during sync
+(only `-`/`*`/`+` list items count), so a body save that adds, completes or
+rewrites one changes derived data. Blocks, tasks, tags and wikilinks all come
+from one `lutez` AST per body — the same parser the browser compiles from
+`lutez.wasm` — so a fenced block written as a list child (`- ``` … ``` `) can no
+longer swallow what follows it on one side but not the other. The editor and the
+journal cards compare
 `taskSignature(content)` before/after saving
-(`web/src/lib/tasks.ts` mirrors `extract_tasks`, including its tolerance for any
+(`web/src/lib/tasks.ts` reads the same AST, including its tolerance for any
 whitespace run after the bullet — the editor draws `-  [ ] x` and `-\t[ ] x` as
 checkboxes, so the server must index them) and bump `tasksRevisionAtom` when the
 set moved, including from the flush that runs when a card is unmounted. The todo
@@ -1246,7 +1314,8 @@ src/
     mod.rs           sync engine, file-first CRUD, Datalog queries
     files.rs         folder layout, atomic writes, scanning, trash paths
     trash.rs         separate trash metadata database
-    markdown.rs      wikilinks, tags, frontmatter, summaries
+    markdown.rs      AST adapter: blocks, tasks, tags, links, summaries
+    lutez.rs         FFI + wire decoder for the shared parser (cfg(lutez_ffi))
     queries.rs       every CozoScript statement
     model.rs         API models
 builtin/src/        server plugin/background and client plugin package sources

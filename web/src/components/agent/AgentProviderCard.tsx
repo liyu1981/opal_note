@@ -5,15 +5,13 @@ import type {
   ReAgentCallDecision,
   ReAgentCallGate,
   ReAgentHostProvider,
-  ReAgentHostProviderProps,
 } from "@liyu1981/reagent";
 
 import { api } from "../../api/client";
 import {
   CryptoUnavailableError,
   canDecrypt,
-  envelopeFingerprint,
-  resealWithDerivedKey,
+  deriveUnlockKey,
   sealApiKey,
   type KeyEnvelope,
 } from "../../lib/agentCrypto";
@@ -26,6 +24,7 @@ import {
   expireUnlockIfNeeded,
   requestAgentUnlock,
 } from "../../state/agentUnlock";
+import { EndpointPicker } from "./EndpointPicker";
 import {
   OPALNOTE_PROVIDER_ID,
   OPALNOTE_PROVIDER_NAME,
@@ -33,6 +32,7 @@ import {
   disconnectProvider,
   lockProvider,
   refreshProvider,
+  refreshProviderModels,
   requestUnlockPrompt,
   setAgentLockedHandler,
   storedEnvelope,
@@ -48,15 +48,16 @@ const button =
   "h-8 rounded-md border border-border/60 px-2.5 text-xs transition hover:bg-muted disabled:opacity-40";
 
 /**
- * Settings → Agent → Model card.
+ * Settings → Agent → Model card: **setup only**.
  *
- * Everything the provider needs is entered here and stored server-side: the base
- * URL in clear, the API key encrypted in the browser with the password the user
- * types. The password itself is never sent anywhere.
+ * The base URL is stored in clear and the API key encrypted in the browser with
+ * the password typed here; the password never leaves the tab. Unlocking is not
+ * part of this card — the password is asked when a message is sent
+ * (`useOpalNoteCallGate` → `AgentUnlockDialog`), so nothing here needs to know
+ * the current unlock window.
  */
-function AgentProviderCard({ config }: ReAgentHostProviderProps) {
+function AgentProviderCard() {
   const info = useAtomValue(agentInfoAtom);
-  const unlock = useAtomValue(agentUnlockAtom);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [password, setPassword] = useState("");
@@ -65,13 +66,20 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const unlocking = useUnlockProvider(() => {
-    void refreshProvider();
-  });
+  /** True while the user is overwriting an existing configuration. */
+  const [replacing, setReplacing] = useState(false);
 
   const stored = info?.stored ?? null;
   const envelope = storedEnvelope(info);
   const unsupported = typeof crypto === "undefined" || !crypto.subtle;
+  const setupOpen = stored === null || replacing;
+
+  const resetForm = useCallback(() => {
+    setApiKey("");
+    setPassword("");
+    setConfirm("");
+    setError(null);
+  }, []);
 
   useEffect(() => {
     if (stored?.base_url) setBaseUrl(stored.base_url);
@@ -80,37 +88,50 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
   const save = useCallback(async () => {
     setError(null);
     setMessage(null);
-    if (!baseUrl.trim()) {
+    const endpoint = baseUrl.trim();
+    if (!endpoint) {
       setError("Enter the base URL of an OpenAI-compatible endpoint.");
       return;
     }
+    const endpointChanged = (stored?.base_url ?? "").trim() !== endpoint;
     const key = apiKey.trim();
-    if (key && !password && !unlock.key) {
-      setError("Enter an encryption password for the API key.");
-      return;
-    }
-    if (key && password && password !== confirm) {
-      setError("The two passwords do not match.");
+
+    let nextEnvelope: KeyEnvelope | null = envelope;
+    let derivedKey: string | null = null;
+    if (key) {
+      if (!password) {
+        setError("Enter an encryption password for the API key.");
+        return;
+      }
+      if (password !== confirm) {
+        setError("The two passwords do not match.");
+        return;
+      }
+    } else if (password) {
+      if (!envelope) {
+        setError("There is no stored key to unlock — leave the password empty.");
+        return;
+      }
+    } else if (endpointChanged && envelope) {
+      // Listing the new endpoint's models needs the derived key, and only the
+      // password can produce it.
+      setError("Enter the encryption password to change the endpoint.");
       return;
     }
 
     setBusy(true);
     try {
-      let nextEnvelope: KeyEnvelope | null = envelope;
-      let derivedKey = unlock.key;
       if (key) {
-        if (password) {
-          const sealed = await sealApiKey(password, key);
-          nextEnvelope = sealed.envelope;
-          derivedKey = sealed.derivedKey;
-        } else if (envelope && derivedKey) {
-          // Already unlocked: re-encrypt with the same key, so the existing
-          // password keeps working.
-          nextEnvelope = await resealWithDerivedKey(key, envelope, derivedKey);
-        } else {
-          setError("Enter the encryption password for the new API key.");
+        const sealed = await sealApiKey(password, key);
+        nextEnvelope = sealed.envelope;
+        derivedKey = sealed.derivedKey;
+      } else if (password && envelope) {
+        const candidate = await deriveUnlockKey(password, envelope);
+        if (!(await canDecrypt(candidate, envelope))) {
+          setError("Incorrect password.");
           return;
         }
+        derivedKey = candidate;
       }
       if (nextEnvelope && derivedKey) {
         const ok = await canDecrypt(derivedKey, nextEnvelope);
@@ -120,29 +141,35 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
         }
       }
 
-      const models = info?.models.length ? info.models : await api.agentModels().catch(() => []);
-      const saved = await api.saveAgentConfig({
-        base_url: baseUrl.trim(),
-        models,
+      // Store the connection first: the model listing goes through the proxy,
+      // which only exists once a provider is saved.
+      const connected = await api.saveAgentConfig({
+        base_url: endpoint,
+        models: info?.models ?? [],
         key_envelope: nextEnvelope ? JSON.stringify(nextEnvelope) : null,
       });
-      if (nextEnvelope && derivedKey) {
-        const fingerprint = await envelopeFingerprint(nextEnvelope);
-        unlocking.setScope(unlocking.scope);
-        const { storeUnlock, saveUnlockPreferences } = await import(
-          "../../state/agentUnlock"
-        );
-        saveUnlockPreferences(unlocking.scope, unlocking.customMinutes);
-        storeUnlock(derivedKey, fingerprint, unlocking.scope);
-        await syncProvider(saved);
-      } else {
+      if (JSON.stringify(nextEnvelope) !== JSON.stringify(envelope)) {
+        // A new envelope invalidates any key this tab still holds; the unlock
+        // dialog asks for the new password when the next message is sent.
         lockProvider();
-        await syncProvider(saved);
       }
-      setApiKey("");
-      setPassword("");
-      setConfirm("");
-      setMessage("OpalNote provider saved.");
+      // The upstream list is the authority for the picker; fetch it now that the
+      // provider exists, and refresh it whenever the endpoint changed.
+      const saved = await refreshProviderModels(
+        connected,
+        endpointChanged || connected.models.length === 0,
+        derivedKey,
+      );
+      await syncProvider(saved);
+
+      resetForm();
+      setReplacing(false);
+      const count = saved.models.length;
+      setMessage(
+        count > 0
+          ? `Configuration saved — ${count} model${count === 1 ? "" : "s"} available. You will be asked for the password when you send a message.`
+          : "Configuration saved. The endpoint listed no models, so chat stays disabled until it does.",
+      );
     } catch (cause) {
       setError(
         cause instanceof CryptoUnavailableError
@@ -154,7 +181,16 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
     } finally {
       setBusy(false);
     }
-  }, [apiKey, baseUrl, confirm, envelope, info, password, unlock.key, unlocking]);
+  }, [
+    apiKey,
+    baseUrl,
+    confirm,
+    envelope,
+    info,
+    password,
+    resetForm,
+    stored?.base_url,
+  ]);
 
   const remove = useCallback(async () => {
     setBusy(true);
@@ -164,6 +200,7 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
       lockProvider();
       await syncProvider(info);
       setMessage("OpalNote provider removed.");
+      setReplacing(false);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not remove the provider",
@@ -174,54 +211,102 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
     }
   }, []);
 
-  const status = unsupported
-    ? "Encryption needs HTTPS or localhost."
-    : !stored
-      ? "Not configured."
-      : stored.key_stored
-        ? unlock.key
-          ? `Connected to ${stored.base_url}`
-          : `Locked · ${stored.base_url}`
-        : `Connected to ${stored.base_url} (no key)`;
-
-  return (
-    <div className="space-y-2 rounded-xl border border-border/50 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">{status}</span>
-        <div className="ml-auto flex gap-1.5">
-          {stored && unlock.key && (
-            <button
-              type="button"
-              className={button}
-              onClick={() => {
-                lockProvider();
-              }}
-            >
-              Lock now
-            </button>
-          )}
+  if (!setupOpen) {
+    const count = info?.models.length ?? 0;
+    return (
+      <div className="space-y-2 rounded-xl border border-border/50 p-3">
+        <p className="text-xs text-muted-foreground">
+          A configuration is in place for{" "}
+          <span className="break-all font-mono text-foreground">
+            {stored.base_url}
+          </span>
+          {stored.key_stored
+            ? " · API key stored encrypted"
+            : " · no API key (keyless endpoint)"}
+          {` · ${count} model${count === 1 ? "" : "s"}`}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          The encryption password is asked when you send a message, not here.
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             className={button}
             disabled={busy}
             onClick={() => {
-              void refreshProvider().catch(() => undefined);
+              setMessage(null);
+              setError(null);
+              resetForm();
+              setReplacing(true);
             }}
+          >
+            Set up a new configuration
+          </button>
+          <button
+            type="button"
+            className={button}
+            disabled={busy}
+            onClick={() => void refreshProvider().catch(() => undefined)}
           >
             Recheck
           </button>
+          {confirmRemove ? (
+            <button
+              type="button"
+              className={`${button} border-destructive/40 text-destructive`}
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Confirm remove
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`${button} text-destructive`}
+              onClick={() => setConfirmRemove(true)}
+            >
+              Remove
+            </button>
+          )}
         </div>
+        {message && <p className="text-xs text-muted-foreground">{message}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-border/50 p-3">
+      <p className="text-xs text-muted-foreground">
+        {stored
+          ? "Replacing the configuration overwrites the stored endpoint and key."
+          : "Not configured."}
+      </p>
 
       <div className="grid gap-1.5">
-        <input
-          className={field}
-          value={baseUrl}
-          onChange={(event) => setBaseUrl(event.target.value)}
-          placeholder="https://openrouter.ai/api/v1"
-          spellCheck={false}
-          aria-label="Agent base URL"
-        />
+        {/* The picker fills the well-known OpenAI-compatible base URLs; the
+            field stays free-form for self-hosted servers. */}
+        <div className="flex gap-1.5">
+          <input
+            className={`${field} flex-1`}
+            value={baseUrl}
+            onChange={(event) => {
+              setBaseUrl(event.target.value);
+              setError(null);
+            }}
+            placeholder="https://openrouter.ai/api/v1"
+            spellCheck={false}
+            aria-label="Agent base URL"
+          />
+          <EndpointPicker
+            value={baseUrl}
+            onPick={(url) => {
+              setBaseUrl(url);
+              setError(null);
+              setMessage(null);
+            }}
+          />
+        </div>
         <input
           className={field}
           value={apiKey}
@@ -252,98 +337,56 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
             aria-label="Confirm encryption password"
           />
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          The password encrypts the key in this browser and is never sent to the
+          server. It is asked again when you send a message.
+        </p>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <select
-            value={unlocking.scope}
-            onChange={(event) =>
-              unlocking.setScope(event.target.value as typeof unlocking.scope)
-            }
-            className="h-8 rounded-md border border-border/60 bg-background px-2 text-xs"
-            aria-label="Unlock window"
+          <button
+            type="button"
+            className={button}
+            disabled={busy || unsupported}
+            onClick={() => void save()}
           >
-            {UNLOCK_SCOPES.map((option) => (
-              <option key={option.id} value={option.id}>
-                Unlock for {option.label.toLowerCase()}
-              </option>
-            ))}
-          </select>
-          {unlocking.scope === "custom" && (
-            <input
-              className={`${field} w-20`}
-              type="number"
-              min={CUSTOM_MINUTES_MIN}
-              max={CUSTOM_MINUTES_MAX}
-              value={unlocking.customMinutes}
-              onChange={(event) =>
-                unlocking.setCustomMinutes(
-                  Number(event.target.value) || CUSTOM_MINUTES_MIN,
-                )
-              }
-              aria-label="Custom unlock minutes"
-            />
-          )}
-          {stored?.key_stored && !unlock.key ? (
+            {busy ? "Saving…" : "Save configuration"}
+          </button>
+          {stored && (
             <button
               type="button"
               className={button}
-              disabled={busy || unlocking.busy || !password}
-              onClick={() => void unlocking.unlock(password, envelope)}
-            >
-              {unlocking.busy ? "Unlocking…" : "Unlock"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={button}
-              disabled={busy || unsupported}
-              onClick={() => void save()}
-            >
-              {busy ? "Saving…" : stored ? "Update provider" : "Connect provider"}
-            </button>
-          )}
-          {stored && !confirmRemove && (
-            <button
-              type="button"
-              className={`${button} text-destructive`}
-              onClick={() => setConfirmRemove(true)}
-            >
-              Remove
-            </button>
-          )}
-          {confirmRemove && (
-            <button
-              type="button"
-              className={`${button} border-destructive/40 text-destructive`}
               disabled={busy}
-              onClick={() => void remove()}
+              onClick={() => {
+                setReplacing(false);
+                setMessage(null);
+                resetForm();
+                setBaseUrl(stored.base_url);
+              }}
             >
-              Confirm remove
+              Cancel
             </button>
           )}
         </div>
-        {unlocking.scope !== "15m" && (
-          <p className="text-[11px] text-muted-foreground">
-            {UNLOCK_SCOPES.find((option) => option.id === unlocking.scope)?.detail}
-          </p>
-        )}
       </div>
 
-      {message && <p className="text-xs text-muted-foreground">{message}</p>}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {unlocking.error && (
-        <p className="text-xs text-destructive">{unlocking.error}</p>
-      )}
-      {config && stored?.key_stored && !unlock.key && (
-        <p className="text-[11px] text-muted-foreground">
-          The provider stays out of the model picker until it is unlocked.
+      {unsupported && (
+        <p className="text-xs text-destructive">
+          Encryption needs HTTPS or localhost.
         </p>
       )}
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
 
-/** Modal prompt shown when a request arrives while the provider is locked. */
+/**
+ * Modal prompt shown when a request arrives while the provider is locked.
+ *
+ * This is where a locked provider is unlocked: the agent's call gate stops the
+ * message before it is appended, and the same prompt answers a `401
+ * agent_locked` from a request that raced the lock.
+ */
 export function AgentUnlockDialog() {
   const prompt = useAtomValue(agentUnlockAtom).prompt;
   const info = useAtomValue(agentInfoAtom);
@@ -373,6 +416,16 @@ export function AgentUnlockDialog() {
 
   if (!prompt || !envelope) return null;
 
+  // The host alone keeps the sentence readable; the full URL is in the card.
+  const host = (() => {
+    const raw = info?.stored?.base_url ?? "";
+    try {
+      return new URL(raw).host;
+    } catch {
+      return raw;
+    }
+  })();
+
   return (
     <div
       className="absolute inset-0 z-40 flex items-start justify-center bg-ink/25 p-4 pt-16 backdrop-blur-sm"
@@ -381,10 +434,11 @@ export function AgentUnlockDialog() {
       aria-label="Unlock the OpalNote agent provider"
     >
       <div className="w-full max-w-sm rounded-xl border border-border bg-background p-4 shadow-panel">
-        <h3 className="text-sm font-semibold">Unlock the OpalNote provider</h3>
+        <h3 className="text-sm font-semibold">Unlock to send this message</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Enter the password that encrypts the stored API key. It never leaves
-          this browser.
+          Enter the password for the API key stored for{" "}
+          <span className="font-mono text-foreground">{host}</span>. It never
+          leaves this browser.
         </p>
         <input
           className={`${field} mt-3 w-full`}
@@ -400,6 +454,43 @@ export function AgentUnlockDialog() {
           placeholder="Password"
           aria-label="Provider password"
         />
+        <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          Keep it
+          <select
+            value={unlock.scope}
+            onChange={(event) =>
+              unlock.setScope(event.target.value as typeof unlock.scope)
+            }
+            className="h-7 rounded-md border border-border/60 bg-background px-1.5 text-xs"
+            aria-label="How long to keep the key"
+          >
+            {UNLOCK_SCOPES.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {unlock.scope === "custom" && (
+            <input
+              className={`${field} w-16`}
+              type="number"
+              min={CUSTOM_MINUTES_MIN}
+              max={CUSTOM_MINUTES_MAX}
+              value={unlock.customMinutes}
+              onChange={(event) =>
+                unlock.setCustomMinutes(
+                  Number(event.target.value) || CUSTOM_MINUTES_MIN,
+                )
+              }
+              aria-label="Custom unlock minutes"
+            />
+          )}
+        </div>
+        {unlock.scope !== "15m" && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {UNLOCK_SCOPES.find((option) => option.id === unlock.scope)?.detail}
+          </p>
+        )}
         <div className="mt-3 flex items-center justify-end gap-1.5">
           <button
             type="button"

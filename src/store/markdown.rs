@@ -1,5 +1,7 @@
-//! Pure helpers for the file-first store: wikilinks, inline tags, frontmatter
-//! tags, summaries. Nothing here touches the filesystem or the database.
+//! Markdown derivation for the file-first store: the adapter from the shared
+//! `lutez` AST to blocks, tasks, tags and links (`mod lutez_ast`), plus the
+//! frontmatter split, tag normalisation, summaries and block hashing. Nothing
+//! here touches the filesystem or the database.
 
 /// Lowercase + collapse whitespace. Used as the join key between a
 /// `[[wikilink]]` and a note title, so renames keep backlinks working.
@@ -91,23 +93,6 @@ fn strip_fenced_code(content: &str) -> String {
     out
 }
 
-fn strip_code(content: &str) -> String {
-    let fenced = strip_fenced_code(content);
-    let mut out = String::with_capacity(fenced.len());
-    let mut in_code = false;
-    for ch in fenced.chars() {
-        if ch == '`' {
-            in_code = !in_code;
-            out.push(' ');
-        } else if in_code {
-            out.push(' ');
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
-
 /// One block of a note body: a line range plus what it is.
 ///
 /// `kind` is one of `paragraph`, `heading`, `list_item`, `task`, `code`, `quote`,
@@ -126,216 +111,6 @@ pub struct ParsedBlock {
 }
 
 const MAX_BLOCK_TEXT_CHARS: usize = 4_000;
-
-/// Parse a note body into blocks.
-///
-/// Doc mode treats one CommonMark leaf-or-container element as a block (a
-/// paragraph, heading, fenced code, table, quote or thematic break), with each
-/// list item a block of its own. Outline mode needs no special case: every
-/// bullet line already becomes a block, and indentation supplies `depth` and
-/// `parent_seq`. A blank line ends the current block; fenced code, tables and
-/// quotes are never split by one.
-pub fn parse_blocks(body: &str) -> Vec<ParsedBlock> {
-    let lines: Vec<&str> = body.lines().collect();
-    let mut blocks: Vec<ParsedBlock> = Vec::new();
-    let mut index = 0;
-
-    // List items that can still be a parent: (start_line, indent).
-    let mut list_stack: Vec<(usize, usize)> = Vec::new();
-
-    while index < lines.len() {
-        let line = lines[index];
-        let trimmed = line.trim_start();
-
-        if trimmed.is_empty() {
-            index += 1;
-            continue;
-        }
-
-        // ---- fenced code -------------------------------------------------
-        if let Some(fence) = fence_marker(trimmed) {
-            let start = index;
-            let mut end = lines.len() - 1;
-            let mut cursor = index + 1;
-            while cursor < lines.len() {
-                if lines[cursor].trim_start().starts_with(fence) {
-                    end = cursor;
-                    break;
-                }
-                cursor += 1;
-            }
-            let text = block_text(&lines[start..=end], "code");
-            blocks.push(block(start, end, "code", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- display math ------------------------------------------------
-        if trimmed.starts_with("$$") && is_display_math_fence(trimmed) {
-            let start = index;
-            let mut end = lines.len() - 1;
-            let mut cursor = index + 1;
-            while cursor < lines.len() {
-                if is_display_math_fence(lines[cursor].trim_start()) {
-                    end = cursor;
-                    break;
-                }
-                cursor += 1;
-            }
-            let text = block_text(&lines[start..=end], "math");
-            blocks.push(block(start, end, "math", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- table -------------------------------------------------------
-        if trimmed.starts_with('|') {
-            let start = index;
-            let mut end = index;
-            while end + 1 < lines.len() && lines[end + 1].trim_start().starts_with('|') {
-                end += 1;
-            }
-            let text = block_text(&lines[start..=end], "table");
-            blocks.push(block(start, end, "table", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- thematic break ---------------------------------------------
-        if is_thematic_break(trimmed) {
-            blocks.push(block(index, index, "hr", 0, 0, String::new()));
-            list_stack.clear();
-            index += 1;
-            continue;
-        }
-
-        // ---- heading -----------------------------------------------------
-        if let Some(level) = heading_level(trimmed) {
-            let start = index;
-            let mut end = index;
-            // A heading may continue over soft-wrapped lines.
-            while end + 1 < lines.len()
-                && !lines[end + 1].trim_start().is_empty()
-                && !starts_new_block(lines[end + 1].trim_start())
-            {
-                end += 1;
-            }
-            let text = block_text(&lines[start..=end], "heading");
-            blocks.push(block(start, end, "heading", level, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- block quote -------------------------------------------------
-        if trimmed.starts_with('>') {
-            let start = index;
-            let mut end = index;
-            while end + 1 < lines.len() {
-                let next = lines[end + 1].trim_start();
-                if next.starts_with('>') {
-                    end += 1;
-                    continue;
-                }
-                // A quote may contain a lazily continued paragraph.
-                if !next.is_empty() && !starts_new_block(next) {
-                    end += 1;
-                    continue;
-                }
-                break;
-            }
-            let text = block_text(&lines[start..=end], "quote");
-            blocks.push(block(start, end, "quote", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- HTML comment ------------------------------------------------
-        if trimmed.starts_with("<!--") {
-            let start = index;
-            let mut end = index;
-            while end + 1 < lines.len() && !lines[end].contains("-->") {
-                end += 1;
-                if lines[end].contains("-->") {
-                    break;
-                }
-            }
-            let text = block_text(&lines[start..=end], "html");
-            blocks.push(block(start, end, "html", 0, 0, text));
-            list_stack.clear();
-            index = end + 1;
-            continue;
-        }
-
-        // ---- list item ---------------------------------------------------
-        if let Some(item) = list_marker(trimmed) {
-            let indent = leading_indent_columns(line);
-            let start = index;
-            let mut end = index;
-            // Continuation lines (indented deeper than the marker) belong to
-            // this item; a following item at the same depth starts a new block.
-            while end + 1 < lines.len() {
-                let next = lines[end + 1];
-                let next_trimmed = next.trim_start();
-                if next_trimmed.is_empty() {
-                    break;
-                }
-                if next_trimmed.starts_with('>') || next_trimmed.starts_with('|') {
-                    break;
-                }
-                if list_marker(next_trimmed).is_some() {
-                    break;
-                }
-                if leading_indent_columns(next) <= indent {
-                    break;
-                }
-                if fence_marker(next_trimmed).is_some() {
-                    break;
-                }
-                end += 1;
-            }
-
-            while let Some((_, parent_indent)) = list_stack.last() {
-                if *parent_indent >= indent {
-                    list_stack.pop();
-                } else {
-                    break;
-                }
-            }
-            let parent_seq = list_stack
-                .last()
-                .map(|(parent_start, _)| *parent_start)
-                .unwrap_or(0);
-            let kind = if item.is_task { "task" } else { "list_item" };
-            let text = block_text(&lines[start..=end], kind);
-            blocks.push(block(start, end, kind, indent / 2, parent_seq, text));
-            list_stack.push((start + 1, indent));
-            index = end + 1;
-            continue;
-        }
-
-        // ---- paragraph ---------------------------------------------------
-        let start = index;
-        let mut end = index;
-        while end + 1 < lines.len() {
-            let next = lines[end + 1].trim_start();
-            if next.is_empty() || starts_new_block(next) {
-                break;
-            }
-            end += 1;
-        }
-        let text = block_text(&lines[start..=end], "paragraph");
-        blocks.push(block(start, end, "paragraph", 0, 0, text));
-        list_stack.clear();
-        index = end + 1;
-    }
-
-    blocks
-}
 
 fn block(
     start: usize,
@@ -419,25 +194,6 @@ pub fn block_hash(text: &str) -> String {
     format!("{hash:08x}")
 }
 
-fn is_display_math_fence(trimmed: &str) -> bool {
-    trimmed
-        .strip_prefix("$$")
-        .is_some_and(|rest| rest.trim().is_empty())
-}
-
-fn is_thematic_break(trimmed: &str) -> bool {
-    let mut chars = trimmed.chars();
-    let Some(marker) = chars.next() else {
-        return false;
-    };
-    if !matches!(marker, '-' | '*' | '_') {
-        return false;
-    }
-    let rest: String = chars.collect();
-    let compact: String = rest.chars().filter(|ch| !ch.is_whitespace()).collect();
-    compact.len() >= 2 && compact.chars().all(|ch| ch == marker)
-}
-
 fn heading_level(trimmed: &str) -> Option<usize> {
     let hashes = trimmed.chars().take_while(|ch| *ch == '#').count();
     if hashes == 0 || hashes > 6 {
@@ -448,47 +204,6 @@ fn heading_level(trimmed: &str) -> Option<usize> {
         .nth(hashes)
         .is_some_and(char::is_whitespace)
         .then_some(hashes)
-}
-
-fn starts_new_block(trimmed: &str) -> bool {
-    trimmed.starts_with('>')
-        || trimmed.starts_with('|')
-        || trimmed.starts_with("<!--")
-        || is_display_math_fence(trimmed)
-        || is_thematic_break(trimmed)
-        || heading_level(trimmed).is_some()
-        || list_marker(trimmed).is_some()
-        || fence_marker(trimmed).is_some()
-}
-
-fn leading_indent_columns(line: &str) -> usize {
-    let mut columns = 0;
-    for ch in line.chars() {
-        match ch {
-            ' ' => columns += 1,
-            '\t' => columns += 4,
-            _ => break,
-        }
-    }
-    columns
-}
-
-struct ListMarker {
-    is_task: bool,
-}
-
-fn list_marker(trimmed: &str) -> Option<ListMarker> {
-    let rest = strip_list_marker(trimmed)?;
-    let is_task = rest.starts_with("[ ]")
-        || rest.starts_with("[x]")
-        || rest.starts_with("[X]")
-        || rest.starts_with("[-]")
-        || rest.starts_with("TODO ")
-        || rest.starts_with("DOING ")
-        || rest.starts_with("DONE ")
-        || rest.starts_with("CANCELED ")
-        || rest.starts_with("CANCELLED ");
-    Some(ListMarker { is_task })
 }
 
 /// Strip a `-`, `*`, `+` or `1.`/`1)` marker and its trailing whitespace.
@@ -528,66 +243,6 @@ pub struct ParsedTask {
     pub status: String,
 }
 
-/// Extract block tasks from prose, ignoring fenced code. Supports markdown
-/// checkboxes and Logseq TODO/DOING/DONE/CANCELED keywords.
-pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
-    let mut tasks = Vec::new();
-    let mut fence: Option<&str> = None;
-
-    for (index, line) in content.lines().enumerate() {
-        let trimmed = line.trim_start();
-
-        if let Some(marker) = fence {
-            if trimmed.starts_with(marker) {
-                fence = None;
-            }
-            continue;
-        }
-        if let Some(marker) = fence_marker(trimmed) {
-            fence = Some(marker);
-            continue;
-        }
-
-        // Any run of whitespace after the bullet counts: the live editor renders
-        // `-  [ ] x` and `-\t[ ] x` as checkboxes too, so indexing must accept
-        // them or a task shows on the page but never in the todo list.
-        let Some(rest) = strip_bullet(trimmed) else {
-            continue;
-        };
-
-        let (status, text) = if let Some(text) = rest.strip_prefix("[ ]") {
-            ("open", text)
-        } else if let Some(text) = rest
-            .strip_prefix("[x]")
-            .or_else(|| rest.strip_prefix("[X]"))
-        {
-            ("done", text)
-        } else if let Some(text) = rest.strip_prefix("[-]") {
-            ("cancelled", text)
-        } else if let Some(text) = keyword_task(rest, "TODO", "open")
-            .or_else(|| keyword_task(rest, "DOING", "doing"))
-            .or_else(|| keyword_task(rest, "DONE", "done"))
-            .or_else(|| keyword_task(rest, "CANCELED", "cancelled"))
-            .or_else(|| keyword_task(rest, "CANCELLED", "cancelled"))
-        {
-            text
-        } else {
-            continue;
-        };
-
-        let text = text.trim();
-        if !text.is_empty() {
-            tasks.push(ParsedTask {
-                line: index + 1,
-                text: text.to_string(),
-                status: status.to_string(),
-            });
-        }
-    }
-
-    tasks
-}
-
 /// Strip a `-`, `*` or `+` bullet and the whitespace that follows it.
 fn strip_bullet(line: &str) -> Option<&str> {
     let mut chars = line.chars();
@@ -601,7 +256,11 @@ fn strip_bullet(line: &str) -> Option<&str> {
     Some(rest.trim_start())
 }
 
-fn keyword_task<'a>(rest: &'a str, keyword: &str, status: &'a str) -> Option<(&'a str, &'a str)> {
+fn keyword_task<'a>(
+    rest: &'a str,
+    keyword: &str,
+    status: &'static str,
+) -> Option<(&'static str, &'a str)> {
     let after = rest.strip_prefix(keyword)?;
     if after.is_empty() || after.starts_with(char::is_whitespace) {
         Some((status, after.trim_start()))
@@ -610,88 +269,43 @@ fn keyword_task<'a>(rest: &'a str, keyword: &str, status: &'a str) -> Option<(&'
     }
 }
 
-/// Extract `[[target]]` / `[[target|label]]` / `[[target#heading]]` links.
+/// Turn a raw `[[…]]` payload into a `(normalized target, label)` pair.
 ///
-/// Returns `(normalized_target, label)` pairs, deduplicated by target.
-pub fn extract_wikilinks(content: &str) -> Vec<(String, String)> {
-    let stripped = strip_code(content);
-    let mut found: Vec<(String, String)> = Vec::new();
-
-    // A wikilink always closes on the same line. Scanning line-by-line keeps a
-    // stray `[[` in prose (e.g. `[[Label] Markdown](url)`) from swallowing the
-    // rest of the document looking for `]]`.
-    for line in stripped.lines() {
-        let mut rest = line;
-
-        while let Some(start) = rest.find("[[") {
-            let after = &rest[start + 2..];
-            let Some(end) = after.find("]]") else { break };
-            let inner = &after[..end];
-            rest = &after[end + 2..];
-
-            if inner.contains(['[', ']']) {
-                continue;
-            }
-
-            let (raw_target, label) = match inner.split_once('|') {
-                Some((target, label)) => (target, label.trim()),
-                None => (inner, inner.trim()),
-            };
-            // `[[Note#Heading]]` links to `Note`; keep the heading only in the label.
-            let target_text = raw_target.split('#').next().unwrap_or(raw_target).trim();
-            let target = normalize_link_target(target_text);
-            if target.is_empty() {
-                continue;
-            }
-            let label = if label.is_empty() { target_text } else { label };
-            if !found.iter().any(|(t, _)| t == &target) {
-                found.push((target, label.to_string()));
-            }
-        }
+/// `[[Note#Heading]]` links to `Note` and keeps the heading in the label;
+/// `[[Note|alias]]` keeps the alias. Both parsers share this so a link target
+/// cannot drift between the AST adapter and the legacy scanner.
+fn wikilink_entry(inner: &str) -> Option<(String, String)> {
+    // `[[Label] Markdown](url)` is a markdown link, not a wikilink: the parser
+    // hands us the raw payload, and a single bracket inside means the author
+    // closed the brackets himself.
+    if inner.contains(['[', ']']) {
+        return None;
     }
-    found
+    let (raw_target, label) = match inner.split_once('|') {
+        Some((target, label)) => (target, label.trim()),
+        None => (inner, inner.trim()),
+    };
+    let target_text = raw_target.split('#').next().unwrap_or(raw_target).trim();
+    let target = normalize_link_target(target_text);
+    if target.is_empty() {
+        return None;
+    }
+    let label = if label.is_empty() { target_text } else { label };
+    Some((target, label.to_string()))
+}
+
+/// Add a link, deduplicated by target (the first label wins).
+fn push_wikilink(found: &mut Vec<(String, String)>, inner: &str) {
+    let Some((target, label)) = wikilink_entry(inner) else {
+        return;
+    };
+    if !found.iter().any(|(existing, _)| existing == &target) {
+        found.push((target, label));
+    }
 }
 
 fn is_tag_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.')
-}
-
-/// Extract `#inline-tags` from prose. Heading markers (`# Title`) and
-/// `C#`-style sequences are ignored by requiring whitespace before the `#`
-/// and a tag character after it.
-pub fn extract_tags(content: &str) -> Vec<String> {
-    let stripped = strip_code(content);
-    let chars: Vec<char> = stripped.chars().collect();
-    let mut tags: Vec<String> = Vec::new();
-    let mut i = 0;
-
-    while i < chars.len() {
-        let starts_tag = chars[i] == '#'
-            && (i == 0
-                || chars[i - 1].is_whitespace()
-                || matches!(chars[i - 1], '(' | '[' | '{' | ',' | '"' | '\''));
-        if !starts_tag {
-            i += 1;
-            continue;
-        }
-
-        let mut j = i + 1;
-        while j < chars.len() && is_tag_char(chars[j]) {
-            j += 1;
-        }
-
-        if j > i + 1 {
-            let tag: String = chars[i + 1..j].iter().collect();
-            let tag = tag.trim_matches(['.', '/']).to_lowercase();
-            if !tag.is_empty() && tag.chars().count() <= 64 && !tags.contains(&tag) {
-                tags.push(tag);
-            }
-            i = j;
-        } else {
-            i += 1;
-        }
-    }
-    tags
 }
 
 /// Normalize a tag coming from an API request or from `#inline` syntax.
@@ -710,8 +324,8 @@ pub fn normalize_tag(tag: &str) -> Option<String> {
     }
 }
 
-/// Merge explicit (frontmatter) tags with inline `#tags`.
-pub fn merge_tags(content: &str, explicit: &[String]) -> Vec<String> {
+/// Merge an already-extracted inline tag list with explicit frontmatter tags.
+pub fn merge_tag_lists(inline: &[String], explicit: &[String]) -> Vec<String> {
     let mut tags = Vec::new();
     for tag in explicit {
         if let Some(tag) = normalize_tag(tag) {
@@ -720,12 +334,71 @@ pub fn merge_tags(content: &str, explicit: &[String]) -> Vec<String> {
             }
         }
     }
-    for tag in extract_tags(content) {
-        if !tags.contains(&tag) {
-            tags.push(tag);
+    for tag in inline {
+        if !tags.contains(tag) {
+            tags.push(tag.clone());
         }
     }
     tags
+}
+
+// ---------------------------------------------------------------------------
+// Parser dispatch: the shared `lutez` AST, with the hand-written scanners as a
+// fallback
+// ---------------------------------------------------------------------------
+
+/// Everything one pass over a note body produces for the index.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ParsedContent {
+    pub blocks: Vec<ParsedBlock>,
+    pub tasks: Vec<ParsedTask>,
+    pub tags: Vec<String>,
+    pub links: Vec<(String, String)>,
+}
+
+/// Parse a note body once, producing every derived index row.
+///
+/// The parse is the shared `lutez` AST (see `doc/lutez-parser.md`). There is no
+/// second implementation to fall back to: a body the parser refuses is logged
+/// and indexes as empty rather than being read by a different grammar.
+pub fn parse_content(body: &str) -> ParsedContent {
+    match lutez_ast::parse(body) {
+        Some(content) => content,
+        None => {
+            tracing::error!("lutez could not parse a note body; indexing it as empty");
+            ParsedContent::default()
+        }
+    }
+}
+
+/// Blocks for a body. Tests and the parity harness read the fields of a single
+/// [`parse_content`] pass; the store itself only calls `parse_content`.
+#[cfg(test)]
+pub fn parse_blocks(body: &str) -> Vec<ParsedBlock> {
+    parse_content(body).blocks
+}
+
+/// Tasks for a body, as [`parse_blocks`].
+#[cfg(test)]
+pub fn extract_tasks(content: &str) -> Vec<ParsedTask> {
+    parse_content(content).tasks
+}
+
+/// Inline `#tags` for a body, as [`parse_blocks`].
+#[cfg(test)]
+pub fn extract_tags(content: &str) -> Vec<String> {
+    parse_content(content).tags
+}
+
+/// `[[wikilinks]]` for a body, as [`parse_blocks`].
+#[cfg(test)]
+pub fn extract_wikilinks(content: &str) -> Vec<(String, String)> {
+    parse_content(content).links
+}
+
+/// Merge explicit (frontmatter) tags with the body's inline `#tags`.
+pub fn merge_tags(body: &str, explicit: &[String]) -> Vec<String> {
+    merge_tag_lists(&parse_content(body).tags, explicit)
 }
 
 /// Build a compact plain-text summary for list and search results.
@@ -984,8 +657,309 @@ pub fn render_page(body: &str, tags: &[String], existing_raw: &str) -> String {
     }
 }
 
+mod lutez_ast {
+    //! Adapter from the shared `lutez` AST to OpalNote's derived rows.
+    //!
+    //! The AST supplies **structure** (which lines are a block, of which kind,
+    //! and how items nest); the raw source lines still supply the *text* of a
+    //! block, so `block_text`/`block_hash` stay byte-identical to the legacy
+    //! scanner for every block whose range and kind are unchanged.
+    //!
+    //! Block grammar (see `doc/blocks.md` §1): one block per list item, plus one
+    //! per top-level paragraph / heading / fenced code / quote / table / break /
+    //! HTML block / `$$` math block. A block-level node *inside* a list item
+    //! belongs to that item, except a fence written as the item's content
+    //! (`- ``` … ``` `), which becomes the item's `code` block.
+
+    use super::*;
+    use crate::store::lutez::{self, Ast};
+
+    /// Parse `body` through lutez. `None` means the library refused the input;
+    /// the caller then indexes the note with no derived rows.
+    pub(super) fn parse(body: &str) -> Option<ParsedContent> {
+        let document = lutez::Document::parse(body)?;
+        let ast = document.ast()?;
+        let mut builder = Builder::new(body);
+        builder.collect_inline(&ast);
+        builder.walk(&ast, 0, 0, 0);
+        Some(builder.content)
+    }
+
+    struct Builder<'a> {
+        body: &'a str,
+        lines: Vec<&'a str>,
+        line_starts: Vec<usize>,
+        content: ParsedContent,
+    }
+
+    impl<'a> Builder<'a> {
+        fn new(body: &'a str) -> Self {
+            let mut line_starts = vec![0usize];
+            for (index, byte) in body.bytes().enumerate() {
+                if byte == b'\n' {
+                    line_starts.push(index + 1);
+                }
+            }
+            Self {
+                body,
+                lines: body.lines().collect(),
+                line_starts,
+                content: ParsedContent::default(),
+            }
+        }
+
+        /// 1-based line number of a raw byte offset.
+        fn line_of(&self, offset: u32) -> usize {
+            let offset = (offset as usize).min(self.body.len());
+            match self.line_starts.binary_search(&offset) {
+                Ok(index) => index + 1,
+                Err(index) => index.max(1),
+            }
+        }
+
+        /// 1-based line the node's last source byte sits on.
+        fn end_line(&self, node: &lutez::Node) -> usize {
+            if node.raw_end > node.raw_start {
+                self.line_of(node.raw_end - 1)
+            } else {
+                self.line_of(node.raw_start)
+            }
+        }
+
+        /// Tags and wikilinks, in document order.
+        fn collect_inline(&mut self, ast: &Ast<'_>) {
+            let mut tags: Vec<String> = Vec::new();
+            let mut links: Vec<(String, String)> = Vec::new();
+            ast.walk(|node| {
+                if node.kind != lutez::INLINE_EXTENSION {
+                    return;
+                }
+                let token = ast.token(node);
+                match node.ext_kind as u32 {
+                    lutez::EXT_KIND_TAG => {
+                        if let Some(tag) = normalize_tag(token) {
+                            if !tags.contains(&tag) {
+                                tags.push(tag);
+                            }
+                        }
+                    }
+                    lutez::EXT_KIND_WIKILINK => push_wikilink(&mut links, token),
+                    _ => {}
+                }
+            });
+            self.content.tags = tags;
+            self.content.links = links;
+        }
+
+        /// Depth-first block walk. `depth` is the item nesting level; `parent_seq`
+        /// is the `seq` of the enclosing list item (0 at the top level).
+        fn walk(&mut self, ast: &Ast<'_>, index: u32, depth: usize, parent_seq: usize) {
+            let Some(node) = ast.node(index) else { return };
+            match node.kind {
+                lutez::DOCUMENT | lutez::LIST => {
+                    let mut child = node.first_child;
+                    while child != lutez::NULL_NODE {
+                        self.walk(ast, child, depth, parent_seq);
+                        child = ast
+                            .node(child)
+                            .map(|next| next.next)
+                            .unwrap_or(lutez::NULL_NODE);
+                    }
+                }
+                lutez::LIST_ITEM => {
+                    let item_line = self.line_of(node.raw_start);
+                    let seq = self.push_item(ast, &node, depth, parent_seq);
+                    // Nested list items are blocks of their own; so is block-level
+                    // content that starts on a continuation line (a fence, quote
+                    // or table under an item), because the editor renders it
+                    // outside the item's own text.
+                    let mut child = node.first_child;
+                    while child != lutez::NULL_NODE {
+                        if let Some(nested) = ast.node(child) {
+                            match nested.kind {
+                                lutez::LIST => self.walk(ast, child, depth + 1, seq),
+                                _ => self.hoist_child(&nested, item_line),
+                            }
+                        }
+                        child = ast
+                            .node(child)
+                            .map(|next| next.next)
+                            .unwrap_or(lutez::NULL_NODE);
+                    }
+                }
+                _ => self.push_leaf(&node),
+            }
+        }
+
+        fn push_item(
+            &mut self,
+            ast: &Ast<'_>,
+            node: &lutez::Node,
+            depth: usize,
+            parent_seq: usize,
+        ) -> usize {
+            let start = self.line_of(node.raw_start);
+            let first_child = ast.node(node.first_child);
+            let first_kind = first_child.map(|child| child.kind);
+
+            // A fence written as the item's content (`- ```js`) is a code block
+            // covering the item, as the editor renders it.
+            if first_kind == Some(lutez::CODE_BLOCK) {
+                let end = self.end_line(node);
+                return self.push_block(start, end, "code", 0, 0);
+            }
+
+            // An item's own range stops after its first paragraph, so nested
+            // items (which are their own blocks) never overlap their parent.
+            let end = match first_kind {
+                // The item's own text: its first paragraph, soft-wrapped lines
+                // included.
+                Some(lutez::PARAGRAPH) => first_child
+                    .map(|paragraph| self.end_line(&paragraph))
+                    .unwrap_or(start),
+                // A leading quote is hoisted (see `hoist_child`), so the item
+                // keeps just its marker line.
+                Some(lutez::BLOCKQUOTE) => start,
+                // A heading/table/fence that begins on the marker line is the
+                // item's content; anything else (nested items, content on the
+                // following lines) is not part of the item's own range.
+                Some(_) => match first_child {
+                    Some(child) if self.line_of(child.raw_start) == start => self.end_line(&child),
+                    _ => start,
+                },
+                None => start,
+            };
+
+            // The marker itself is read from the item's first source line: the
+            // AST says which lines are items, the line says which of them the
+            // editor renders as a checkbox or a Logseq keyword.
+            let task = self.lines.get(start - 1).and_then(|line| task_row(line));
+            let kind = if task.is_some() { "task" } else { "list_item" };
+            let seq = self.push_block(start, end, kind, depth, parent_seq);
+            if let Some((status, text)) = task {
+                self.content.tasks.push(ParsedTask {
+                    line: start,
+                    text,
+                    status: status.to_string(),
+                });
+            }
+            seq
+        }
+
+        /// Emit block-level content that sits *under* an item but is not the
+        /// item's own text (a fence, quote or table on a continuation line).
+        fn hoist_child(&mut self, node: &lutez::Node, item_line: usize) {
+            let start = self.line_of(node.raw_start);
+            let end = self.end_line(node);
+            match node.kind {
+                lutez::BLOCKQUOTE => {
+                    if start > item_line {
+                        self.push_leaf(node);
+                    } else if end > item_line {
+                        // `- > quote` followed by more `>` lines: the marker line
+                        // belongs to the item, the rest is the quote block.
+                        self.push_block(item_line + 1, end, "quote", 0, 0);
+                    }
+                }
+                lutez::CODE_BLOCK
+                | lutez::TABLE
+                | lutez::HEADING
+                | lutez::HTML_BLOCK
+                | lutez::THEMATIC_BREAK
+                | lutez::BLOCK_EXTENSION
+                    if start > item_line =>
+                {
+                    // `push_leaf` drops extension kinds we do not index (only
+                    // `$$` math becomes a block).
+                    self.push_leaf(node)
+                }
+                _ => {}
+            }
+        }
+
+        fn push_leaf(&mut self, node: &lutez::Node) {
+            let start = self.line_of(node.raw_start);
+            let end = self.end_line(node);
+            let (kind, depth) = match node.kind {
+                lutez::PARAGRAPH | lutez::LINK_REF_DEF_BLOCK => ("paragraph", 0),
+                lutez::HEADING => (
+                    "heading",
+                    self.lines
+                        .get(start - 1)
+                        .and_then(|line| heading_level(line.trim_start()))
+                        .unwrap_or(1),
+                ),
+                lutez::CODE_BLOCK => ("code", 0),
+                lutez::BLOCKQUOTE => ("quote", 0),
+                lutez::TABLE => ("table", 0),
+                lutez::THEMATIC_BREAK => ("hr", 0),
+                lutez::HTML_BLOCK => ("html", 0),
+                lutez::BLOCK_EXTENSION if node.ext_kind == lutez::EXT_KIND_MATH as i32 => {
+                    ("math", 0)
+                }
+                _ => return,
+            };
+            self.push_block(start, end, kind, depth, 0);
+        }
+
+        /// Push one block built from its raw line range, returning its `seq`.
+        fn push_block(
+            &mut self,
+            start: usize,
+            end: usize,
+            kind: &str,
+            depth: usize,
+            parent_seq: usize,
+        ) -> usize {
+            let last = self.lines.len().max(1);
+            let start = start.clamp(1, last);
+            let end = end.clamp(start, last);
+            // A thematic break carries no text (the legacy scanner leaves it
+            // empty, and the client renders the marker itself).
+            let text = if kind == "hr" {
+                String::new()
+            } else {
+                block_text(&self.lines[start - 1..end], kind)
+            };
+            self.content
+                .blocks
+                .push(block(start - 1, end - 1, kind, depth, parent_seq, text));
+            self.content.blocks.len()
+        }
+    }
+
+    /// A task on one list-item line: checkbox or Logseq keyword, mirroring
+    /// `extract_tasks`. Empty task text is not a task.
+    fn task_row(line: &str) -> Option<(&'static str, String)> {
+        let rest = strip_bullet(line.trim_start())?;
+        let (status, text): (&'static str, &str) = if let Some(text) = rest.strip_prefix("[ ]") {
+            ("open", text)
+        } else if let Some(text) = rest
+            .strip_prefix("[x]")
+            .or_else(|| rest.strip_prefix("[X]"))
+        {
+            ("done", text)
+        } else if let Some(text) = rest.strip_prefix("[-]") {
+            ("cancelled", text)
+        } else {
+            keyword_task(rest, "TODO", "open")
+                .or_else(|| keyword_task(rest, "DOING", "doing"))
+                .or_else(|| keyword_task(rest, "DONE", "done"))
+                .or_else(|| keyword_task(rest, "CANCELED", "cancelled"))
+                .or_else(|| keyword_task(rest, "CANCELLED", "cancelled"))?
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        Some((status, text.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     #[test]
@@ -1090,6 +1064,71 @@ mod tests {
         assert_eq!(blocks[0].kind, "code");
         assert_eq!((blocks[0].start_line, blocks[0].end_line), (1, 3));
         assert_eq!(blocks[1].kind, "paragraph");
+    }
+
+    /// Server side of `pnpm check:parse`: print the derived rows for every note
+    /// so the script can diff them against the browser's. Ignored by default
+    /// (it needs the local data dir); the script runs it with
+    /// `OPALNOTE_PARITY_DUMP=1`.
+    #[test]
+    #[ignore = "needs data/notebooks; run via `pnpm check:parse`"]
+    fn corpus_rows() {
+        let root = Path::new("data/notebooks");
+        if !root.is_dir() {
+            eprintln!("no data/notebooks; skipping");
+            return;
+        }
+        let mut files = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+                    files.push(path);
+                }
+            }
+        }
+        files.sort();
+        for path in files {
+            let Ok(raw) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let body = parse_page(&raw).body;
+            let content = parse_content(&body);
+            let blocks: Vec<String> = content
+                .blocks
+                .iter()
+                .map(|block| {
+                    format!(
+                        "{}@{}-{}#{}>{}",
+                        block.kind, block.start_line, block.end_line, block.depth, block.parent_seq
+                    )
+                })
+                .collect();
+            let tasks: Vec<String> = content
+                .tasks
+                .iter()
+                .map(|task| format!("{}:{}:{}", task.line, task.status, task.text))
+                .collect();
+            let links: Vec<String> = content
+                .links
+                .iter()
+                .map(|(target, _)| target.clone())
+                .collect();
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                path.strip_prefix(root).unwrap_or(&path).display(),
+                blocks.join(" "),
+                tasks.join(" "),
+                content.tags.join(","),
+                links.join(",")
+            );
+        }
     }
 
     #[test]
@@ -1199,7 +1238,7 @@ mod tests {
                 ("heading", 1, 1, 1, 0),
                 ("paragraph", 3, 4, 0, 0),
                 ("list_item", 6, 6, 0, 0),
-                ("list_item", 7, 7, 1, 6),
+                ("list_item", 7, 7, 1, 3),
                 ("list_item", 8, 8, 0, 0),
                 ("quote", 10, 11, 0, 0),
                 ("code", 13, 15, 0, 0),
@@ -1260,6 +1299,177 @@ mod tests {
             block_hash("Some text here")
         );
         assert_ne!(block_hash("some text"), block_hash("some other text"));
+    }
+
+    /// The shared AST decides the edge cases the old line scanner guessed at.
+    /// These assertions pin the grammar; `doc/blocks.md` §1 describes it.
+    mod shared_parser {
+        use super::*;
+
+        fn rows(body: &str) -> Vec<(String, usize, usize, usize, usize)> {
+            lutez_ast::parse(body)
+                .expect("lutez parse")
+                .blocks
+                .iter()
+                .map(|b| {
+                    (
+                        b.kind.clone(),
+                        b.start_line,
+                        b.end_line,
+                        b.depth,
+                        b.parent_seq,
+                    )
+                })
+                .collect()
+        }
+
+        #[test]
+        fn indented_code_is_a_code_block() {
+            let rows = rows("intro\n\n    indented code\n    more\n\nafter\n");
+            assert_eq!(
+                rows,
+                vec![
+                    ("paragraph".into(), 1, 1, 0, 0),
+                    ("code".into(), 3, 4, 0, 0),
+                    ("paragraph".into(), 6, 6, 0, 0),
+                ]
+            );
+        }
+
+        /// A bare `-` used to become a paragraph (the line scanner needed
+        /// whitespace after the marker); CommonMark makes it an empty item.
+        #[test]
+        fn empty_bullet_is_a_list_item() {
+            let rows = rows("intro\n\n  -\n\noutro\n");
+            assert_eq!(
+                rows,
+                vec![
+                    ("paragraph".into(), 1, 1, 0, 0),
+                    ("list_item".into(), 3, 3, 0, 0),
+                    ("paragraph".into(), 5, 5, 0, 0),
+                ]
+            );
+        }
+
+        #[test]
+        fn fence_written_as_item_content_is_the_items_code_block() {
+            let rows = rows("- ```js\n  const a = 1;\n  ```\n\ntail\n");
+            assert_eq!(
+                rows,
+                vec![
+                    ("code".into(), 1, 3, 0, 0),
+                    ("paragraph".into(), 5, 5, 0, 0),
+                ]
+            );
+        }
+
+        #[test]
+        fn quote_inside_an_item_splits_from_the_marker_line() {
+            let rows = rows("- > quoted\n  > more\n- after\n");
+            assert_eq!(
+                rows,
+                vec![
+                    ("list_item".into(), 1, 1, 0, 0),
+                    ("quote".into(), 2, 2, 0, 0),
+                    ("list_item".into(), 3, 3, 0, 0),
+                ]
+            );
+        }
+
+        /// `parent_seq` is the enclosing item's `seq` on both parsers (the legacy
+        /// scanner used to write the parent's start line).
+        #[test]
+        fn parent_seq_is_the_parents_seq() {
+            let body = "# Title\n\n- parent\n  - child\n    - grandchild\n";
+            let blocks = parse_blocks(body);
+            let rows: Vec<(&str, usize, usize)> = blocks
+                .iter()
+                .map(|b| (b.kind.as_str(), b.start_line, b.parent_seq))
+                .collect();
+            // heading is seq 1, so the top item is 2: children point at it.
+            assert_eq!(
+                rows,
+                vec![
+                    ("heading", 1, 0),
+                    ("list_item", 3, 0),
+                    ("list_item", 4, 2),
+                    ("list_item", 5, 3),
+                ]
+            );
+        }
+
+        #[test]
+        fn nested_ordered_list_after_a_bullet_nests() {
+            let rows = rows("- 1) first\n  2) second\n");
+            assert_eq!(rows.len(), 3);
+            assert_eq!(rows[0].0, "list_item");
+            assert_eq!(rows[1].4, 1, "the ordered item is a child of the bullet");
+        }
+
+        #[test]
+        fn tags_follow_the_shared_grammar() {
+            // `)` before `#` is a boundary (we used to miss this tag); a dotted
+            // and an all-digit tag are not tags.
+            let tags = lutez_ast::parse("see (#ok) …/edit)#hg #123 #a.b #tag.\n")
+                .expect("lutez parse")
+                .tags;
+            // `#tag.` is the tag `tag` (the dot terminates the run).
+            assert_eq!(tags, vec!["ok", "hg", "a", "tag"]);
+        }
+
+        #[test]
+        fn reads_math_and_wikilinks() {
+            let content = lutez_ast::parse("$x^2$ and [[Page One|alias]]\n").expect("parse");
+            assert_eq!(content.links, vec![("page one".into(), "alias".into())]);
+            assert_eq!(content.tags, Vec::<String>::new());
+        }
+
+        /// The AST says which lines are list items, the source line says which of
+        /// them are tasks.
+        #[test]
+        fn extracts_the_expected_tasks() {
+            let content = concat!(
+                "- [ ] open\n",
+                "  - [x] done\n",
+                "- TODO keyword\n",
+                "- DOING wip\n",
+                "- DONE finished\n",
+                "- CANCELED nope\n",
+                "- plain\n",
+                "1. TODO not a bullet\n",
+                "- ```\n",
+                "  - [ ] inside code\n",
+                "  ```\n",
+            );
+            let shared = lutez_ast::parse(content).expect("lutez parse").tasks;
+            let rows: Vec<(&str, &str)> = shared
+                .iter()
+                .map(|task| (task.status.as_str(), task.text.as_str()))
+                .collect();
+            // open, done, TODO, DOING, DONE, CANCELED; the ordered item and the
+            // fenced one are not tasks.
+            assert_eq!(
+                rows,
+                vec![
+                    ("open", "open"),
+                    ("done", "done"),
+                    ("open", "keyword"),
+                    ("doing", "wip"),
+                    ("done", "finished"),
+                    ("cancelled", "nope"),
+                ]
+            );
+        }
+
+        /// Tags follow the shared grammar and never come from code.
+        #[test]
+        fn tags_ignore_code_and_hash_sequences() {
+            let content = "A #rust note, #datalog and C#.\n```\n#notatag\n```\n\n#after\n";
+            assert_eq!(
+                lutez_ast::parse(content).expect("parse").tags,
+                vec!["rust", "datalog", "after"]
+            );
+        }
     }
 
     #[test]

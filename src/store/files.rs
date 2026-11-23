@@ -564,10 +564,12 @@ pub fn thumbnails_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("index").join("thumbs")
 }
 
-/// Write bytes atomically beside the target, like `write_atomic` does for
-/// text assets.
-/// List every file under `root` as `/`-joined relative paths, sorted. Used by
-/// the debug-assertion tests that verify embedded built-in bundles.
+/// List every file under `root` as `/`-joined relative paths, sorted.
+///
+/// Debug builds read the built-in plugins/backgrounds from disk, so they need to
+/// enumerate a bundle exactly like `rust-embed` would. Release builds embed the
+/// same files and never call this.
+#[cfg(debug_assertions)]
 pub fn list_files_recursive(root: &Path) -> io::Result<Vec<String>> {
     fn walk(dir: &Path, out: &mut Vec<String>) -> io::Result<()> {
         for entry in fs::read_dir(dir)? {
@@ -593,6 +595,8 @@ pub fn list_files_recursive(root: &Path) -> io::Result<Vec<String>> {
     Ok(paths)
 }
 
+/// Write bytes atomically beside the target, like `write_atomic` does for text
+/// assets.
 pub fn write_atomic_bytes(path: &Path, contents: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()
