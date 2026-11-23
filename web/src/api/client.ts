@@ -405,11 +405,17 @@ export const api = {
   deleteAgentConfig: () =>
     request<AgentInfo>("/agent/config", { method: "DELETE" }),
 
-  /** Model ids the configured upstream advertises (`/models` on the proxy). */
-  agentModels: async (): Promise<string[]> => {
-    const payload = (await request<{ data?: Array<{ id?: string }> }>(
+  /**
+   * Model ids the configured upstream advertises (`/models` on the proxy).
+   *
+   * The proxy needs the password-derived key for an encrypted provider, so
+   * callers pass it; a keyless local endpoint works without one.
+   */
+  agentModels: async (agentKey?: string): Promise<string[]> => {
+    const payload = await request<{ data?: Array<{ id?: string }> }>(
       "/agent/v1/models",
-    )) as { data?: Array<{ id?: string }> };
+      agentKey ? { headers: { "x-opalnote-agent-key": agentKey } } : {},
+    );
     return (payload.data ?? [])
       .map((entry) => entry.id?.trim() ?? "")
       .filter((id) => id.length > 0);

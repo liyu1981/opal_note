@@ -34,6 +34,7 @@ import {
   disconnectProvider,
   lockProvider,
   refreshProvider,
+  refreshProviderModels,
   requestUnlockPrompt,
   setAgentLockedHandler,
   storedEnvelope,
@@ -81,6 +82,7 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
   const save = useCallback(async () => {
     setError(null);
     setMessage(null);
+    const endpointChanged = (stored?.base_url ?? "").trim() !== baseUrl.trim();
     if (!baseUrl.trim()) {
       setError("Enter the base URL of an OpenAI-compatible endpoint.");
       return;
@@ -121,10 +123,11 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
         }
       }
 
-      const models = info?.models.length ? info.models : await api.agentModels().catch(() => []);
-      const saved = await api.saveAgentConfig({
+      // Store the connection first: the model listing goes through the proxy,
+      // which only exists once a provider is saved.
+      const connected = await api.saveAgentConfig({
         base_url: baseUrl.trim(),
-        models,
+        models: info?.models ?? [],
         key_envelope: nextEnvelope ? JSON.stringify(nextEnvelope) : null,
       });
       if (nextEnvelope && derivedKey) {
@@ -134,16 +137,28 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
           "../../state/agentUnlock"
         );
         saveUnlockPreferences(unlocking.scope, unlocking.customMinutes);
+        // Persist the unlock before asking for models: the listing is a proxied
+        // request that carries this derived key.
         storeUnlock(derivedKey, fingerprint, unlocking.scope);
-        await syncProvider(saved);
       } else {
         lockProvider();
-        await syncProvider(saved);
       }
+      // The upstream list is the authority for the picker; fetch it now that the
+      // provider exists, and refresh it whenever the endpoint changed.
+      const saved = await refreshProviderModels(
+        connected,
+        endpointChanged || connected.models.length === 0,
+      );
+      await syncProvider(saved);
       setApiKey("");
       setPassword("");
       setConfirm("");
-      setMessage("OpalNote provider saved.");
+      const count = saved.models.length;
+      setMessage(
+        count > 0
+          ? `OpalNote provider saved — ${count} model${count === 1 ? "" : "s"} available.`
+          : "OpalNote provider saved. The endpoint listed no models, so chat stays disabled until it does.",
+      );
     } catch (cause) {
       setError(
         cause instanceof CryptoUnavailableError
@@ -155,7 +170,7 @@ function AgentProviderCard({ config }: ReAgentHostProviderProps) {
     } finally {
       setBusy(false);
     }
-  }, [apiKey, baseUrl, confirm, envelope, info, password, unlock.key, unlocking]);
+  }, [apiKey, baseUrl, confirm, envelope, info, password, stored?.base_url, unlock.key, unlocking]);
 
   const remove = useCallback(async () => {
     setBusy(true);

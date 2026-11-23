@@ -387,6 +387,14 @@ web/
   state, and locking keeps the provider listed so the next request can prompt.
   There is deliberately **no** config-file, env or CLI way to set the agent key —
   the UI is the only writer.
+- The agent's model list is fetched **through the proxy** (`api.agentModels(key)` →
+  `GET /api/agent/v1/models`), never from the browser directly: ReAgent's picker
+  only shows models the host-provider config declares, so `AgentProviderCard.save`
+  stores the connection first and then `refreshProviderModels` saves the ids it
+  gets back. That helper also repairs a stored row with an empty list (on load,
+  unlock and `Recheck`) and refreshes the ids when the base URL changes. Do not
+  fetch models *before* the config exists (the proxy 404s) and do not call the
+  listing while locked (it 401s): the stored ids are reused instead.
 - The agent's OpalNote provider is a **server proxy**, not a browser credential:
   `GET /api/agent` reports `{configured, models}` and
   `GET|POST /api/agent/v1/{path}` forwards only `models`, `chat/completions`,

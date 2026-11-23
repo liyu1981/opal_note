@@ -159,11 +159,59 @@ export async function syncProvider(info: AgentInfo | null): Promise<void> {
   connectProvider(info.stored.models);
 }
 
-/** Fetch `GET /api/agent` and sync the provider. */
+/** Ask the proxy for the upstream model ids with this browser's derived key. */
+async function listProxyModels(key: string | null): Promise<string[]> {
+  try {
+    return await api.agentModels(key ?? undefined);
+  } catch {
+    return [];
+  }
+}
+
+function sameModels(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
+  );
+}
+
+/**
+ * A stored provider needs the upstream model list for ReAgent's picker, and the
+ * browser is the only side that can fetch it: the proxy needs the derived key.
+ *
+ * Repairs a row saved without models (older saves, or an endpoint that answered
+ * before the provider existed), and — with `force` — refreshes the list after
+ * the endpoint changes so stale ids cannot be sent upstream.
+ */
+export async function refreshProviderModels(
+  info: AgentInfo,
+  force: boolean,
+): Promise<AgentInfo> {
+  const stored = info.stored;
+  if (!stored) return info;
+  if (!force && stored.models.length > 0) return info;
+  const key = store.get(agentUnlockAtom).key;
+  // A locked provider cannot be asked: the key is what unlocks the upstream.
+  if (storedEnvelope(info) && !key) return info;
+  const models = await listProxyModels(key);
+  if (models.length === 0 || sameModels(models, stored.models)) return info;
+  try {
+    return await api.saveAgentConfig({
+      base_url: stored.base_url,
+      models,
+      key_envelope: stored.key_envelope ?? null,
+    });
+  } catch {
+    return info;
+  }
+}
+
+/** Fetch `GET /api/agent`, repair a missing model list, and sync the provider. */
 export async function refreshProvider(): Promise<AgentInfo | null> {
   const info = await api.agentInfo();
-  await syncProvider(info);
-  return info;
+  const repaired = await refreshProviderModels(info, false);
+  await syncProvider(repaired);
+  return repaired;
 }
 
 /** Unlock with a password and remember the key for the selected window. */

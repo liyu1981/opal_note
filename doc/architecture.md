@@ -949,6 +949,15 @@ server, which holds no unlock state. A window "locks" rather than disconnects:
 the models stay visible and the next request opens the password prompt. A
 re-saved envelope changes its fingerprint, which invalidates any remembered key.
 
+**Model list.** ReAgent's picker only offers models a provider's config
+declares, and the browser is the only side that can fetch them (the listing goes
+through the proxy, which needs the derived key). `save` therefore stores the
+connection first, then `refreshProviderModels` lists `/models` through the proxy
+and saves the ids; the same helper repairs a stored row with an empty list on
+load, unlock and `Recheck`, and refreshes it when the base URL changes so stale
+ids are never sent upstream. While the provider is locked nothing is fetched —
+the ids stored server-side are reused.
+
 **Client.** `opalnoteProvider.tsx` registers a ReAgent **host provider** whose
 `fetch` hook attaches the derived key, fails fast with `agent_locked` when
 locked, and locks again if the server rejects the key. `useOpalNoteCallGate`
