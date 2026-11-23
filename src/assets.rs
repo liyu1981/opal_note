@@ -104,13 +104,22 @@ fn dev_asset(path: &str) -> Option<Vec<u8>> {
 /// styles remain allowed because React and CodeMirror use dynamic style
 /// attributes. Google Fonts are explicitly allow-listed for the Settings font
 /// picker, and authenticated image/audio/video blobs come from self or blob:.
+///
+/// `connect-src` adds the loopback hosts so the agent panel's optional local
+/// model server (ReAgent's "Custom local LLM", default
+/// `http://localhost:11434`) can be reached from the browser. `localhost`
+/// matches however the browser resolves it (IPv4 or IPv6), which is why an
+/// explicit `[::1]` source is not needed — Chromium rejects that form. Every other model
+/// call goes through our own proxy, which is why nothing wider is allowed: a
+/// local server on another machine is reached by putting its URL in the
+/// OpalNote provider card instead.
 const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
 script-src 'self' 'wasm-unsafe-eval'; \
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
 font-src 'self' data: https://fonts.gstatic.com; \
 img-src 'self' data: blob: https:; \
 media-src 'self' data: blob: https:; \
-connect-src 'self'; \
+connect-src 'self' http://localhost:* http://127.0.0.1:*; \
 worker-src 'self' blob:; \
 object-src 'none'; \
 base-uri 'self'; \
@@ -190,5 +199,29 @@ mod tests {
         // `WebAssembly.instantiateStreaming` requires exactly this type.
         assert_eq!(asset_mime("lutez.wasm"), "application/wasm");
         assert_eq!(asset_mime("icons/icon-192.png"), "image/png");
+    }
+
+    /// The agent panel may reach a loopback model server directly; nothing else
+    /// on the network is allow-listed (model traffic goes through the proxy).
+    #[test]
+    fn csp_allows_loopback_connections_only() {
+        let connect = CONTENT_SECURITY_POLICY
+            .split(';')
+            .find(|directive| directive.trim_start().starts_with("connect-src"))
+            .expect("connect-src directive");
+        for source in ["'self'", "http://localhost:*", "http://127.0.0.1:*"] {
+            assert!(
+                connect.split_whitespace().any(|entry| entry == source),
+                "connect-src must allow {source}: {connect}"
+            );
+        }
+        for entry in connect.split_whitespace().skip(1) {
+            assert!(
+                entry.starts_with("http://localhost")
+                    || entry.starts_with("http://127.0.0.1")
+                    || entry == "'self'",
+                "unexpected connect-src source {entry}"
+            );
+        }
     }
 }

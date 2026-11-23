@@ -450,14 +450,19 @@ web/
   pointer (`git -C web/vendor/reagent fetch && git -C web/vendor/reagent
   checkout main`) and committing the new submodule SHA. Provider registration
   is a **prop** (`providerFilter` on `<ReAgent>`), not a settings switch. The
-  panel registers **only** the OpalNote provider
-  (`providerFilter={{ enabled: [OPALNOTE_PROVIDER_ID] }}`): every model call is
-  proxied by the server, and the SPA's `connect-src 'self'` blocks browser-direct
-  traffic to any other host, so ReAgent's cloud/localhost providers would be dead
-  ends whose connection probes only fill the console with CSP errors. A local
-  server still works — put its URL in the OpalNote card and the proxy calls it.
-  The settings subtitle is overridden (`messages` prop) to say the key is stored
-  encrypted on the server rather than "in this browser". Docker and the release
+  panel registers the OpalNote provider **and** ReAgent's local model server
+  (`providerFilter={{ enabled: [OPALNOTE_PROVIDER_ID, OLLAMA_PROVIDER_ID] }}`):
+  cloud providers are deliberately left out because they call their vendor
+  straight from the browser with a key stored in `localStorage`, while OpalNote
+  proxies every cloud call so the credential stays encrypted on the server. The
+  SPA CSP's `connect-src` therefore allows `'self'` plus the **loopback** hosts
+  (`http://localhost:*`, `http://127.0.0.1:*`) and nothing else, which is what
+  makes the local LLM section work; ReAgent probes it on mount, so a machine
+  without a local server only logs a failed connection, not a CSP violation.
+  Anything on a LAN or behind a tunnel goes in the OpalNote card instead, where
+  the proxy makes the request. Two `messages` overrides keep the copy honest:
+  the settings subtitle (the key is encrypted on the server, not "in this
+  browser") and the empty cloud section (it points at the two supported ways). Docker and the release
   workflows check out submodules recursively. To patch ReAgent locally, edit the
   submodule and commit the change there first, then the pointer here.
 - Full-window viewers share `web/src/components/lightbox/Lightbox.tsx`

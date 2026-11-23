@@ -1,4 +1,4 @@
-import { ReAgent } from "@liyu1981/reagent";
+import { OLLAMA_PROVIDER_ID, ReAgent } from "@liyu1981/reagent";
 
 import {
   AgentUnlockDialog,
@@ -9,16 +9,20 @@ import {
 import { OPALNOTE_PROVIDER_ID } from "./opalnoteProvider";
 
 /**
- * Only the OpalNote provider is registered.
+ * The OpalNote provider plus ReAgent's local model server, nothing else.
  *
- * Every model call is proxied through the Rust server (which owns the encrypted
- * credential), and the SPA's `connect-src 'self'` blocks browser-direct calls to
- * any other host — ReAgent's built-in cloud and localhost providers would be
- * dead ends whose connection probes only fill the console. A local server is
- * still reachable: put its URL in the OpalNote provider card and the proxy makes
+ * Every *cloud* model call is proxied through the Rust server (which owns the
+ * encrypted credential), and the SPA's `connect-src` allows no third-party host,
+ * so a browser-side cloud provider could only ever be a dead end that logs CSP
+ * violations. The local server is different: `connect-src` includes the loopback
+ * hosts, so `http://localhost:11434` (or any local OpenAI-compatible port) works
+ * directly and users can run a model without a server-side key. Anything further
+ * away — a LAN box, a tunnel — goes in the OpalNote card, where the proxy makes
  * the request.
  */
-const PROVIDER_FILTER = { enabled: [OPALNOTE_PROVIDER_ID] };
+const PROVIDER_FILTER = {
+  enabled: [OPALNOTE_PROVIDER_ID, OLLAMA_PROVIDER_ID],
+};
 
 /**
  * ReAgent's stock subtitle describes browser-stored keys sent straight to a
@@ -28,6 +32,11 @@ const PROVIDER_FILTER = { enabled: [OPALNOTE_PROVIDER_ID] };
 const MESSAGES = {
   "agent.settingsDescription":
     "The API key is stored encrypted on your OpalNote server; every model call goes through it, not straight from this browser.",
+  // ReAgent's cloud providers run in the browser and this app's CSP allows only
+  // the loopback hosts, so they are not registered. Say where to go instead of
+  // leaving an empty section behind.
+  "agent.cloudProvidersDisabled":
+    "Cloud providers run in this browser and are not allowed by OpalNote's security policy. Use the OpalNote provider above — it proxies through your server — or the local server section below.",
 };
 
 /**

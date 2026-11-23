@@ -923,13 +923,15 @@ browser agent ──POST /api/agent/v1/chat/completions──► Rust proxy ─�
   x-opalnote-agent-key: <derived key>   session cookie + CSRF   (+ decrypted key)
 ```
 
-**Providers.** The panel registers only the OpalNote provider
-(`providerFilter` on `<ReAgent>`): model traffic is proxied by the server, and the
-SPA's `connect-src 'self'` blocks browser-direct calls to other hosts, so
-ReAgent's built-in cloud and localhost providers are hidden rather than offered
-as dead ends (their probes used to log CSP violations). A local OpenAI-compatible
-server is reachable by putting its URL in the provider card — the proxy makes the
-request from the server side.
+**Providers.** The panel registers the OpalNote provider and ReAgent's **local
+model server** (`providerFilter` on `<ReAgent>`). Cloud providers are excluded:
+they would send a vendor request straight from the browser with a key in
+`localStorage`, whereas OpalNote proxies cloud traffic so the credential stays
+encrypted on the server. The SPA CSP reflects that split — `connect-src` is
+`'self'` plus `http://localhost:*` and `http://127.0.0.1:*`, so a local
+OpenAI-compatible server (Ollama, LM Studio, llama.cpp) works directly and
+nothing else on the network does; a LAN or tunnelled endpoint goes in the
+OpalNote card and the server makes the request.
 
 **Storage.** The connection lives in `opalnote.db` (`agent_config`, ADR 0001):
 base URL and model list in clear, the API key as an AES-256-GCM envelope. The
