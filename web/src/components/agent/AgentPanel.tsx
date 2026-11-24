@@ -35,6 +35,11 @@ const PROVIDER_FILTER = {
  * through the proxy, so say that instead.
  */
 const MESSAGES = {
+  "agent.systemPrompt":
+    "You are a helpful assistant for the user's OpalNote notebook. Answer in {{language}}. " +
+    "When you refer to a note or journal page, format it as an internal wikilink using the note title " +
+    "without extension or folder, e.g. journals/2023-05-06.md becomes [[2023-05-06]], and a page " +
+    "pages/foo.md becomes [[foo]] (or [[Page Title]]). Do not print bare paths like journals/2023-03-31.md.",
   "agent.settingsDescription":
     "The API key is stored encrypted on your OpalNote server; every model call goes through it, not straight from this browser.",
   // ReAgent's cloud providers run in the browser and this app's CSP allows only
