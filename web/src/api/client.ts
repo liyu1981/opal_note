@@ -52,6 +52,34 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Retry delays for a read whose `fetch` rejected before a response arrived.
+ *
+ * A laptop that wakes from sleep often still holds an idle HTTP/3 socket, so
+ * the first requests die with a QUIC idle timeout even though the server is
+ * reachable. A couple of cheap retries let the browser open a fresh connection
+ * (or fall back to TCP) instead of suspending the workspace with "Failed to
+ * fetch" until the user reloads the page.
+ */
+const NETWORK_RETRY_DELAYS_MS = [200, 600];
+
+/** Reads only: a create/save retried blindly could duplicate its side effect. */
+async function fetchRead(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      // An abort is deliberate: the caller no longer wants the result.
+      const aborted =
+        error instanceof DOMException && error.name === "AbortError";
+      if (aborted || attempt >= NETWORK_RETRY_DELAYS_MS.length) throw error;
+      await new Promise((resolve) =>
+        window.setTimeout(resolve, NETWORK_RETRY_DELAYS_MS[attempt]),
+      );
+    }
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   await ensureSession();
   const headers = new Headers(init.headers);
@@ -70,11 +98,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
-      ...init,
-      headers,
-      credentials: "same-origin",
-    });
+    const read = method === "GET" || method === "HEAD";
+    response = read
+      ? await fetchRead(`/api${path}`, {
+          ...init,
+          headers,
+          credentials: "same-origin",
+        })
+      : await fetch(`/api${path}`, {
+          ...init,
+          headers,
+          credentials: "same-origin",
+        });
   } catch (error) {
     throw new ApiError(
       0,
@@ -131,7 +166,7 @@ async function requestThumbnail(
   await ensureSession();
   let response: Response;
   try {
-    response = await fetch(
+    response = await fetchRead(
       `/api/notebooks/${encode(notebookId)}/thumbnail?path=${encode(path)}`,
       { credentials: "same-origin" },
     );
@@ -194,7 +229,7 @@ async function requestBlob(
   const headers = new Headers();
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetchRead(`/api${path}`, {
       headers,
       credentials: "same-origin",
       cache: options.fresh ? "no-store" : "default",

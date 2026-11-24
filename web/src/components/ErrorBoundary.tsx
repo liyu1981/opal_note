@@ -5,8 +5,10 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { getDefaultStore } from "jotai";
 
 import { ApiError } from "../api/client";
+import { refreshAtom } from "../state/atoms";
 import { sessionExpired, startSession } from "../lib/session";
 import { SessionExpiredPanel } from "./SessionExpiredDialog";
 
@@ -35,11 +37,22 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("OpalNote render error", error, info.componentStack);
   }
 
+  /**
+   * Clearing the boundary is not enough: an async atom caches its rejection
+   * until one of its dependencies changes, so the same error would be thrown
+   * again. Bump every derived read before re-rendering.
+   */
+  private retry = () => {
+    getDefaultStore().set(refreshAtom);
+    this.setState({ error: null });
+  };
+
   render() {
     if (!this.state.error) return this.props.children;
 
     const error = this.state.error;
     const needsConnection = error instanceof ApiError && error.status === 401;
+    const networkDown = error instanceof ApiError && error.status === 0;
 
     // A session that expires while the app is running cannot be renewed without
     // the server token; ask for a reload instead of showing the token form.
@@ -51,15 +64,23 @@ export class ErrorBoundary extends Component<Props, State> {
       <div className="flex h-full items-center justify-center bg-canvas p-6">
         <div className="w-full max-w-md rounded-2xl border border-line bg-white/70 p-6 shadow-panel">
           <p className="text-[14px] font-semibold uppercase tracking-[0.16em] text-danger">
-            {needsConnection ? "Connection required" : "Something went wrong"}
+            {needsConnection
+              ? "Connection required"
+              : networkDown
+                ? "Connection lost"
+                : "Something went wrong"}
           </p>
           <h1 className="mt-2 font-serif text-2xl text-ink">
             {needsConnection
               ? "Sign in to this notebook"
-              : "The notebook could not be loaded"}
+              : networkDown
+                ? "The server could not be reached"
+                : "The notebook could not be loaded"}
           </h1>
           <p className="mt-2 break-words rounded-lg bg-panel px-3 py-2 font-mono text-[14px] text-ink-soft">
-            {error.message}
+            {networkDown
+              ? "The connection dropped. Check your network and try again."
+              : error.message}
           </p>
 
           {needsConnection ? (
@@ -68,17 +89,17 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={this.retry}
                 className="rounded-lg bg-accent-strong px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent"
               >
-                Reload
+                Try again
               </button>
               <button
                 type="button"
-                onClick={() => this.setState({ error: null })}
+                onClick={() => window.location.reload()}
                 className="rounded-lg border border-line px-3.5 py-2 text-sm text-ink-soft transition hover:bg-panel"
               >
-                Try again
+                Reload
               </button>
             </div>
           )}
