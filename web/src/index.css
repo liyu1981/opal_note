@@ -109,6 +109,99 @@
   --muted: var(--color-panel);
 }
 
+/*
+ * ReAgent styles these with its default token palette: tooltips get a blue
+ * `bg-primary`, the default-variant Save button gets white foreground text,
+ * and the switch thumb/background are almost the same off-white. Bring them
+ * onto the OpalNote page surface instead. Tooltips are portalled to <body>,
+ * so that rule has to live outside `.agent-surface`.
+ */
+[data-slot="tooltip-content"] {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}
+
+[data-slot="tooltip-content"] svg {
+  background-color: var(--color-paper);
+  fill: var(--color-paper);
+}
+
+.agent-surface [data-slot="reagent-settings-content"] [data-slot="button"][data-variant="default"] {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.agent-surface [data-slot="switch"][data-state="unchecked"] {
+  background-color: var(--color-line-strong);
+}
+
+.agent-surface [data-slot="switch"][data-state="checked"] {
+  background-color: var(--color-accent-strong);
+  border-color: var(--color-line-strong) !important;
+  border: 1px solid var(--color-line-strong) !important;
+}
+
+.agent-surface [data-slot="switch-thumb"] {
+  background-color: var(--color-panel);
+  box-shadow: 0 0 0 1px var(--color-line-strong), 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.agent-surface [data-slot="switch"][data-state="checked"] [data-slot="switch-thumb"] {
+  --tw-translate-x: 2rem;
+  box-shadow: 0 0 0 1px var(--color-line-strong), 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.agent-surface [data-slot="switch"][data-state="unchecked"] [data-slot="switch-thumb"] {
+  --tw-translate-x: 0.1rem;
+  box-shadow: 0 0 0 1px var(--color-paper), 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+/* State caption inside the track, opposite the thumb, driven by data-state. */
+.agent-surface [data-slot="switch"] {
+  position: relative;
+  width: 3.25rem;
+  height: 1.5rem;
+}
+
+.agent-surface [data-slot="switch"]::after {
+  content: "OFF";
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--color-line-strong);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.agent-surface [data-slot="switch"][data-state="checked"]::after {
+  content: "ON";
+  right: auto;
+  left: 4px;
+  color: var(--color-ink);
+}
+
+/* Inactive tabs stay readable; the active tab is a raised paper chip with a
+   neutral border and outline, without a Tailwind ring shadow. */
+.agent-surface [data-slot="tabs-trigger"] {
+  color: var(--color-ink-soft);
+}
+
+.agent-surface [data-slot="tabs-trigger"][data-state="active"] {
+  position: relative;
+  z-index: 1;
+  background-color: var(--background) !important;
+  color: var(--foreground);
+  border-color: var(--color-paper) !important;
+  outline-style: none;
+  box-shadow: inset 0 0 0 1px var(--color-line-strong);
+}
+
 html,
 body,
 #root {
