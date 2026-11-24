@@ -8,6 +8,10 @@ import {
 } from "./AgentProviderCard";
 import { OPALNOTE_PROVIDER_ID } from "./opalnoteProvider";
 import { createOpalNoteToolDescriptors } from "../../lib/agentTools";
+import { lazy, Suspense } from "react";
+const AgentMarkdown = lazy(() =>
+  import("./AgentMarkdown").then((m) => ({ default: m.AgentMarkdown })),
+);
 
 /**
  * The OpalNote provider plus ReAgent's local model server, nothing else.
@@ -62,6 +66,11 @@ export function AgentPanel() {
         messages={MESSAGES}
         extraDescriptors={opalnoteTools}
         beforeAgentCall={beforeAgentCall}
+        renderMarkdown={(props) => (
+          <Suspense fallback={null}>
+            <AgentMarkdown {...props} />
+          </Suspense>
+        )}
         className="h-full"
       />
       <AgentUnlockDialog />
