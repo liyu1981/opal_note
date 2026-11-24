@@ -448,7 +448,7 @@ web/
   `api` client, so no extra credential plumbing is needed. Write tools are
   deliberately omitted from this batch.
 - ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
-  `main` (currently `4f9df91`), linked as a pnpm workspace package
+  `main` (currently `108bf05`), linked as a pnpm workspace package
   (`workspace:*`), because its published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds
   it (`tsc` in the submodule, skipped when `dist/` is newer than `src/`) and runs
   from `pnpm build`, `pnpm typecheck` and `pnpm build:watch`; `pnpm dev` also

@@ -1005,6 +1005,12 @@ half-typed key survives). Which providers a host registers is the
 not a UI switch: the OpalNote provider simply does not exist until a
 configuration is stored (`GET /api/agent` reconnects it on load).
 
+**ReAgent 0.2.2** adds per-message copy and regenerate buttons and defers model
+validation until send: a locked host provider no longer fails the whole session
+load, and `buildForSession` is retried when the user sends, so a provider that
+comes online after unlock (or a model list fetched late) starts working on the
+first message instead of staying dead until a reload.
+
 **Vendored ReAgent.** `web/vendor/reagent` is a git submodule tracking upstream
 `main`, linked as a workspace package and built from source by
 `scripts/build-reagent.mjs` (the published tarball has no `dist/`). Docker and
