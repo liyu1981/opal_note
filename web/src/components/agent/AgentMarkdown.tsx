@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { safeExternalUrl } from "../../lib/markdown";
+import { useAppNavigate } from "../../lib/appNavigation";
 
 /**
  * Markdown renderer for ReAgent chat bubbles.
@@ -16,8 +17,17 @@ import { safeExternalUrl } from "../../lib/markdown";
  * because the app has one palette and `agent-surface` already re-points the
  * ReAgent tokens.
  */
+function linkifyWikilinks(content: string): string {
+  return content.replace(/\[\[([^\]]+)\]\]/g, (_, target) => {
+    const label = target.trim();
+    return `[${label}](note:${label})`;
+  });
+}
+
 export const AgentMarkdown: ComponentType<{ content: string; theme?: "light" | "dark" }> =
   ({ content }) => {
+    const navigate = useAppNavigate();
+    const linked = linkifyWikilinks(content);
     // ReAgent invokes us as <Markdown content=… />; rendering a single string
     // here keeps the bubble's markup flat and prevents a nested <p> wrapper.
     return (
@@ -26,6 +36,18 @@ export const AgentMarkdown: ComponentType<{ content: string; theme?: "light" | "
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ href, children }) => {
+            if (href?.startsWith("note:")) {
+              const noteId = decodeURIComponent(href.slice("note:".length));
+              return (
+                <button
+                  type="button"
+                  onClick={() => navigate({ view: "note", noteId })}
+                  className="text-accent-strong underline underline-offset-2 hover:text-accent"
+                >
+                  {children}
+                </button>
+              );
+            }
             const safe = href ? safeExternalUrl(href) : null;
             return safe ? (
               <a
@@ -68,7 +90,7 @@ export const AgentMarkdown: ComponentType<{ content: string; theme?: "light" | "
           hr: () => <hr className="my-2 border-line" />,
         }}
       >
-        {content}
+        {linked}
       </ReactMarkdown>
     </div>
   );
