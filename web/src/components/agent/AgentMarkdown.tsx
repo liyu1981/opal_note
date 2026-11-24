@@ -1,9 +1,9 @@
 import type { ComponentType } from "react";
 
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { safeExternalUrl } from "../../lib/markdown";
+import { safeExternalUrl, splitWikilink } from "../../lib/markdown";
 import { useAppNavigate } from "../../lib/appNavigation";
 
 /**
@@ -17,11 +17,28 @@ import { useAppNavigate } from "../../lib/appNavigation";
  * because the app has one palette and `agent-surface` already re-points the
  * ReAgent tokens.
  */
+const NOTE_PROTOCOL = "note:";
+
+/**
+ * Rewrite `[[target]]` into a markdown link with an encoded note target,
+ * honouring the page editor's `[[target|label]]` and `[[page#heading]]`
+ * shapes.
+ */
 function linkifyWikilinks(content: string): string {
-  return content.replace(/\[\[([^\]]+)\]\]/g, (_, target) => {
-    const label = target.trim();
-    return `[${label}](note:${label})`;
+  return content.replace(/\[\[([^\]]+)\]\]/g, (match, inner: string) => {
+    const { target, label } = splitWikilink(inner);
+    if (!target) return match;
+    return `[${label}](${NOTE_PROTOCOL}${encodeURIComponent(target)})`;
   });
+}
+
+/**
+ * `react-markdown` sanitises destinations with `defaultUrlTransform`, which
+ * drops any protocol it does not know — including our `note:` links. Keep
+ * those intact and defer everything else to the default sanitiser.
+ */
+function noteUrlTransform(url: string): string {
+  return url.startsWith(NOTE_PROTOCOL) ? url : defaultUrlTransform(url);
 }
 
 export const AgentMarkdown: ComponentType<{ content: string; theme?: "light" | "dark" }> =
@@ -34,10 +51,11 @@ export const AgentMarkdown: ComponentType<{ content: string; theme?: "light" | "
     <div className="agent-markdown font-sans text-sm leading-relaxed text-ink">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={noteUrlTransform}
         components={{
           a: ({ href, children }) => {
-            if (href?.startsWith("note:")) {
-              const noteId = decodeURIComponent(href.slice("note:".length));
+            if (href?.startsWith(NOTE_PROTOCOL)) {
+              const noteId = decodeURIComponent(href.slice(NOTE_PROTOCOL.length));
               return (
                 <button
                   type="button"
