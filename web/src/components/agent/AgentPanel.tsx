@@ -7,6 +7,7 @@ import {
   useOpalNoteCallGate,
 } from "./AgentProviderCard";
 import { OPALNOTE_PROVIDER_ID } from "./opalnoteProvider";
+import { createOpalNoteToolDescriptors } from "../../lib/agentTools";
 
 /**
  * The OpalNote provider plus ReAgent's local model server, nothing else.
@@ -49,6 +50,7 @@ const MESSAGES = {
 export function AgentPanel() {
   useOpalNoteAgentProvider();
   const beforeAgentCall = useOpalNoteCallGate();
+  const opalnoteTools = createOpalNoteToolDescriptors();
   return (
     <div className="agent-surface relative flex h-full min-h-0 flex-col">
       <ReAgent
@@ -58,6 +60,7 @@ export function AgentPanel() {
         hostProviders={OPALNOTE_HOST_PROVIDERS}
         providerFilter={PROVIDER_FILTER}
         messages={MESSAGES}
+        extraDescriptors={opalnoteTools}
         beforeAgentCall={beforeAgentCall}
         className="h-full"
       />

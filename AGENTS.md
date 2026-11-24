@@ -441,6 +441,12 @@ web/
   password prompt, plus a `beforeAgentCall` gate (`useOpalNoteCallGate`) that
   stops a call to a *locked* provider before the message is appended — the
   prompt stays in the composer and our unlock dialog opens.
+- The agent exposes read-only notebook tools to the model: `search_notes`,
+  `list_tags` and `read_note` (`web/src/lib/agentTools.ts`), registered as
+  `extraDescriptors` in `AgentPanel` (group `content`, always enabled). They read
+  from `activeNotebookIdAtom` at call time and use the existing authenticated
+  `api` client, so no extra credential plumbing is needed. Write tools are
+  deliberately omitted from this batch.
 - ReAgent is a **git submodule** at `web/vendor/reagent` tracking upstream
   `main` (currently `4f9df91`), linked as a pnpm workspace package
   (`workspace:*`), because its published tarball has no committed `dist/`. `scripts/build-reagent.mjs` builds

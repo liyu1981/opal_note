@@ -976,6 +976,14 @@ load, unlock and `Recheck`, and refreshes it when the base URL changes so stale
 ids are never sent upstream. While the provider is locked nothing is fetched —
 the ids stored server-side are reused.
 
+**Notebook tools.** `web/src/lib/agentTools.ts` registers three read-only tools
+with ReAgent as host descriptors (`extraDescriptors` on `<ReAgent>` in
+`AgentPanel`): `search_notes` (FTS → titles, paths, snippets), `list_tags`
+(tag → count) and `read_note` (full body by path or title, resolved server-side).
+All three read the open notebook from `activeNotebookIdAtom` at call time, use
+the existing authenticated `api` client, and are always enabled. Write tools are
+deferred to a later batch.
+
 **Client.** `opalnoteProvider.tsx` registers a ReAgent **host provider** whose
 `fetch` hook attaches the derived key, fails fast with `agent_locked` when
 locked, and locks again if the server rejects the key. `useOpalNoteCallGate`
